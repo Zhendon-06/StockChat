@@ -1,0 +1,166 @@
+CREATE TABLE chat_session (
+    id TEXT NOT NULL PRIMARY KEY,
+    title TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE chat_message (
+    id TEXT NOT NULL PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    state TEXT NOT NULL,
+    retry_question TEXT NOT NULL DEFAULT '',
+    retry_attempt INTEGER NOT NULL DEFAULT 0,
+    error_message TEXT NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES chat_session(id) ON DELETE CASCADE
+);
+
+CREATE INDEX chat_message_session_order
+ON chat_message(session_id, sort_order);
+
+CREATE TABLE chat_content_block (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    message_id TEXT NOT NULL,
+    block_index INTEGER NOT NULL,
+    block_type TEXT NOT NULL,
+    markdown_source TEXT,
+    fallback_text TEXT,
+    FOREIGN KEY (message_id) REFERENCES chat_message(id) ON DELETE CASCADE,
+    UNIQUE(message_id, block_index)
+);
+
+CREATE INDEX chat_content_block_message_order
+ON chat_content_block(message_id, block_index);
+
+CREATE TABLE market_quote_block (
+    block_id INTEGER NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    symbol TEXT NOT NULL,
+    market_label TEXT NOT NULL,
+    price TEXT NOT NULL,
+    change_value TEXT NOT NULL,
+    change_percent TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    is_positive INTEGER NOT NULL,
+    summary TEXT NOT NULL,
+    ai_insight TEXT NOT NULL,
+    FOREIGN KEY (block_id) REFERENCES chat_content_block(id) ON DELETE CASCADE
+);
+
+CREATE TABLE market_quote_trend_point (
+    block_id INTEGER NOT NULL,
+    point_index INTEGER NOT NULL,
+    point_value REAL NOT NULL,
+    PRIMARY KEY (block_id, point_index),
+    FOREIGN KEY (block_id) REFERENCES market_quote_block(block_id) ON DELETE CASCADE
+);
+
+selectSession:
+SELECT * FROM chat_session WHERE id = ?;
+
+selectMessages:
+SELECT * FROM chat_message
+WHERE session_id = ?
+ORDER BY sort_order ASC;
+
+selectBlocks:
+SELECT * FROM chat_content_block
+WHERE message_id = ?
+ORDER BY block_index ASC;
+
+selectMarketQuote:
+SELECT * FROM market_quote_block WHERE block_id = ?;
+
+selectTrendPoints:
+SELECT point_value FROM market_quote_trend_point
+WHERE block_id = ?
+ORDER BY point_index ASC;
+
+insertSession:
+INSERT OR IGNORE INTO chat_session(id, title, created_at, updated_at)
+VALUES (?, ?, CAST(strftime('%s', 'now') AS INTEGER) * 1000, CAST(strftime('%s', 'now') AS INTEGER) * 1000);
+
+updateSession:
+UPDATE chat_session
+SET title = ?, updated_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+WHERE id = ?;
+
+insertMessage:
+INSERT INTO chat_message(
+    id,
+    session_id,
+    role,
+    state,
+    retry_question,
+    retry_attempt,
+    error_message,
+    sort_order,
+    created_at
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, CAST(strftime('%s', 'now') AS INTEGER) * 1000);
+
+insertBlock:
+INSERT INTO chat_content_block(
+    message_id,
+    block_index,
+    block_type,
+    markdown_source,
+    fallback_text
+)
+VALUES (?, ?, ?, ?, ?);
+
+lastInsertedBlockId:
+SELECT last_insert_rowid();
+
+insertMarketQuote:
+INSERT INTO market_quote_block(
+    block_id,
+    name,
+    symbol,
+    market_label,
+    price,
+    change_value,
+    change_percent,
+    updated_at,
+    is_positive,
+    summary,
+    ai_insight
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+insertTrendPoint:
+INSERT INTO market_quote_trend_point(block_id, point_index, point_value)
+VALUES (?, ?, ?);
+
+deleteTrendPointsForSession:
+DELETE FROM market_quote_trend_point
+WHERE block_id IN (
+    SELECT block.id
+    FROM chat_content_block AS block
+    INNER JOIN chat_message AS message ON message.id = block.message_id
+    WHERE message.session_id = ?
+);
+
+deleteMarketQuotesForSession:
+DELETE FROM market_quote_block
+WHERE block_id IN (
+    SELECT block.id
+    FROM chat_content_block AS block
+    INNER JOIN chat_message AS message ON message.id = block.message_id
+    WHERE message.session_id = ?
+);
+
+deleteBlocksForSession:
+DELETE FROM chat_content_block
+WHERE message_id IN (
+    SELECT id FROM chat_message WHERE session_id = ?
+);
+
+deleteMessagesForSession:
+DELETE FROM chat_message WHERE session_id = ?;
+
+deleteSession:
+DELETE FROM chat_session WHERE id = ?;
