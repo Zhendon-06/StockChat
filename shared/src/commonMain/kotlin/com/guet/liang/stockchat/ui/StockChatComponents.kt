@@ -7,6 +7,7 @@ import com.guet.liang.stockchat.model.MessageState
 import com.guet.liang.stockchat.model.StockQuote
 import com.tencent.kuikly.core.base.Border
 import com.tencent.kuikly.core.base.BorderStyle
+import com.tencent.kuikly.core.base.BoxShadow
 import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.views.Canvas
@@ -14,6 +15,7 @@ import com.tencent.kuikly.core.views.Text
 import com.tencent.kuikly.core.views.View
 import com.tencent.kuiklybase.KuiklyMarkdown
 import com.tencent.kuiklybase.config.MarkdownConfig
+import kotlin.math.PI
 
 internal object StockChatTheme {
     val background = Color(0xFFF6F7F4)
@@ -33,6 +35,14 @@ internal object StockChatTheme {
     val warning = Color(0xFF9B6A18)
 }
 
+private enum class MessageActionIcon {
+    COPY,
+    LIKE,
+    DISLIKE,
+    READ_ALOUD,
+    MORE,
+}
+
 internal fun ViewContainer<*, *>.HamburgerButton(
     scale: Float = 1f,
     onClick: () -> Unit,
@@ -42,7 +52,14 @@ internal fun ViewContainer<*, *>.HamburgerButton(
             size(52f * scale, 52f * scale)
             borderRadius(26f * scale)
             backgroundColor(StockChatTheme.surface)
-            border(Border(1f, BorderStyle.SOLID, StockChatTheme.borderStrong))
+            boxShadow(
+                BoxShadow(
+                    1f * scale,
+                    5f * scale,
+                    14f * scale,
+                    Color(0x1A000000),
+                )
+            )
             allCenter()
         }
         event {
@@ -132,49 +149,16 @@ internal fun ViewContainer<*, *>.AssistantBadge(size: Float = 102f) {
     }
 }
 
-internal fun ViewContainer<*, *>.PromptChip(
-    label: String,
-    scale: Float = 1f,
-    onClick: () -> Unit,
-) {
-    View {
-        attr {
-            height(42f * scale)
-            borderRadius(21f * scale)
-            padding(left = 15f * scale, right = 15f * scale)
-            margin(right = 8f * scale, bottom = 0f)
-            backgroundColor(StockChatTheme.surface)
-            border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
-            flexDirectionRow()
-            alignItemsCenter()
-        }
-        event {
-            click { onClick() }
-        }
-        View {
-            attr {
-                size(7f * scale, 7f * scale)
-                borderRadius(4f * scale)
-                marginRight(8f * scale)
-                backgroundColor(StockChatTheme.accent)
-            }
-        }
-        Text {
-            attr {
-                text(label)
-                fontSize(14f * scale)
-                fontWeightMedium()
-                color(StockChatTheme.textPrimary)
-            }
-        }
-    }
-}
-
 internal fun ViewContainer<*, *>.ChatMessageItem(
     message: ChatMessage,
     scale: Float = 1f,
     onQuoteClick: (StockQuote) -> Unit,
     onRetry: (ChatMessage) -> Unit,
+    onCopy: (ChatMessage) -> Unit = {},
+    onLike: (ChatMessage) -> Unit = {},
+    onDislike: (ChatMessage) -> Unit = {},
+    onReadAloud: (ChatMessage) -> Unit = {},
+    onMore: (ChatMessage) -> Unit = {},
 ) {
     View {
         attr {
@@ -190,21 +174,32 @@ internal fun ViewContainer<*, *>.ChatMessageItem(
                 View {
                     attr {
                         maxWidth(290f * scale)
-                        padding(
-                            top = 12f * scale,
-                            left = 16f * scale,
-                            bottom = 12f * scale,
-                            right = 16f * scale,
-                        )
-                        borderRadius(20f * scale, 20f * scale, 20f * scale, 6f * scale)
-                        backgroundColor(Color(0xFF1C2925))
                     }
-                    Text {
-                        attr {
-                            text((message.blocks.firstOrNull() as? AnswerBlock.Markdown)?.fallbackText ?: "")
-                            fontSize(15f * scale)
-                            lineHeight(22f * scale)
-                            color(Color.WHITE)
+                    message.blocks.forEach { block ->
+                        when (block) {
+                            is AnswerBlock.Markdown -> View {
+                                attr {
+                                    padding(
+                                        top = 12f * scale,
+                                        left = 16f * scale,
+                                        bottom = 12f * scale,
+                                        right = 16f * scale,
+                                    )
+                                    borderRadius(22f * scale)
+                                    backgroundColor(Color(0xFFE2E4E5))
+                                    marginBottom(8f * scale)
+                                }
+                                Text {
+                                    attr {
+                                        text(block.fallbackText)
+                                        fontSize(17f * scale)
+                                        lineHeight(24f * scale)
+                                        color(StockChatTheme.textPrimary)
+                                    }
+                                }
+                            }
+                            is AnswerBlock.ImageGallery -> MessageImageGallery(block.images, scale)
+                            is AnswerBlock.MarketQuote -> Unit
                         }
                     }
                 }
@@ -212,51 +207,37 @@ internal fun ViewContainer<*, *>.ChatMessageItem(
         } else {
             View {
                 attr {
-                    flexDirectionRow()
-                    alignItemsFlexStart()
+                    flex(1f)
                 }
-                View {
-                    attr {
-                        size(32f * scale, 32f * scale)
-                        borderRadius(11f * scale)
-                        backgroundColor(Color(0xFF17241F))
-                        allCenter()
-                        marginRight(10f * scale)
-                    }
-                    Text {
-                        attr {
-                            text("AI")
-                            fontSize(11f * scale)
-                            fontWeightBold()
-                            color(Color(0xFF54DDB4))
-                        }
-                    }
-                }
-                View {
-                    attr {
-                        flex(1f)
-                    }
-                    when (message.state) {
-                        MessageState.GENERATING -> GeneratingMessage(scale)
-                        MessageState.FAILED -> FailedMessage(message.errorMessage, scale) { onRetry(message) }
-                        MessageState.DELIVERED -> {
-                            message.blocks.forEach { block ->
-                                when (block) {
-                                    is AnswerBlock.Markdown -> MarkdownContent(block, scale)
-                                    is AnswerBlock.MarketQuote -> MarketQuoteCard(block.quote, scale) {
-                                        onQuoteClick(block.quote)
-                                    }
+                when (message.state) {
+                    MessageState.GENERATING -> GeneratingMessage(scale)
+                    MessageState.FAILED -> FailedMessage(message.errorMessage, scale) { onRetry(message) }
+                    MessageState.DELIVERED -> {
+                        message.blocks.forEach { block ->
+                            when (block) {
+                                is AnswerBlock.Markdown -> MarkdownContent(block, scale)
+                                is AnswerBlock.MarketQuote -> MarketQuoteCard(block.quote, scale) {
+                                    onQuoteClick(block.quote)
                                 }
-                            }
-                            Text {
-                                attr {
-                                    text("演示信息 · 仅供参考，不构成投资建议")
-                                    fontSize(11f * scale)
-                                    color(StockChatTheme.textTertiary)
-                                    marginTop(10f * scale)
-                                }
+                                is AnswerBlock.ImageGallery -> MessageImageGallery(block.images, scale)
                             }
                         }
+                        Text {
+                            attr {
+                                text("仅供参考，不构成投资建议")
+                                fontSize(11f * scale)
+                                color(StockChatTheme.textTertiary)
+                                marginTop(8f * scale)
+                            }
+                        }
+                        MessageActionRow(
+                            scale = scale,
+                            onCopy = { onCopy(message) },
+                            onLike = { onLike(message) },
+                            onDislike = { onDislike(message) },
+                            onReadAloud = { onReadAloud(message) },
+                            onMore = { onMore(message) },
+                        )
                     }
                 }
             }
@@ -267,23 +248,14 @@ internal fun ViewContainer<*, *>.ChatMessageItem(
 private fun ViewContainer<*, *>.MarkdownContent(block: AnswerBlock.Markdown, scale: Float) {
     View {
         attr {
-            padding(
-                top = 14f * scale,
-                left = 15f * scale,
-                bottom = 14f * scale,
-                right = 15f * scale,
-            )
-            borderRadius(6f * scale, 18f * scale, 18f * scale, 18f * scale)
-            backgroundColor(StockChatTheme.surface)
-            border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
-            marginBottom(10f * scale)
+            marginBottom(9f * scale)
         }
         if (block.source.isBlank()) {
             Text {
                 attr {
                     text(block.fallbackText)
-                    fontSize(15f * scale)
-                    lineHeight(23f * scale)
+                    fontSize(17f * scale)
+                    lineHeight(25f * scale)
                     color(StockChatTheme.textPrimary)
                 }
             }
@@ -292,6 +264,164 @@ private fun ViewContainer<*, *>.MarkdownContent(block: AnswerBlock.Markdown, sca
                 content = block.source,
                 config = MarkdownConfig.Default,
             )
+        }
+    }
+}
+
+private fun ViewContainer<*, *>.MessageActionRow(
+    scale: Float,
+    onCopy: () -> Unit,
+    onLike: () -> Unit,
+    onDislike: () -> Unit,
+    onReadAloud: () -> Unit,
+    onMore: () -> Unit,
+) {
+    View {
+        attr {
+            height(38f * scale)
+            flexDirectionRow()
+            alignItemsCenter()
+            marginTop(2f * scale)
+        }
+        MessageActionButton(MessageActionIcon.COPY, scale, onCopy)
+        MessageActionButton(MessageActionIcon.LIKE, scale, onLike)
+        MessageActionButton(MessageActionIcon.DISLIKE, scale, onDislike)
+        MessageActionButton(MessageActionIcon.READ_ALOUD, scale, onReadAloud)
+        MessageActionButton(MessageActionIcon.MORE, scale, onMore)
+    }
+}
+
+private fun ViewContainer<*, *>.MessageActionButton(
+    icon: MessageActionIcon,
+    scale: Float,
+    onClick: () -> Unit,
+) {
+    View {
+        attr {
+            width(48f * scale)
+            height(38f * scale)
+            allCenter()
+        }
+        event {
+            click { onClick() }
+        }
+        MessageActionMark(icon, scale)
+    }
+}
+
+private fun ViewContainer<*, *>.MessageActionMark(
+    icon: MessageActionIcon,
+    scale: Float,
+) {
+    Canvas({
+        attr {
+            size(28f * scale, 28f * scale)
+        }
+    }) { context, width, height ->
+        val strokeColor = Color(0xFF858A87)
+        context.lineWidth(2.3f * scale)
+        context.lineCapRound()
+        context.strokeStyle(strokeColor)
+        when (icon) {
+            MessageActionIcon.COPY -> {
+                context.beginPath()
+                context.moveTo(width * 0.25f, height * 0.18f)
+                context.lineTo(width * 0.68f, height * 0.18f)
+                context.lineTo(width * 0.68f, height * 0.61f)
+                context.lineTo(width * 0.25f, height * 0.61f)
+                context.lineTo(width * 0.25f, height * 0.18f)
+                context.stroke()
+                context.beginPath()
+                context.moveTo(width * 0.39f, height * 0.39f)
+                context.lineTo(width * 0.82f, height * 0.39f)
+                context.lineTo(width * 0.82f, height * 0.82f)
+                context.lineTo(width * 0.39f, height * 0.82f)
+                context.lineTo(width * 0.39f, height * 0.39f)
+                context.stroke()
+            }
+            MessageActionIcon.LIKE,
+            MessageActionIcon.DISLIKE -> {
+                val isDislike = icon == MessageActionIcon.DISLIKE
+                if (isDislike) {
+                    context.save()
+                    context.translate(0f, height)
+                    context.scale(1f, -1f)
+                }
+                context.beginPath()
+                context.moveTo(width * 0.18f, height * 0.43f)
+                context.lineTo(width * 0.36f, height * 0.43f)
+                context.lineTo(width * 0.48f, height * 0.28f)
+                context.quadraticCurveTo(
+                    width * 0.57f,
+                    height * 0.18f,
+                    width * 0.57f,
+                    height * 0.10f,
+                )
+                context.lineTo(width * 0.68f, height * 0.10f)
+                context.quadraticCurveTo(
+                    width * 0.80f,
+                    height * 0.23f,
+                    width * 0.75f,
+                    height * 0.43f,
+                )
+                context.lineTo(width * 0.88f, height * 0.43f)
+                context.quadraticCurveTo(
+                    width * 0.95f,
+                    height * 0.43f,
+                    width * 0.91f,
+                    height * 0.56f,
+                )
+                context.lineTo(width * 0.82f, height * 0.82f)
+                context.quadraticCurveTo(
+                    width * 0.80f,
+                    height * 0.90f,
+                    width * 0.69f,
+                    height * 0.90f,
+                )
+                context.lineTo(width * 0.36f, height * 0.90f)
+                context.lineTo(width * 0.18f, height * 0.75f)
+                context.lineTo(width * 0.18f, height * 0.43f)
+                context.stroke()
+                if (isDislike) {
+                    context.restore()
+                }
+            }
+            MessageActionIcon.READ_ALOUD -> {
+                context.beginPath()
+                context.moveTo(width * 0.16f, height * 0.42f)
+                context.lineTo(width * 0.34f, height * 0.42f)
+                context.lineTo(width * 0.54f, height * 0.23f)
+                context.lineTo(width * 0.54f, height * 0.77f)
+                context.lineTo(width * 0.34f, height * 0.58f)
+                context.lineTo(width * 0.16f, height * 0.58f)
+                context.lineTo(width * 0.16f, height * 0.42f)
+                context.stroke()
+                context.beginPath()
+                context.arc(
+                    centerX = width * 0.53f,
+                    centerY = height * 0.50f,
+                    radius = width * 0.27f,
+                    startAngle = (-PI * 0.30f).toFloat(),
+                    endAngle = (PI * 0.30f).toFloat(),
+                    counterclockwise = false,
+                )
+                context.stroke()
+            }
+            MessageActionIcon.MORE -> {
+                context.fillStyle(strokeColor)
+                listOf(0.25f, 0.50f, 0.75f).forEach { position ->
+                    context.beginPath()
+                    context.arc(
+                        centerX = width * position,
+                        centerY = height * 0.50f,
+                        radius = width * 0.07f,
+                        startAngle = 0f,
+                        endAngle = (PI * 2f).toFloat(),
+                        counterclockwise = false,
+                    )
+                    context.fill()
+                }
+            }
         }
     }
 }
@@ -317,7 +447,7 @@ private fun ViewContainer<*, *>.GeneratingMessage(scale: Float) {
         }
         Text {
             attr {
-                text("正在分析演示行情…")
+                text("正在分析行情…")
                 fontSize(14f * scale)
                 color(StockChatTheme.textSecondary)
             }
@@ -505,6 +635,7 @@ internal fun ViewContainer<*, *>.TrendSparkline(quote: StockQuote, width: Float,
 internal fun ViewContainer<*, *>.RiskNotice(scale: Float = 1f) {
     Text {
         attr {
+            text("内容由 AI 生成")
             fontSize(11f * scale)
             color(StockChatTheme.textTertiary)
             textAlignCenter()

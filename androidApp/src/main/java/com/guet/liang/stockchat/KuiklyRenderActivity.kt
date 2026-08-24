@@ -5,8 +5,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import android.view.View
 import android.view.ViewGroup
 import android.view.MotionEvent
@@ -40,6 +42,8 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
 
     private val kuiklyRenderViewDelegator = KuiklyRenderViewBaseDelegator(this)
     private var microphonePermissionCallback: ((Boolean) -> Unit)? = null
+    private var imagePickerCallback: ((ImagePickerResult) -> Unit)? = null
+    private var imagePickerMaxCount = MAX_IMAGE_SELECTION_COUNT
     private var drawerGestureCallback: ((String) -> Unit)? = null
     private var drawerGestureStartX = 0f
     private var drawerGestureStartY = 0f
@@ -67,6 +71,7 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
 
     override fun onDestroy() {
         microphonePermissionCallback = null
+        imagePickerCallback = null
         drawerGestureCallback = null
         kuiklyRenderViewDelegator.onDetach()
         super.onDestroy()
@@ -101,6 +106,41 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
         callback?.invoke(grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED)
     }
 
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_PICK_IMAGES) {
+            return
+        }
+        val callback = imagePickerCallback ?: return
+        imagePickerCallback = null
+        if (resultCode != RESULT_OK) {
+            callback(ImagePickerResult(cancelled = true))
+            return
+        }
+
+        val selectedUris = linkedSetOf<Uri>()
+        data?.clipData?.let { clipData ->
+            repeat(clipData.itemCount) { index ->
+                clipData.getItemAt(index).uri?.let(selectedUris::add)
+            }
+        }
+        data?.data?.let(selectedUris::add)
+        if (selectedUris.isEmpty()) {
+            callback(ImagePickerResult(cancelled = true))
+            return
+        }
+
+        selectedUris.forEach(::persistImageReadPermission)
+        val selectedImages = selectedUris.map(Uri::toString)
+        callback(
+            ImagePickerResult(
+                images = selectedImages.take(imagePickerMaxCount),
+                truncated = selectedImages.size > imagePickerMaxCount,
+            ),
+        )
+    }
+
     override fun registerExternalModule(kuiklyRenderExport: IKuiklyRenderExport) {
         super.registerExternalModule(kuiklyRenderExport)
         with(kuiklyRenderExport) {
@@ -125,8 +165,9 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
     private fun createPageData(): Map<String, Any> {
         val param = argsToMap()
         param["appId"] = 1
-        param["mimoApiKey"] = BuildConfig.MIMO_API_KEY
-        param["mimoNativeStreaming"] = 1
+        param["qwenApiKey"] = BuildConfig.QWEN_API_KEY
+        param["mimoVoiceApiKey"] = BuildConfig.MIMO_VOICE_API_KEY
+        param["aliyunNativeStreaming"] = 1
         return param
     }
 
@@ -147,6 +188,70 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
             arrayOf(Manifest.permission.RECORD_AUDIO),
             REQUEST_RECORD_AUDIO_PERMISSION,
         )
+    }
+
+    @Suppress("DEPRECATION")
+    internal fun pickImages(maxCount: Int, callback: (ImagePickerResult) -> Unit) {
+        if (isFinishing || isDestroyed) {
+            callback(
+                ImagePickerResult(
+                    errorCode = "ACTIVITY_UNAVAILABLE",
+                    errorMessage = "当前页面无法打开图片选择器。",
+                ),
+            )
+            return
+        }
+        if (imagePickerCallback != null) {
+            callback(
+                ImagePickerResult(
+                    errorCode = "IMAGE_PICKER_BUSY",
+                    errorMessage = "图片选择器已打开。",
+                ),
+            )
+            return
+        }
+
+        imagePickerMaxCount = maxCount.coerceIn(1, MAX_IMAGE_SELECTION_COUNT)
+        val pickerIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Intent(MediaStore.ACTION_PICK_IMAGES).apply {
+                type = "image/*"
+                putExtra(
+                    MediaStore.EXTRA_PICK_IMAGES_MAX,
+                    minOf(imagePickerMaxCount, MediaStore.getPickImagesMaxLimit()),
+                )
+            }
+        } else {
+            Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "image/*"
+                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                addFlags(
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION,
+                )
+            }
+        }
+        imagePickerCallback = callback
+        runCatching {
+            startActivityForResult(pickerIntent, REQUEST_PICK_IMAGES)
+        }.onFailure { throwable ->
+            imagePickerCallback = null
+            callback(
+                ImagePickerResult(
+                    errorCode = "IMAGE_PICKER_UNAVAILABLE",
+                    errorMessage = throwable.message ?: "当前设备无法打开图片选择器。",
+                ),
+            )
+        }
+    }
+
+    private fun persistImageReadPermission(uri: Uri) {
+        runCatching {
+            contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+        }
     }
 
     internal fun setDrawerGestureCallback(callback: ((String) -> Unit)?) {
@@ -203,6 +308,8 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
         private const val KEY_PAGE_NAME = "pageName"
         private const val KEY_PAGE_DATA = "pageData"
         private const val REQUEST_RECORD_AUDIO_PERMISSION = 2001
+        private const val REQUEST_PICK_IMAGES = 2002
+        private const val MAX_IMAGE_SELECTION_COUNT = 9
         private const val DRAWER_SWIPE_DISTANCE_DP = 48f
 
         init {
@@ -229,3 +336,11 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
         }
     }
 }
+
+internal data class ImagePickerResult(
+    val images: List<String> = emptyList(),
+    val cancelled: Boolean = false,
+    val truncated: Boolean = false,
+    val errorCode: String? = null,
+    val errorMessage: String? = null,
+)

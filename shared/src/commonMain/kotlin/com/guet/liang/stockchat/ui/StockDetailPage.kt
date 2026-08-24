@@ -37,7 +37,7 @@ internal class StockDetailPage : BasePager() {
 
     override fun created() {
         super.created()
-        symbol = pageData.params.optString("symbol").trim().uppercase().ifEmpty { "600519" }
+        symbol = pageData.params.optString("symbol").trim().uppercase()
         loadDetail()
     }
 
@@ -121,23 +121,6 @@ internal class StockDetailPage : BasePager() {
                     flex(1f)
                 }
             }
-            View {
-                attr {
-                    height(32f)
-                    borderRadius(16f)
-                    padding(left = 12f, right = 12f)
-                    backgroundColor(StockChatTheme.accentSoft)
-                    allCenter()
-                }
-                Text {
-                    attr {
-                        text("演示行情")
-                        fontSize(11f)
-                        fontWeightMedium()
-                        color(StockChatTheme.accent)
-                    }
-                }
-            }
         }
         }
     }
@@ -167,7 +150,7 @@ internal class StockDetailPage : BasePager() {
             }
             Text {
                 attr {
-                    text("正在加载演示行情")
+                    text("正在加载行情")
                     fontSize(14f)
                     color(StockChatTheme.textSecondary)
                     marginTop(14f)
@@ -195,7 +178,7 @@ internal class StockDetailPage : BasePager() {
             }
             Text {
                 attr {
-                    text("当前本地 Demo 只收录部分股票与指数。")
+                    text("暂未收录该股票或指数的行情信息。")
                     fontSize(14f)
                     color(StockChatTheme.textSecondary)
                     marginTop(8f)
@@ -439,7 +422,7 @@ internal class StockDetailPage : BasePager() {
                 }
                 Text {
                     attr {
-                        text("以上均为本地演示信息，仅供参考，不构成投资建议。")
+                        text("以上信息仅供参考，不构成投资建议。")
                         fontSize(12f)
                         lineHeight(18f)
                         color(StockChatTheme.warning)

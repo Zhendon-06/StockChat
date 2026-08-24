@@ -6,6 +6,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.media.AudioFormat
 import android.media.AudioRecord
+import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.os.Handler
 import android.os.Looper
@@ -21,6 +22,7 @@ import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.text.SimpleDateFormat
@@ -38,6 +40,9 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
     private var startRequestSequence = 0
     private var pendingStartCallback: KuiklyRenderCallback? = null
     private var recordingCleanupInProgress = false
+    private var audioPlayer: MediaPlayer? = null
+    private var audioPlaybackFile: File? = null
+    private var audioPlaybackSequence = 0
 
     override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? {
         return when (method) {
@@ -105,6 +110,18 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
                 cancelVoiceRecording(callback)
             }
 
+            "playBase64Audio" -> {
+                playBase64Audio(params, callback)
+            }
+
+            "stopAudioPlayback" -> {
+                stopAudioPlayback(callback)
+            }
+
+            "pickImages" -> {
+                pickImages(params, callback)
+            }
+
             "streamChatCompletion" -> {
                 streamChatCompletion(params, callback)
             }
@@ -136,8 +153,143 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
             activeRecording.also { activeRecording = null }
         }
         recording?.let(::cancelRecordingSession)
+        releaseAudioPlayer()
         mainHandler.removeCallbacksAndMessages(null)
         super.onDestroy()
+    }
+
+    private fun playBase64Audio(
+        params: String?,
+        callback: KuiklyRenderCallback?,
+    ) {
+        audioPlaybackSequence += 1
+        val playbackSequence = audioPlaybackSequence
+        val payload = runCatching { JSONObject(params ?: "{}") }.getOrNull()
+        val audioBase64 = payload?.optString("audioBase64").orEmpty()
+        if (audioBase64.isBlank()) {
+            deliverCallback(
+                callback,
+                failureResult("EMPTY_AUDIO", "MiMo 没有返回可播放的语音。"),
+            )
+            return
+        }
+        Thread(
+            {
+                val audioBytes = runCatching {
+                    Base64.decode(audioBase64, Base64.DEFAULT)
+                }.getOrElse {
+                    deliverCallback(
+                        callback,
+                        failureResult("INVALID_AUDIO", "MiMo 返回的语音数据无效。"),
+                    )
+                    return@Thread
+                }
+                if (audioBytes.isEmpty() || audioBytes.size > MAX_PLAYBACK_AUDIO_BYTES) {
+                    deliverCallback(
+                        callback,
+                        failureResult("INVALID_AUDIO_SIZE", "语音数据为空或超过播放大小限制。"),
+                    )
+                    return@Thread
+                }
+                val audioFile = runCatching {
+                    File.createTempFile(
+                        "stockchat_mimo_tts_",
+                        ".wav",
+                        KRApplication.application.cacheDir,
+                    ).apply { writeBytes(audioBytes) }
+                }.getOrElse { throwable ->
+                    deliverCallback(
+                        callback,
+                        failureResult(
+                            "AUDIO_FILE_FAILED",
+                            throwable.message ?: "语音缓存失败，请稍后重试。",
+                        ),
+                    )
+                    return@Thread
+                }
+                runOnMain {
+                    if (destroyed || playbackSequence != audioPlaybackSequence) {
+                        audioFile.delete()
+                        if (!destroyed) {
+                            deliverCallback(callback, successResult())
+                        }
+                        return@runOnMain
+                    }
+                    startAudioPlayback(audioFile, callback)
+                }
+            },
+            "StockChatMimoAudioDecode",
+        ).start()
+    }
+
+    private fun startAudioPlayback(
+        audioFile: File,
+        callback: KuiklyRenderCallback?,
+    ) {
+        releaseAudioPlayer()
+        var playbackStarted = false
+        val player = MediaPlayer()
+        audioPlayer = player
+        audioPlaybackFile = audioFile
+        player.setOnPreparedListener {
+            if (audioPlayer !== player || destroyed) {
+                return@setOnPreparedListener
+            }
+            playbackStarted = true
+            player.start()
+            deliverCallback(callback, successResult())
+        }
+        player.setOnCompletionListener {
+            if (audioPlayer === player) {
+                releaseAudioPlayer()
+            }
+        }
+        player.setOnErrorListener { _, _, _ ->
+            if (!playbackStarted) {
+                deliverCallback(
+                    callback,
+                    failureResult("AUDIO_PLAYBACK_FAILED", "当前设备无法播放 MiMo 语音。"),
+                )
+            }
+            if (audioPlayer === player) {
+                releaseAudioPlayer()
+            }
+            true
+        }
+        runCatching {
+            player.setDataSource(audioFile.absolutePath)
+            player.prepareAsync()
+        }.onFailure { throwable ->
+            releaseAudioPlayer()
+            deliverCallback(
+                callback,
+                failureResult(
+                    "AUDIO_PLAYBACK_FAILED",
+                    throwable.message ?: "语音播放失败，请稍后重试。",
+                ),
+            )
+        }
+    }
+
+    private fun stopAudioPlayback(callback: KuiklyRenderCallback?) {
+        audioPlaybackSequence += 1
+        releaseAudioPlayer()
+        deliverCallback(callback, successResult())
+    }
+
+    private fun releaseAudioPlayer() {
+        audioPlayer?.let { player ->
+            runCatching {
+                if (player.isPlaying) {
+                    player.stop()
+                }
+            }
+            runCatching { player.reset() }
+            runCatching { player.release() }
+        }
+        audioPlayer = null
+        audioPlaybackFile?.delete()
+        audioPlaybackFile = null
     }
 
     private fun streamChatCompletion(
@@ -150,7 +302,7 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
         if (apiKey.isEmpty() || requestBody.isEmpty()) {
             deliverCallback(
                 callback,
-                failureResult("INVALID_STREAM_REQUEST", "MiMo 流式请求参数不完整。"),
+                failureResult("INVALID_STREAM_REQUEST", "阿里云流式请求参数不完整。"),
             )
             return
         }
@@ -158,7 +310,7 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
             {
                 var connection: HttpURLConnection? = null
                 try {
-                    connection = (URL(MIMO_CHAT_COMPLETIONS_URL).openConnection() as HttpURLConnection).apply {
+                    connection = (URL(ALIYUN_CHAT_COMPLETIONS_URL).openConnection() as HttpURLConnection).apply {
                         requestMethod = "POST"
                         doInput = true
                         doOutput = true
@@ -166,7 +318,7 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
                         readTimeout = STREAM_READ_TIMEOUT_MS
                         setRequestProperty("Content-Type", "application/json")
                         setRequestProperty("Accept", "text/event-stream")
-                        setRequestProperty("api-key", apiKey)
+                        setRequestProperty("Authorization", "Bearer $apiKey")
                     }
                     connection.outputStream.use { output ->
                         output.write(requestBody.toByteArray(Charsets.UTF_8))
@@ -189,23 +341,23 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
                         val message = runCatching {
                             JSONObject(responseText).optJSONObject("error")?.optString("message")
                         }.getOrNull().orEmpty().ifBlank {
-                            "MiMo 请求失败（HTTP $statusCode）。"
+                            "阿里云请求失败（HTTP $statusCode）。"
                         }
-                        deliverCallback(callback, failureResult("MIMO_HTTP_$statusCode", message))
+                        deliverCallback(callback, failureResult("ALIYUN_HTTP_$statusCode", message))
                     }
                 } catch (throwable: Throwable) {
                     deliverCallback(
                         callback,
                         failureResult(
-                            "MIMO_STREAM_FAILED",
-                            throwable.message ?: "MiMo 流式请求失败，请稍后重试。",
+                            "ALIYUN_STREAM_FAILED",
+                            throwable.message ?: "阿里云流式请求失败，请稍后重试。",
                         ),
                     )
                 } finally {
                     connection?.disconnect()
                 }
             },
-            "StockChatMimoStream",
+            "StockChatAliyunStream",
         ).start()
     }
 
@@ -345,6 +497,50 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
         val data = Date(paramJSONObject.optLong("timeStamp"))
         val format = SimpleDateFormat(paramJSONObject.optString("format"))
         return format.format(data)
+    }
+
+    private fun pickImages(params: String?, callback: KuiklyRenderCallback?) {
+        val maxCount = runCatching {
+            JSONObject(params ?: "{}").optInt("maxCount", MAX_IMAGE_SELECTION_COUNT)
+        }.getOrDefault(MAX_IMAGE_SELECTION_COUNT).coerceIn(1, MAX_IMAGE_SELECTION_COUNT)
+        runOnMain {
+            if (destroyed) {
+                deliverCallback(
+                    callback,
+                    failureResult("MODULE_DESTROYED", "图片选择模块已释放。"),
+                )
+                return@runOnMain
+            }
+            val hostActivity = activity as? KuiklyRenderActivity
+            if (hostActivity == null) {
+                deliverCallback(
+                    callback,
+                    failureResult("ACTIVITY_UNAVAILABLE", "当前页面无法打开图片选择器。"),
+                )
+                return@runOnMain
+            }
+            hostActivity.pickImages(maxCount) imagePickerResult@{ result ->
+                if (result.errorCode != null) {
+                    deliverCallback(
+                        callback,
+                        failureResult(
+                            result.errorCode,
+                            result.errorMessage ?: "图片选择失败，请稍后重试。",
+                        ),
+                    )
+                    return@imagePickerResult
+                }
+                deliverCallback(
+                    callback,
+                    mapOf(
+                        "success" to 1,
+                        "cancelled" to if (result.cancelled) 1 else 0,
+                        "images" to result.images,
+                        "truncated" to if (result.truncated) 1 else 0,
+                    ),
+                )
+            }
+        }
     }
 
     private fun startVoiceRecording(callback: KuiklyRenderCallback?) {
@@ -775,8 +971,10 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
         private const val MAX_PCM_BYTES =
             SAMPLE_RATE_HZ * CHANNEL_COUNT * BYTES_PER_SAMPLE * MAX_RECORDING_DURATION_SECONDS
         private const val RECORDING_THREAD_JOIN_TIMEOUT_MS = 2_000L
-        private const val MIMO_CHAT_COMPLETIONS_URL =
-            "https://api.xiaomimimo.com/v1/chat/completions"
+        private const val MAX_IMAGE_SELECTION_COUNT = 9
+        private const val MAX_PLAYBACK_AUDIO_BYTES = 24 * 1024 * 1024
+        private const val ALIYUN_CHAT_COMPLETIONS_URL =
+            "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
         private const val STREAM_CONNECT_TIMEOUT_MS = 30_000
         private const val STREAM_READ_TIMEOUT_MS = 90_000
     }

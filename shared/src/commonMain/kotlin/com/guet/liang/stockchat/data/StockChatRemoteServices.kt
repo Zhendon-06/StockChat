@@ -5,22 +5,30 @@ import com.guet.liang.stockchat.model.ChatAnswer
 import com.guet.liang.stockchat.model.ChatHistoryItem
 import com.guet.liang.stockchat.model.ChatRole
 import com.guet.liang.stockchat.model.SpeechRecognitionResult
+import com.guet.liang.stockchat.model.SpeechSynthesisResult
 import com.guet.liang.stockchat.model.StockDetailResult
 import com.guet.liang.stockchat.base.BridgeModule
 import com.tencent.kuikly.core.module.NetworkModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 
-internal data class MimoApiConfig(
+internal data class AliyunApiConfig(
     val apiKey: String,
-    val baseUrl: String = "https://api.xiaomimimo.com/v1",
-    val chatModel: String = "mimo-v2.5",
-    val asrModel: String = "mimo-v2.5-asr",
+    val baseUrl: String = "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    val chatModel: String = "qwen-plus",
 )
 
-internal class MimoStockChatDataSource(
+internal data class MimoVoiceApiConfig(
+    val apiKey: String,
+    val baseUrl: String = "https://api.xiaomimimo.com/v1",
+    val asrModel: String = "mimo-v2.5-asr",
+    val ttsModel: String = "mimo-v2.5-tts",
+    val ttsVoice: String = "mimo_default",
+)
+
+internal class AliyunStockChatDataSource(
     private val networkModule: NetworkModule,
-    private val config: MimoApiConfig,
+    private val config: AliyunApiConfig,
     private val bridgeModule: BridgeModule? = null,
     private val useNativeStreaming: Boolean = false,
 ) : StockChatDataSource {
@@ -74,10 +82,10 @@ internal class MimoStockChatDataSource(
             put("stream", true)
         }
         if (useNativeStreaming && bridgeModule != null) {
-            streamWithNativeBridge(requestBody, question, callback)
+            streamWithNativeBridge(requestBody, callback)
         } else {
             request(requestBody) { response, error ->
-                handleCompletedResponse(response, error, question, callback)
+                handleCompletedResponse(response, error, callback)
             }
         }
     }
@@ -85,7 +93,6 @@ internal class MimoStockChatDataSource(
     private fun handleCompletedResponse(
         response: JSONObject?,
         error: String?,
-        question: String,
         callback: (ChatAnswer) -> Unit,
     ) {
             if (error != null) {
@@ -94,12 +101,12 @@ internal class MimoStockChatDataSource(
             }
             val directContent = response?.assistantContent().orEmpty()
             if (directContent.isNotEmpty()) {
-                callback(ChatAnswer.Success(answerBlocks(directContent, question)))
+                callback(ChatAnswer.Success(answerBlocks(directContent)))
                 return
             }
             val streamDeltas = response?.streamDeltas().orEmpty()
             if (streamDeltas.isEmpty()) {
-                callback(ChatAnswer.Failure("MiMo 没有返回可展示的回答，请稍后重试。"))
+                callback(ChatAnswer.Failure("阿里云百炼没有返回可展示的回答，请稍后重试。"))
                 return
             }
             var streamedContent = ""
@@ -109,15 +116,14 @@ internal class MimoStockChatDataSource(
             }
             val content = streamedContent.trim()
             if (content.isEmpty()) {
-                callback(ChatAnswer.Failure("MiMo 没有返回可展示的回答，请稍后重试。"))
+                callback(ChatAnswer.Failure("阿里云百炼没有返回可展示的回答，请稍后重试。"))
                 return
             }
-            callback(ChatAnswer.Success(answerBlocks(content, question)))
+            callback(ChatAnswer.Success(answerBlocks(content)))
     }
 
     private fun streamWithNativeBridge(
         requestBody: JSONObject,
-        question: String,
         callback: (ChatAnswer) -> Unit,
     ) {
         var streamedContent = ""
@@ -127,8 +133,8 @@ internal class MimoStockChatDataSource(
                 callback(
                     ChatAnswer.Failure(
                         payload?.optString("errorMessage")?.ifBlank {
-                            "MiMo 请求失败，请稍后重试。"
-                        } ?: "MiMo 请求失败，请稍后重试."
+                            "阿里云百炼请求失败，请稍后重试。"
+                        } ?: "阿里云百炼请求失败，请稍后重试。"
                     )
                 )
                 return@streamChatCompletion
@@ -144,9 +150,9 @@ internal class MimoStockChatDataSource(
                 "end" -> {
                     val content = streamedContent.trim()
                     if (content.isEmpty()) {
-                        callback(ChatAnswer.Failure("MiMo 没有返回可展示的回答，请稍后重试。"))
+                        callback(ChatAnswer.Failure("阿里云百炼没有返回可展示的回答，请稍后重试。"))
                     } else {
-                        callback(ChatAnswer.Success(answerBlocks(content, question)))
+                        callback(ChatAnswer.Success(answerBlocks(content)))
                     }
                 }
             }
@@ -163,7 +169,7 @@ internal class MimoStockChatDataSource(
     ) {
         val headers = JSONObject().apply {
             put("Content-Type", "application/json")
-            put("api-key", config.apiKey)
+            put("Authorization", "Bearer ${config.apiKey}")
         }
         networkModule.httpRequest(
             url = "${config.baseUrl.trimEnd('/')}/chat/completions",
@@ -178,7 +184,7 @@ internal class MimoStockChatDataSource(
                     null,
                     data.apiErrorMessage()
                         ?: errorMessage.apiErrorMessage()
-                        ?: errorMessage.ifBlank { "MiMo 请求失败，请稍后重试。" },
+                        ?: errorMessage.ifBlank { "阿里云百炼请求失败，请稍后重试。" },
                 )
             } else {
                 callback(data, null)
@@ -186,22 +192,18 @@ internal class MimoStockChatDataSource(
         }
     }
 
-    private fun answerBlocks(content: String, question: String): List<AnswerBlock> {
-        val blocks = mutableListOf<AnswerBlock>(
+    private fun answerBlocks(content: String): List<AnswerBlock> {
+        return listOf(
             AnswerBlock.Markdown(
                 source = content.trim(),
                 fallbackText = content.trim(),
             )
         )
-        MockStockChatDataSource.quoteForQuestion(question)?.let { quote ->
-            blocks += AnswerBlock.MarketQuote(quote)
-        }
-        return blocks
     }
 
     companion object {
         const val MISSING_API_KEY_MESSAGE =
-            "尚未配置 MiMo API Key，请在项目 local.properties 的 MIMO_API_KEY= 后填写。"
+            "尚未配置千问 API Key，请在项目 local.properties 的 QWEN_API_KEY= 后填写。"
 
         private const val SYSTEM_PROMPT =
             "你是 StockMate，一名中文股票研究助手。请用简洁 Markdown 回答股票、指数和市场问题。" +
@@ -212,15 +214,18 @@ internal class MimoStockChatDataSource(
 
 internal class MimoSpeechRecognitionService(
     private val networkModule: NetworkModule,
-    private val config: MimoApiConfig,
+    private val config: MimoVoiceApiConfig,
 ) {
+    val isConfigured: Boolean
+        get() = config.apiKey.isNotBlank()
+
     fun transcribe(
         audioBase64: String,
         mimeType: String,
         callback: (SpeechRecognitionResult) -> Unit,
     ) {
         if (config.apiKey.isBlank()) {
-            callback(SpeechRecognitionResult.Failure(MimoStockChatDataSource.MISSING_API_KEY_MESSAGE))
+            callback(SpeechRecognitionResult.Failure(MIMO_VOICE_MISSING_API_KEY_MESSAGE))
             return
         }
         if (audioBase64.isBlank()) {
@@ -285,11 +290,108 @@ internal class MimoSpeechRecognitionService(
     }
 }
 
+internal class MimoSpeechSynthesisService(
+    private val networkModule: NetworkModule,
+    private val config: MimoVoiceApiConfig,
+) {
+    val isConfigured: Boolean
+        get() = config.apiKey.isNotBlank()
+
+    fun synthesize(
+        text: String,
+        callback: (SpeechSynthesisResult) -> Unit,
+    ) {
+        val normalizedText = text.trim()
+        if (config.apiKey.isBlank()) {
+            callback(SpeechSynthesisResult.Failure(MIMO_VOICE_MISSING_API_KEY_MESSAGE))
+            return
+        }
+        if (normalizedText.isEmpty()) {
+            callback(SpeechSynthesisResult.Failure("没有可朗读的文本。"))
+            return
+        }
+
+        val requestBody = JSONObject().apply {
+            put("model", config.ttsModel)
+            put(
+                "messages",
+                JSONArray().apply {
+                    put(
+                        JSONObject().apply {
+                            put("role", "user")
+                            put("content", "请用自然、清晰、沉稳的中文播报语气朗读。")
+                        }
+                    )
+                    put(
+                        JSONObject().apply {
+                            put("role", "assistant")
+                            put("content", normalizedText)
+                        }
+                    )
+                }
+            )
+            put(
+                "audio",
+                JSONObject().apply {
+                    put("format", "wav")
+                    put("voice", config.ttsVoice)
+                }
+            )
+            put("stream", false)
+        }
+        val headers = JSONObject().apply {
+            put("Content-Type", "application/json")
+            put("api-key", config.apiKey)
+        }
+        networkModule.httpRequest(
+            url = "${config.baseUrl.trimEnd('/')}/chat/completions",
+            isPost = true,
+            param = requestBody,
+            headers = headers,
+            timeout = 90,
+        ) { data, success, errorMessage, response ->
+            val statusCode = response.statusCode
+            if (!success || (statusCode != null && statusCode !in 200..299)) {
+                callback(
+                    SpeechSynthesisResult.Failure(
+                        data.apiErrorMessage()
+                            ?: errorMessage.apiErrorMessage()
+                            ?: errorMessage.ifBlank { "MiMo 语音生成失败，请稍后重试。" }
+                    )
+                )
+                return@httpRequest
+            }
+            val audioBase64 = data.assistantAudioData().orEmpty().trim()
+            if (audioBase64.isEmpty()) {
+                callback(SpeechSynthesisResult.Failure("MiMo 没有返回可播放的语音。"))
+            } else {
+                callback(
+                    SpeechSynthesisResult.Success(
+                        audioBase64 = audioBase64,
+                        mimeType = "audio/wav",
+                    )
+                )
+            }
+        }
+    }
+}
+
+internal const val MIMO_VOICE_MISSING_API_KEY_MESSAGE =
+    "尚未配置 MiMo 语音 API Key，请在项目 local.properties 的 MIMO_VOICE_API_KEY= 后填写。"
+
 private fun JSONObject.assistantContent(): String? {
     return optJSONArray("choices")
         ?.optJSONObject(0)
         ?.optJSONObject("message")
         ?.optString("content")
+}
+
+private fun JSONObject.assistantAudioData(): String? {
+    return optJSONArray("choices")
+        ?.optJSONObject(0)
+        ?.optJSONObject("message")
+        ?.optJSONObject("audio")
+        ?.optString("data")
 }
 
 private fun JSONObject.streamDeltas(): List<String> {

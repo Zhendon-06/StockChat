@@ -7,13 +7,29 @@ import com.guet.liang.stockchat.model.ChatRole
 import com.guet.liang.stockchat.model.MessageState
 import com.guet.liang.stockchat.model.StockQuote
 
+internal data class ChatSessionSummary(
+    val id: String,
+    val title: String,
+    val updatedAt: Long,
+)
+
 internal class ChatHistoryRepository(
     private val database: StockChatDatabase,
 ) {
     private val queries = database.chatHistoryQueries
 
-    fun loadMessages(): List<ChatMessage> {
-        return queries.selectMessages(ACTIVE_SESSION_ID).executeAsList().mapNotNull { storedMessage ->
+    fun loadSessions(): List<ChatSessionSummary> {
+        return queries.selectSessions().executeAsList().map {
+            ChatSessionSummary(
+                id = it.id,
+                title = it.title,
+                updatedAt = it.updated_at,
+            )
+        }
+    }
+
+    fun loadMessages(sessionId: String): List<ChatMessage> {
+        return queries.selectMessages(sessionId).executeAsList().mapNotNull { storedMessage ->
             val role = enumValueOrNull<ChatRole>(storedMessage.role) ?: return@mapNotNull null
             val state = enumValueOrNull<MessageState>(storedMessage.state) ?: MessageState.DELIVERED
             ChatMessage(
@@ -28,15 +44,15 @@ internal class ChatHistoryRepository(
         }
     }
 
-    fun replaceMessages(messages: List<ChatMessage>) {
+    fun replaceMessages(sessionId: String, messages: List<ChatMessage>) {
         database.transaction {
-            queries.insertSession(ACTIVE_SESSION_ID, sessionTitle(messages))
-            queries.updateSession(sessionTitle(messages), ACTIVE_SESSION_ID)
-            deleteSessionContent()
+            queries.insertSession(sessionId, sessionTitle(messages))
+            queries.updateSession(sessionTitle(messages), sessionId)
+            deleteSessionContent(sessionId)
             messages.forEachIndexed { messageIndex, message ->
                 queries.insertMessage(
                     id = message.id,
-                    session_id = ACTIVE_SESSION_ID,
+                    session_id = sessionId,
                     role = message.role.name,
                     state = message.state.name,
                     retry_question = message.retryQuestion,
@@ -51,10 +67,10 @@ internal class ChatHistoryRepository(
         }
     }
 
-    fun clearActiveSession() {
+    fun clearSession(sessionId: String) {
         database.transaction {
-            deleteSessionContent()
-            queries.deleteSession(ACTIVE_SESSION_ID)
+            deleteSessionContent(sessionId)
+            queries.deleteSession(sessionId)
         }
     }
 
@@ -82,6 +98,14 @@ internal class ChatHistoryRepository(
                         )
                     )
                 }
+                BLOCK_IMAGE_GALLERY -> block.markdown_source
+                    .orEmpty()
+                    .lineSequence()
+                    .map(String::trim)
+                    .filter(String::isNotEmpty)
+                    .toList()
+                    .takeIf { it.isNotEmpty() }
+                    ?.let(AnswerBlock::ImageGallery)
                 else -> null
             }
         }
@@ -125,14 +149,23 @@ internal class ChatHistoryRepository(
                     queries.insertTrendPoint(blockId, pointIndex.toLong(), point.toDouble())
                 }
             }
+            is AnswerBlock.ImageGallery -> {
+                queries.insertBlock(
+                    message_id = messageId,
+                    block_index = blockIndex.toLong(),
+                    block_type = BLOCK_IMAGE_GALLERY,
+                    markdown_source = block.images.joinToString("\n"),
+                    fallback_text = null,
+                )
+            }
         }
     }
 
-    private fun deleteSessionContent() {
-        queries.deleteTrendPointsForSession(ACTIVE_SESSION_ID)
-        queries.deleteMarketQuotesForSession(ACTIVE_SESSION_ID)
-        queries.deleteBlocksForSession(ACTIVE_SESSION_ID)
-        queries.deleteMessagesForSession(ACTIVE_SESSION_ID)
+    private fun deleteSessionContent(sessionId: String) {
+        queries.deleteTrendPointsForSession(sessionId)
+        queries.deleteMarketQuotesForSession(sessionId)
+        queries.deleteBlocksForSession(sessionId)
+        queries.deleteMessagesForSession(sessionId)
     }
 
     private fun sessionTitle(messages: List<ChatMessage>): String {
@@ -152,10 +185,10 @@ internal class ChatHistoryRepository(
     }
 
     private companion object {
-        const val ACTIVE_SESSION_ID = "default_session"
         const val DEFAULT_SESSION_TITLE = "新对话"
         const val BLOCK_MARKDOWN = "markdown"
         const val BLOCK_MARKET_QUOTE = "market_quote"
+        const val BLOCK_IMAGE_GALLERY = "image_gallery"
     }
 }
 

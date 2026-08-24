@@ -1,18 +1,26 @@
 # StockChat 共享组件说明
 
-## MiMo 配置
+## AI 服务配置
 
-Android Demo 的聊天与语音识别使用 Xiaomi MiMo OpenAI 兼容接口。API Key 不通过页面
-输入，也不写入 `commonMain`；请直接填写项目根目录 `local.properties` 中的空配置：
+文本问答等常规 AI 任务使用阿里云百炼 DashScope，语音输入与回答朗读使用 Xiaomi MiMo。
+两个供应商的 API Key 相互隔离，不通过页面输入，也不写入 `commonMain`；Android 本地调试时
+请在项目根目录 `local.properties` 中分别配置：
 
 ```properties
-MIMO_API_KEY=你的_API_Key
+QWEN_API_KEY=你的千问_API_Key
+MIMO_VOICE_API_KEY=你的_MiMo_API_Key
 ```
 
-构建时也可用同名环境变量覆盖本地配置。聊天模型为 `mimo-v2.5`，ASR 模型为
-`mimo-v2.5-asr`，统一请求 `https://api.xiaomimimo.com/v1/chat/completions`。
-Android 录音使用 16 kHz 单声道 PCM16，并封装为 MiMo 支持的 WAV；单次录音限制为
-300 毫秒至 30 秒。当前 API Key 会进入客户端构建产物，仅适合本地 Demo，正式环境应改为
+构建时也可用同名环境变量覆盖本地配置。千问文本问答只读取 `QWEN_API_KEY`，语音接口
+单独读取 `MIMO_VOICE_API_KEY`，两者不会混用。
+
+文本问答使用 `qwen-plus`，请求 DashScope OpenAI 兼容接口
+`https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions`。语音识别使用
+`mimo-v2.5-asr`，回答朗读使用 `mimo-v2.5-tts` 与 `mimo_default` 音色，统一请求
+`https://api.xiaomimimo.com/v1/chat/completions`，并按 MiMo 官方协议使用 `api-key` 请求头。
+Android 录音使用 16 kHz 单声道 PCM16，并封装为 WAV；单次录音限制为
+300 毫秒至 30 秒。TTS 使用非流式 WAV 输出，由平台播放桥接负责播放。API Key 会进入客户端
+构建产物，仅适合本地调试，正式环境应改为
 服务端代理或短期凭证。
 
 ## 尺寸与适配
@@ -38,6 +46,6 @@ Kuikly 页面中的布局数值使用逻辑布局单位（Android 侧接近 dp�
 
 走势区域当前使用 Kuikly `Canvas` 绘制轻量折线。已评估
 `KuiklyChartView`：该组件当前没有与本项目 OpenHarmony target 对应的发布变体，
-为一个固定尺寸的演示走势图引入它会阻断跨端变体解析。因此保留 Canvas 作为
+为一个固定尺寸的走势图引入它会阻断跨端变体解析。因此保留 Canvas 作为
 跨端降级实现，并对空数据和单点数据做保护；后续需要缩放、Tooltip 或多序列时，
 可在补齐 OHOS 变体后替换为 `KuiklyChartView`。

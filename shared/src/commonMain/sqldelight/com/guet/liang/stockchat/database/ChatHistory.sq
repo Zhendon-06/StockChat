@@ -61,6 +61,10 @@ CREATE TABLE market_quote_trend_point (
 selectSession:
 SELECT * FROM chat_session WHERE id = ?;
 
+selectSessions:
+SELECT * FROM chat_session
+ORDER BY updated_at DESC;
+
 selectMessages:
 SELECT * FROM chat_message
 WHERE session_id = ?
@@ -81,11 +85,17 @@ ORDER BY point_index ASC;
 
 insertSession:
 INSERT OR IGNORE INTO chat_session(id, title, created_at, updated_at)
-VALUES (?, ?, CAST(strftime('%s', 'now') AS INTEGER) * 1000, CAST(strftime('%s', 'now') AS INTEGER) * 1000);
+VALUES (
+    ?,
+    ?,
+    CAST(strftime('%s', 'now') AS INTEGER) * 1000 + CAST(substr(strftime('%f', 'now'), 4, 3) AS INTEGER),
+    CAST(strftime('%s', 'now') AS INTEGER) * 1000 + CAST(substr(strftime('%f', 'now'), 4, 3) AS INTEGER)
+);
 
 updateSession:
 UPDATE chat_session
-SET title = ?, updated_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000
+SET title = ?, updated_at =
+    CAST(strftime('%s', 'now') AS INTEGER) * 1000 + CAST(substr(strftime('%f', 'now'), 4, 3) AS INTEGER)
 WHERE id = ?;
 
 insertMessage:
@@ -100,7 +110,10 @@ INSERT INTO chat_message(
     sort_order,
     created_at
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, CAST(strftime('%s', 'now') AS INTEGER) * 1000);
+VALUES (
+    ?, ?, ?, ?, ?, ?, ?, ?,
+    CAST(strftime('%s', 'now') AS INTEGER) * 1000 + CAST(substr(strftime('%f', 'now'), 4, 3) AS INTEGER)
+);
 
 insertBlock:
 INSERT INTO chat_content_block(

@@ -33,7 +33,7 @@ class KRColorParserAdapter(context: Context) : IKRColorParserAdapter {
             sectionKey = token,
             defaultValue = null
         )
-            ?: throw IllegalArgumentException("找不到对应的颜色 token=$token，请检查 demo 中 configColor.ini 文件中是否存在改颜色，若不存在，手动更新一下")
+            ?: throw IllegalArgumentException("找不到对应的颜色 token=$token，请检查 configColor.ini 文件中是否存在该颜色，若不存在请手动更新")
         return Color.parseColor(colorHex)
     }
 }

@@ -85,6 +85,29 @@ internal class BridgeModule : Module() {
         callNativeMethod(CANCEL_VOICE_RECORDING, null, null)
     }
 
+    fun playBase64Audio(
+        audioBase64: String,
+        mimeType: String,
+        responseCallbackFn: CallbackFn,
+    ) {
+        val methodArgs = JSONObject().apply {
+            put("audioBase64", audioBase64)
+            put("mimeType", mimeType)
+        }
+        callNativeMethod(PLAY_BASE64_AUDIO, methodArgs, responseCallbackFn)
+    }
+
+    fun stopAudioPlayback() {
+        callNativeMethod(STOP_AUDIO_PLAYBACK, null, null)
+    }
+
+    fun pickImages(maxCount: Int, responseCallbackFn: CallbackFn) {
+        val methodArgs = JSONObject().apply {
+            put("maxCount", maxCount.coerceIn(1, MAX_IMAGE_SELECTION_COUNT))
+        }
+        callNativeMethod(PICK_IMAGES, methodArgs, responseCallbackFn)
+    }
+
     fun streamChatCompletion(
         apiKey: String,
         requestBody: JSONObject,
@@ -411,9 +434,13 @@ internal class BridgeModule : Module() {
         const val START_VOICE_RECORDING = "startVoiceRecording"
         const val STOP_VOICE_RECORDING = "stopVoiceRecording"
         const val CANCEL_VOICE_RECORDING = "cancelVoiceRecording"
+        const val PLAY_BASE64_AUDIO = "playBase64Audio"
+        const val STOP_AUDIO_PLAYBACK = "stopAudioPlayback"
+        const val PICK_IMAGES = "pickImages"
         const val STREAM_CHAT_COMPLETION = "streamChatCompletion"
         const val OBSERVE_DRAWER_GESTURES = "observeDrawerGestures"
         const val STOP_OBSERVING_DRAWER_GESTURES = "stopObservingDrawerGestures"
+        private const val MAX_IMAGE_SELECTION_COUNT = 9
     }
 
 }

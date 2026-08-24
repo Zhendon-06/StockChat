@@ -27,6 +27,10 @@ internal sealed class AnswerBlock {
     data class MarketQuote(
         val quote: StockQuote,
     ) : AnswerBlock()
+
+    data class ImageGallery(
+        val images: List<String>,
+    ) : AnswerBlock()
 }
 
 internal data class ChatMessage(
@@ -70,6 +74,15 @@ internal sealed class ChatAnswer {
 internal sealed class SpeechRecognitionResult {
     data class Success(val text: String) : SpeechRecognitionResult()
     data class Failure(val message: String) : SpeechRecognitionResult()
+}
+
+internal sealed class SpeechSynthesisResult {
+    data class Success(
+        val audioBase64: String,
+        val mimeType: String,
+    ) : SpeechSynthesisResult()
+
+    data class Failure(val message: String) : SpeechSynthesisResult()
 }
 
 internal sealed class StockDetailResult {

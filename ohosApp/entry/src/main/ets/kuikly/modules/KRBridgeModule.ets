@@ -24,6 +24,9 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly START_VOICE_RECORDING = "startVoiceRecording";
   static readonly STOP_VOICE_RECORDING = "stopVoiceRecording";
   static readonly CANCEL_VOICE_RECORDING = "cancelVoiceRecording";
+  static readonly PLAY_BASE64_AUDIO = "playBase64Audio";
+  static readonly STOP_AUDIO_PLAYBACK = "stopAudioPlayback";
+  static readonly PICK_IMAGES = "pickImages";
 
   syncMode(): boolean {
     return false;
@@ -87,6 +90,18 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
       case KRBridgeModule.CANCEL_VOICE_RECORDING: {
         this.cancelVoiceRecording(callback);
+        break;
+      }
+      case KRBridgeModule.PLAY_BASE64_AUDIO: {
+        this.playBase64Audio(callback);
+        break;
+      }
+      case KRBridgeModule.STOP_AUDIO_PLAYBACK: {
+        this.stopAudioPlayback(callback);
+        break;
+      }
+      case KRBridgeModule.PICK_IMAGES: {
+        this.pickImages(callback);
         break;
       }
       default:
@@ -159,6 +174,29 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
 
   private cancelVoiceRecording(callback: KuiklyRenderCallback | null) {
     callback?.({ "success": 1 });
+  }
+
+  private playBase64Audio(callback: KuiklyRenderCallback | null) {
+    callback?.({
+      "success": 0,
+      "errorCode": "AUDIO_PLAYBACK_UNAVAILABLE",
+      "errorMessage": "当前平台的语音播放适配尚未接入"
+    });
+  }
+
+  private stopAudioPlayback(callback: KuiklyRenderCallback | null) {
+    callback?.({ "success": 1 });
+  }
+
+  private pickImages(callback: KuiklyRenderCallback | null) {
+    callback?.({
+      "success": 0,
+      "cancelled": 0,
+      "images": [],
+      "truncated": 0,
+      "errorCode": "IMAGE_PICKER_UNAVAILABLE",
+      "errorMessage": "当前平台的图片选择适配尚未接入"
+    });
   }
 
   private readAssetFile(params: KRAny, callback: KuiklyRenderCallback) {

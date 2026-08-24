@@ -11,13 +11,16 @@ val localProperties = Properties().apply {
         localPropertiesFile.inputStream().use(::load)
     }
 }
-val mimoApiKey = System.getenv("MIMO_API_KEY")
+fun configuredApiKey(name: String): String = System.getenv(name)
     ?.trim()
     ?.takeIf(String::isNotEmpty)
-    ?: localProperties.getProperty("MIMO_API_KEY", "").trim()
-val escapedMimoApiKey = mimoApiKey
-    .replace("\\", "\\\\")
+    ?: localProperties.getProperty(name, "").trim()
+
+fun String.escapeBuildConfigValue(): String = replace("\\", "\\\\")
     .replace("\"", "\\\"")
+
+val qwenApiKey = configuredApiKey("QWEN_API_KEY")
+val mimoVoiceApiKey = configuredApiKey("MIMO_VOICE_API_KEY")
 
 android {
     namespace = "com.guet.liang.stockchat"
@@ -31,7 +34,16 @@ android {
         targetSdk = 30
         versionCode = 1
         versionName = "1.0"
-        buildConfigField("String", "MIMO_API_KEY", "\"$escapedMimoApiKey\"")
+        buildConfigField(
+            "String",
+            "QWEN_API_KEY",
+            "\"${qwenApiKey.escapeBuildConfigValue()}\"",
+        )
+        buildConfigField(
+            "String",
+            "MIMO_VOICE_API_KEY",
+            "\"${mimoVoiceApiKey.escapeBuildConfigValue()}\"",
+        )
     }
 
     buildTypes {

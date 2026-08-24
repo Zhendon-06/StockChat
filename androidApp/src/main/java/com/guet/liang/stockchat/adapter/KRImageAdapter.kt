@@ -27,8 +27,13 @@ class KRImageAdapter(val context: Context) : IKRImageAdapter {
     ) {
         if (imageLoadOption.isBase64()) {
             loadFromBase64(imageLoadOption, callback)
-        } else if (imageLoadOption.isWebUrl() || imageLoadOption.isAssets() || imageLoadOption.isFile()) {
-            // http/assets/file 图片使用 glide 加载
+        } else if (
+            imageLoadOption.isWebUrl() ||
+            imageLoadOption.isAssets() ||
+            imageLoadOption.isFile() ||
+            imageLoadOption.src.startsWith(CONTENT_URI_SCHEME)
+        ) {
+            // 网络、资源、文件和内容 URI 图片使用 Glide 加载
             requestImage(imageLoadOption, callback)
         }
     }
@@ -67,7 +72,11 @@ class KRImageAdapter(val context: Context) : IKRImageAdapter {
                 .load(src)
         }
 
-        if (imageLoadOption.needResize) {
+        // 本地资源图按原始分辨率解码：src 设置时 view 可能尚未完成布局，
+        // 此时 requestWidth/Height 是占位小值（如 8x2），按其降采样会导致图片被
+        // 解码成几个像素再拉伸显示成模糊色块，且布局更新后 Kuikly 不会重新拉取
+        val skipResize = imageLoadOption.isAssets() || imageLoadOption.isFile()
+        if (imageLoadOption.needResize && !skipResize) {
             requestBuilder.override(imageLoadOption.requestWidth, imageLoadOption.requestHeight)
             when (imageLoadOption.scaleType) {
                 ImageView.ScaleType.CENTER_CROP -> requestBuilder.centerCrop()
@@ -152,4 +161,7 @@ class KRImageAdapter(val context: Context) : IKRImageAdapter {
         }
     }
 
+    private companion object {
+        const val CONTENT_URI_SCHEME = "content://"
+    }
 }
