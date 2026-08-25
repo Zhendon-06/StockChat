@@ -98,14 +98,9 @@ internal class ChatHistoryRepository(
                         )
                     )
                 }
-                BLOCK_IMAGE_GALLERY -> block.markdown_source
-                    .orEmpty()
-                    .lineSequence()
-                    .map(String::trim)
-                    .filter(String::isNotEmpty)
-                    .toList()
+                BLOCK_IMAGE_GALLERY -> storedImageList(block.markdown_source)
                     .takeIf { it.isNotEmpty() }
-                    ?.let(AnswerBlock::ImageGallery)
+                    ?.let { images -> AnswerBlock.ImageGallery(images = images) }
                 else -> null
             }
         }
@@ -159,6 +154,15 @@ internal class ChatHistoryRepository(
                 )
             }
         }
+    }
+
+    private fun storedImageList(value: String?): List<String> {
+        return value
+            .orEmpty()
+            .lineSequence()
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .toList()
     }
 
     private fun deleteSessionContent(sessionId: String) {

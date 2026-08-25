@@ -8,6 +8,8 @@ internal interface StockChatDataSource {
     fun answer(
         question: String,
         history: List<ChatHistoryItem>,
+        images: List<String>,
+        model: String,
         attempt: Int,
         callback: (ChatAnswer) -> Unit,
     )
@@ -19,6 +21,8 @@ internal object MockStockChatDataSource : StockChatDataSource {
     override fun answer(
         question: String,
         history: List<ChatHistoryItem>,
+        images: List<String>,
+        model: String,
         attempt: Int,
         callback: (ChatAnswer) -> Unit,
     ) {

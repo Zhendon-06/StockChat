@@ -4,11 +4,14 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.util.Base64
 import android.view.View
 import android.view.ViewGroup
 import android.view.MotionEvent
@@ -32,6 +35,8 @@ import com.guet.liang.stockchat.adapter.KRThreadAdapter
 import com.guet.liang.stockchat.adapter.KRUncaughtExceptionHandlerAdapter
 import com.guet.liang.stockchat.module.KRBridgeModule
 import com.guet.liang.stockchat.module.KRShareModule
+import java.io.ByteArrayOutputStream
+import java.io.File
 import org.json.JSONObject
 
 class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorDelegate {
@@ -132,13 +137,34 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
         }
 
         selectedUris.forEach(::persistImageReadPermission)
-        val selectedImages = selectedUris.map(Uri::toString)
-        callback(
-            ImagePickerResult(
-                images = selectedImages.take(imagePickerMaxCount),
-                truncated = selectedImages.size > imagePickerMaxCount,
-            ),
-        )
+        val selectedUriList = selectedUris.toList()
+        Thread {
+            val preparedImages = selectedUriList.take(imagePickerMaxCount).map { uri ->
+                prepareImageAttachment(uri)
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) {
+                    return@runOnUiThread
+                }
+                if (preparedImages.any { it == null }) {
+                    callback(
+                        ImagePickerResult(
+                            errorCode = "IMAGE_READ_FAILED",
+                            errorMessage = "部分图片读取失败，请重新选择。",
+                        ),
+                    )
+                    return@runOnUiThread
+                }
+                val successfulImages = preparedImages.filterNotNull()
+                callback(
+                    ImagePickerResult(
+                        images = successfulImages.map(PreparedImageAttachment::requestDataUri),
+                        previewImages = successfulImages.map(PreparedImageAttachment::previewUri),
+                        truncated = selectedUriList.size > imagePickerMaxCount,
+                    ),
+                )
+            }
+        }.start()
     }
 
     override fun registerExternalModule(kuiklyRenderExport: IKuiklyRenderExport) {
@@ -215,16 +241,18 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
         val pickerIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             Intent(MediaStore.ACTION_PICK_IMAGES).apply {
                 type = "image/*"
-                putExtra(
-                    MediaStore.EXTRA_PICK_IMAGES_MAX,
-                    minOf(imagePickerMaxCount, MediaStore.getPickImagesMaxLimit()),
-                )
+                if (imagePickerMaxCount > 1) {
+                    putExtra(
+                        MediaStore.EXTRA_PICK_IMAGES_MAX,
+                        minOf(imagePickerMaxCount, MediaStore.getPickImagesMaxLimit()),
+                    )
+                }
             }
         } else {
             Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
                 type = "image/*"
-                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, imagePickerMaxCount > 1)
                 addFlags(
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or
                         Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION,
@@ -303,12 +331,56 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
         }
     }
 
+    private fun prepareImageAttachment(uri: Uri): PreparedImageAttachment? {
+        return runCatching {
+            val (width, height) = contentResolver.openInputStream(uri)?.use { input ->
+                val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeStream(input, null, options)
+                options.outWidth to options.outHeight
+            } ?: return null
+            val maxDimension = 2048
+            var sampleSize = 1
+            while (width / sampleSize > maxDimension || height / sampleSize > maxDimension) {
+                sampleSize *= 2
+            }
+            val bitmap = contentResolver.openInputStream(uri)?.use { input ->
+                BitmapFactory.decodeStream(
+                    input,
+                    null,
+                    BitmapFactory.Options().apply { inSampleSize = sampleSize },
+                )
+            } ?: return null
+            try {
+                val jpegBytes = ByteArrayOutputStream().use { output ->
+                    if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 82, output)) {
+                        return null
+                    }
+                    output.toByteArray()
+                }
+                val previewDirectory = File(filesDir, IMAGE_PREVIEW_DIRECTORY)
+                if (!previewDirectory.exists() && !previewDirectory.mkdirs()) {
+                    return null
+                }
+                val previewFile = File(previewDirectory, "image_${uri.toString().hashCode()}.jpg")
+                previewFile.outputStream().use { output -> output.write(jpegBytes) }
+                val base64 = Base64.encodeToString(jpegBytes, Base64.NO_WRAP)
+                PreparedImageAttachment(
+                    previewUri = Uri.fromFile(previewFile).toString(),
+                    requestDataUri = "data:image/jpeg;base64,$base64",
+                )
+            } finally {
+                bitmap.recycle()
+            }
+        }.getOrNull()
+    }
+
     companion object {
 
         private const val KEY_PAGE_NAME = "pageName"
         private const val KEY_PAGE_DATA = "pageData"
         private const val REQUEST_RECORD_AUDIO_PERMISSION = 2001
         private const val REQUEST_PICK_IMAGES = 2002
+        private const val IMAGE_PREVIEW_DIRECTORY = "chat_images"
         private const val MAX_IMAGE_SELECTION_COUNT = 9
         private const val DRAWER_SWIPE_DISTANCE_DP = 48f
 
@@ -337,8 +409,14 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
     }
 }
 
+private data class PreparedImageAttachment(
+    val previewUri: String,
+    val requestDataUri: String,
+)
+
 internal data class ImagePickerResult(
     val images: List<String> = emptyList(),
+    val previewImages: List<String> = emptyList(),
     val cancelled: Boolean = false,
     val truncated: Boolean = false,
     val errorCode: String? = null,

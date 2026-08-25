@@ -57,8 +57,60 @@ import com.tencent.kuikly.core.views.View
 
 private const val CHAT_PAGE_NAME = "router"
 private const val STOCK_DETAIL_PAGE_NAME = "stock_detail"
+private const val DEFAULT_CHAT_MODEL_ID = "qwen-plus"
+private const val HOME_TAB_CHAT = 0
+private const val HOME_TAB_WATCHLIST = 1
+// 键盘回调未给出动画时长时的兜底值（秒）
+private const val DEFAULT_KEYBOARD_ANIM_DURATION = 0.25f
 
 private data class StockChatSuggestion(val iconAsset: String, val text: String)
+
+// 欢迎页输入框上方的快捷问题，点击直接发送
+private val WELCOME_SUGGESTIONS = listOf(
+    StockChatSuggestion("ranking_icon.png", "今日大盘怎么样"),
+    StockChatSuggestion("level_icon.png", "分析一下贵州茅台"),
+    StockChatSuggestion("table_icon.png", "看看沪深 300 指数"),
+    StockChatSuggestion("ai_generate.png", "现在市场风险大吗"),
+)
+
+private data class ChatModelOption(
+    val id: String,
+    val displayName: String,
+    val description: String,
+    val badge: String,
+    val multiplier: String,
+)
+
+private val CHAT_MODEL_OPTIONS = listOf(
+    ChatModelOption(
+        id = DEFAULT_CHAT_MODEL_ID,
+        displayName = "千问",
+        description = "均衡，适合股票问答与综合分析",
+        badge = "默认",
+        multiplier = "1.00x",
+    ),
+    ChatModelOption(
+        id = "qwen-max",
+        displayName = "千问 Max",
+        description = "复杂推理与深度研究",
+        badge = "深度",
+        multiplier = "2.00x",
+    ),
+    ChatModelOption(
+        id = "qwen-turbo",
+        displayName = "千问 Turbo",
+        description = "更快响应日常问题",
+        badge = "快速",
+        multiplier = "0.50x",
+    ),
+    ChatModelOption(
+        id = "qwen-long",
+        displayName = "千问 Long",
+        description = "适合长文本与财报分析",
+        badge = "长文",
+        multiplier = "1.20x",
+    ),
+)
 
 @Page(CHAT_PAGE_NAME, supportInLocal = true)
 internal class StockChatPage : BasePager() {
@@ -66,8 +118,14 @@ internal class StockChatPage : BasePager() {
     private var composerFocused by observable(false)
     private var keyboardHeight by observable(0f)
     private var keyboardVisible by observable(false)
-    // 跟随系统键盘动画时长（秒），由 keyboardHeightChange 事件携带，使输入框与键盘同速联动
-    private var keyboardAnimDuration by observable(0.2f)
+    // 键盘动画时长（秒），来自 keyboardHeightChange 回调，驱动输入面板跟随键盘平滑移动
+    private var keyboardAnimDuration by observable(DEFAULT_KEYBOARD_ANIM_DURATION)
+    // 主页与抽屉共用的分段 Tab（AI 问答 / 自选行情），保证两处选中态始终一致
+    private var selectedHomeTab by observable(HOME_TAB_CHAT)
+    // 欢迎区/自选行情的退场卸载位：键盘弹出时先播淡出动画，到时后置 true 从视图树卸载兜底
+    private var homeContentUnmounted by observable(false)
+    private var homeContentHidden = false
+    private var homeContentHideToken = 0
     private var inputText by observable("")
     // 输入内容折行后的行数（估算），驱动输入框与面板同步增高
     private var inputLineCount by observable(1)
@@ -77,10 +135,20 @@ internal class StockChatPage : BasePager() {
     private var voicePressActive by observable(false)
     private var voicePressCanceled by observable(false)
     private var voiceWavePhase by observable(0)
+    // 等待首 token 的三点跳动动画相位，由定时器驱动
+    private var typingDotPhase by observable(0)
+    private var typingDotTimer: Timer? = null
+    // 消息「更多」菜单当前指向的消息 id，非空时显示底部弹出菜单
+    private var messageMenuTargetId by observable("")
+    private var modelMenuOpen by observable(false)
+    private var selectedModelId by observable(DEFAULT_CHAT_MODEL_ID)
     private var imagePickerOpen by observable(false)
+    private var selectedImageCount by observable(0)
     private var messages by observableList<ChatMessage>()
     private var recentSessions by observableList<ChatSessionSummary>()
     private var selectedImages by observableList<String>()
+    private val selectedImagePreviews = mutableListOf<String>()
+    private val selectedImagePayloads = mutableListOf<String>()
     private var messageSequence = 0
     private var sessionSequence = 0
     // 当前会话 id：必须是 observable，抽屉列表项的高亮依赖它驱动重渲染
@@ -134,6 +202,28 @@ internal class StockChatPage : BasePager() {
                 "left" -> closeDrawer()
             }
         }
+        // 键盘弹出/输入聚焦时：先让欢迎区播放 0.26s 淡出动画，280ms 后再从视图树卸载兜底；
+        // 信号恢复时立即重新挂载。token 防止快速开合键盘时旧的延迟卸载误触发
+        bindValueChange({
+            composerFocused || keyboardVisible || keyboardHeight > 0f
+        }) { hidden ->
+            val nowHidden = hidden == true
+            if (nowHidden == homeContentHidden) {
+                return@bindValueChange
+            }
+            homeContentHidden = nowHidden
+            homeContentHideToken += 1
+            val token = homeContentHideToken
+            if (nowHidden) {
+                setTimeout(280) {
+                    if (token == homeContentHideToken && homeContentHidden) {
+                        homeContentUnmounted = true
+                    }
+                }
+            } else {
+                homeContentUnmounted = false
+            }
+        }
     }
 
     override fun pageDidDisappear() {
@@ -145,6 +235,8 @@ internal class StockChatPage : BasePager() {
     override fun pageWillDestroy() {
         cancelVoiceInput()
         stopSpeechPlayback()
+        typingDotTimer?.cancel()
+        typingDotTimer = null
         if (::chatHistoryRepository.isInitialized) {
             persistChatHistory()
         }
@@ -255,47 +347,7 @@ internal class StockChatPage : BasePager() {
                     }
                 }
             }
-            View {
-                attr {
-                    height(metrics.dp(44f))
-                    borderRadius(metrics.dp(22f))
-                    backgroundColor(StockChatTheme.recessed)
-                    border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
-                    flexDirectionRow()
-                    marginTop(metrics.dp(20f))
-                    padding(all = metrics.dp(3f))
-                }
-                View {
-                    attr {
-                        flex(1f)
-                        borderRadius(metrics.dp(19f))
-                        backgroundColor(StockChatTheme.surfaceSoft)
-                        border(Border(1f, BorderStyle.SOLID, StockChatTheme.borderStrong))
-                        allCenter()
-                    }
-                    Text {
-                        attr {
-                            text("AI 问答")
-                            fontSize(metrics.dp(15f))
-                            fontWeightBold()
-                            color(StockChatTheme.textPrimary)
-                        }
-                    }
-                }
-                View {
-                    attr {
-                        flex(1f)
-                        allCenter()
-                    }
-                    Text {
-                        attr {
-                            text("自选行情")
-                            fontSize(metrics.dp(15f))
-                            color(StockChatTheme.textSecondary)
-                        }
-                    }
-                }
-            }
+            ctx.HomeTabSwitcher(this, marginTopDp = 20f)
             ctx.DrawerMenuItem(this, "ranking_icon.png", "市场概览", metrics.scale) {
             }
             ctx.DrawerMenuItem(this, "table_icon.png", "指数追踪", metrics.scale) {
@@ -374,6 +426,173 @@ internal class StockChatPage : BasePager() {
             }
 
         }
+        }
+    }
+
+    // 「AI 问答 / 自选行情」分段开关：主页与抽屉共用，选中态样式由同一状态驱动，保证两处一致
+    private fun HomeTabSwitcher(
+        container: ViewContainer<*, *>,
+        marginTopDp: Float = 0f,
+        widthDp: Float? = null,
+    ) {
+        val ctx = this
+        val metrics = ctx.layoutMetrics
+        with(container) {
+            View {
+                attr {
+                    if (widthDp != null) {
+                        width(metrics.dp(widthDp))
+                    }
+                    height(metrics.dp(44f))
+                    borderRadius(metrics.dp(22f))
+                    backgroundColor(StockChatTheme.recessed)
+                    flexDirectionRow()
+                    padding(all = metrics.dp(3f))
+                    if (marginTopDp > 0f) {
+                        marginTop(metrics.dp(marginTopDp))
+                    }
+                }
+                ctx.HomeTabItem(this, "AI 问答", HOME_TAB_CHAT)
+                ctx.HomeTabItem(this, "自选行情", HOME_TAB_WATCHLIST)
+            }
+        }
+    }
+
+    private fun HomeTabItem(
+        container: ViewContainer<*, *>,
+        label: String,
+        tabIndex: Int,
+    ) {
+        val ctx = this
+        val metrics = ctx.layoutMetrics
+        with(container) {
+            View {
+                attr {
+                    val selected = ctx.selectedHomeTab == tabIndex
+                    flex(1f)
+                    borderRadius(metrics.dp(19f))
+                    // 选中态为带阴影的白色胶囊，未选中态透明；阴影不参与布局，切换时布局稳定
+                    backgroundColor(
+                        if (selected) StockChatTheme.surface else Color(0x00000000)
+                    )
+                    boxShadow(
+                        BoxShadow(
+                            metrics.dp(0f),
+                            metrics.dp(2f),
+                            metrics.dp(8f),
+                            if (selected) Color(0x1F000000) else Color(0x00000000),
+                        )
+                    )
+                    allCenter()
+                    animate(Animation.easeOut(0.18f), ctx.selectedHomeTab)
+                }
+                event {
+                    click { ctx.selectHomeTab(tabIndex) }
+                }
+                Text {
+                    attr {
+                        text(label)
+                        fontSize(metrics.dp(15f))
+                        if (ctx.selectedHomeTab == tabIndex) {
+                            fontWeightBold()
+                        }
+                        color(
+                            if (ctx.selectedHomeTab == tabIndex) {
+                                StockChatTheme.textPrimary
+                            } else {
+                                StockChatTheme.textSecondary
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private fun selectHomeTab(tabIndex: Int) {
+        if (tabIndex == selectedHomeTab) {
+            return
+        }
+        selectedHomeTab = tabIndex
+    }
+
+    // 「自选行情」占位内容：功能未上线前在主页给出明确反馈，避免选中后界面无变化
+    private fun WatchlistPlaceholder(container: ViewContainer<*, *>) {
+        val ctx = this
+        val metrics = ctx.layoutMetrics
+        with(container) {
+            View {
+                attr {
+                    val active = ctx.selectedHomeTab == HOME_TAB_WATCHLIST
+                    // 与欢迎页一致：键盘弹起、输入面板抬高时整块隐藏
+                    val hidden = ctx.composerFocused ||
+                        ctx.keyboardVisible ||
+                        ctx.keyboardHeight > 0f
+                    absolutePositionAllZero()
+                    alignItemsCenter()
+                    justifyContentCenter()
+                    padding(left = metrics.dp(32f), right = metrics.dp(32f))
+                    opacity(if (active && !hidden) 1f else 0f)
+                    // 选中时从右侧滑入，切走时向右滑出并淡出，与 AI 问答形成交叉过渡；
+                    // 键盘弹起时轻微上移配合淡出
+                    transform(
+                        Translate(
+                            percentageX = 0f,
+                            percentageY = 0f,
+                            offsetX = if (active) 0f else metrics.dp(32f),
+                            offsetY = if (hidden) -metrics.dp(12f) else 0f,
+                        )
+                    )
+                    animation(Animation.easeInOut(0.26f), ctx.selectedHomeTab)
+                    animation(Animation.easeInOut(0.26f), ctx.composerFocused)
+                    animation(Animation.easeInOut(0.26f), ctx.keyboardVisible)
+                    animation(Animation.easeInOut(0.26f), ctx.keyboardHeight)
+                    touchEnable(active && !hidden)
+                }
+                View {
+                    attr {
+                        size(metrics.dp(72f), metrics.dp(72f))
+                        borderRadius(metrics.dp(22f))
+                        backgroundColor(StockChatTheme.accentSoft)
+                        flexDirectionRow()
+                        alignItemsFlexEnd()
+                        justifyContentCenter()
+                        padding(bottom = metrics.dp(18f))
+                    }
+                    // 三根高低错落的行情柱，作为自选行情的示意图形
+                    listOf(16f, 28f, 21f).forEach { barHeight ->
+                        View {
+                            attr {
+                                width(metrics.dp(6f))
+                                height(metrics.dp(barHeight))
+                                borderRadius(metrics.dp(3f))
+                                backgroundColor(StockChatTheme.accent)
+                                margin(left = metrics.dp(3f), right = metrics.dp(3f))
+                            }
+                        }
+                    }
+                }
+                Text {
+                    attr {
+                        text("自选行情")
+                        fontSize(metrics.dp(20f))
+                        fontWeightBold()
+                        color(StockChatTheme.textPrimary)
+                        marginTop(metrics.dp(20f))
+                    }
+                }
+                Text {
+                    attr {
+                        text("自选股与指数追踪功能即将上线\n当前演示版本请先使用 AI 问答")
+                        fontSize(metrics.dp(13f))
+                        color(StockChatTheme.textSecondary)
+                        textAlignCenter()
+                        marginTop(metrics.dp(10f))
+                    }
+                }
+                // 与欢迎页同款分段开关，保证切到自选行情后仍可切回 AI 问答
+                ctx.HomeTabSwitcher(this, marginTopDp = 24f, widthDp = 232f)
+            }
         }
     }
 
@@ -491,33 +710,65 @@ internal class StockChatPage : BasePager() {
             View {
                 attr {
                     absolutePosition(
-                        top = pagerData.statusBarHeight + metrics.dp(76f),
+                        // 顶栏按钮区：top 14dp + 高 52dp = 66dp，内容上缘严格贴住按钮下缘
+                        top = pagerData.statusBarHeight + metrics.dp(66f),
                         left = 0f,
                         right = 0f,
                     bottom = metrics.composerContentBottom(
                         maxOf(ctx.keyboardHeight, pagerData.safeAreaInsets.bottom),
                         ctx.composerFocused,
                         ctx.voiceMode,
-                        ctx.selectedImages.isNotEmpty(),
+                        ctx.selectedImageCount > 0,
                         ctx.composerExtraInputLines(),
                     ),
                     )
-                    animate(Animation.easeInOut(ctx.keyboardAnimDuration), ctx.keyboardHeight)
-                    animate(Animation.easeInOut(0.26f), ctx.composerFocused)
-                    animate(Animation.easeInOut(0.26f), ctx.voiceMode)
-                    animate(Animation.easeInOut(0.26f), ctx.selectedImages.size)
-                    animate(Animation.easeInOut(0.18f), ctx.inputLineCount)
+                    // 消息区随键盘高度平滑伸缩，与键盘动画时长保持一致
+                    animate(Animation.easeOut(ctx.keyboardAnimDuration), ctx.keyboardHeight)
                 }
-                vif({ ctx.messages.isEmpty() }) {
+                // 两个模式常驻挂载于同一 vif 内，selectedHomeTab 驱动交叉切换动画；
+                // 键盘弹出/输入聚焦时先播子视图的淡出动画，homeContentUnmounted
+                // 延迟置位后整块卸载兜底（opacity 隐藏在该子树上不可靠）
+                vif({ ctx.messages.isEmpty() && !ctx.homeContentUnmounted }) {
                     ctx.WelcomeContent(this)
+                    ctx.WatchlistPlaceholder(this)
                 }
                 vif({ ctx.messages.isNotEmpty() }) {
                     ctx.MessageList(this)
                 }
             }
+            // 输入框上缘的渐隐过渡：消息延伸到面板顶边，最后一段淡出到页面背景
+            vif({ ctx.messages.isNotEmpty() }) {
+                View {
+                    attr {
+                        absolutePosition(
+                            left = 0f,
+                            right = 0f,
+                            bottom = metrics.composerContentBottom(
+                                maxOf(ctx.keyboardHeight, pagerData.safeAreaInsets.bottom),
+                                ctx.composerFocused,
+                                ctx.voiceMode,
+                                ctx.selectedImageCount > 0,
+                                ctx.composerExtraInputLines(),
+                            ),
+                        )
+                        height(metrics.composerContentFadeHeight)
+                        backgroundLinearGradient(
+                            Direction.TO_BOTTOM,
+                            ColorStop(Color(0x00F6F7F4), 0f),
+                            ColorStop(Color(0xFFF6F7F4), 1f),
+                        )
+                        touchEnable(false)
+                        zIndex(5)
+                        // 渐隐层跟随输入面板一起随键盘平滑移动
+                        animate(Animation.easeOut(ctx.keyboardAnimDuration), ctx.keyboardHeight)
+                    }
+                }
+            }
             ctx.ConversationTopBar(this)
             ctx.ComposerDock(this)
             ctx.VoiceRecordingOverlay(this)
+            ctx.MessageMenuOverlay(this)
+            ctx.ModelMenuOverlay(this)
             View {
                 attr {
                     absolutePositionAllZero()
@@ -702,19 +953,28 @@ internal class StockChatPage : BasePager() {
         with(container) {
         View {
             attr {
-                val welcomeHidden = ctx.composerFocused || ctx.keyboardVisible
+                val active = ctx.selectedHomeTab == HOME_TAB_CHAT
+                // 键盘弹起、输入面板抬高时整块隐藏；直接绑 keyboardHeight，
+                // 与输入面板的抬高信号一致，避免标志位回调时序不同步导致不隐藏
+                val welcomeHidden = ctx.composerFocused ||
+                    ctx.keyboardVisible ||
+                    ctx.keyboardHeight > 0f
                 absolutePositionAllZero()
-                opacity(if (welcomeHidden) 0f else 1f)
+                opacity(if (welcomeHidden || !active) 0f else 1f)
                 transform(
                     Translate(
                         percentageX = 0f,
                         percentageY = 0f,
+                        // 切到自选行情时向左滑出并淡出，切回时从左滑入
+                        offsetX = if (active) 0f else -metrics.dp(32f),
                         offsetY = if (welcomeHidden) -metrics.dp(12f) else 0f,
                     )
                 )
                 animation(Animation.easeInOut(0.26f), ctx.composerFocused)
                 animation(Animation.easeInOut(0.26f), ctx.keyboardVisible)
-                touchEnable(!welcomeHidden)
+                animation(Animation.easeInOut(0.26f), ctx.keyboardHeight)
+                animation(Animation.easeInOut(0.26f), ctx.selectedHomeTab)
+                touchEnable(!welcomeHidden && active)
             }
             View {
                 attr {
@@ -728,35 +988,26 @@ internal class StockChatPage : BasePager() {
                     justifyContentCenter()
                     padding(left = metrics.dp(24f), right = metrics.dp(24f))
                 }
+                // 主视觉只放图形 logo，品牌名交给标题说一次，避免与横排 wordmark 重复
                 Image {
                     attr {
-                        size(
-                            metrics.welcomeLogoWidth,
-                            metrics.welcomeLogoWidth * 200f / 803f,
-                        )
+                        size(metrics.welcomeHeroSize, metrics.welcomeHeroSize)
                         resizeContain()
-                        src(ImageUri.commonAssets("stockchat_logo.png"))
+                        src(ImageUri.commonAssets("stockchat_app_icon.png"))
                     }
                 }
                 Text {
                     attr {
-                        text("StockMate，我帮你看行情")
-                        fontSize(metrics.dp(23f))
+                        text("StockChat，我帮你看行情")
+                        fontSize(metrics.dp(26f))
                         fontWeightBold()
                         color(StockChatTheme.textPrimary)
                         textAlignCenter()
-                        marginTop(metrics.dp(22f))
+                        marginTop(metrics.dp(26f))
                     }
                 }
-                Text {
-                    attr {
-                        text("问个股、看指数，也可以聊市场风险")
-                        fontSize(metrics.dp(14f))
-                        color(StockChatTheme.textSecondary)
-                        textAlignCenter()
-                        marginTop(metrics.dp(10f))
-                    }
-                }
+                // 欢迎语下方的分段开关：与抽屉内为同一组件、同一状态，选中态完全一致
+                ctx.HomeTabSwitcher(this, marginTopDp = 28f, widthDp = 232f)
             }
             ctx.SuggestionCardRow(this)
         }
@@ -785,6 +1036,39 @@ internal class StockChatPage : BasePager() {
                         bouncesEnable(true)
                         padding(left = metrics.dp(18f), right = metrics.dp(8f))
                     }
+                    WELCOME_SUGGESTIONS.forEach { suggestion ->
+                        View {
+                            attr {
+                                height(metrics.dp(40f))
+                                borderRadius(metrics.dp(20f))
+                                backgroundColor(StockChatTheme.surface)
+                                border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
+                                flexDirectionRow()
+                                alignItemsCenter()
+                                padding(left = metrics.dp(13f), right = metrics.dp(15f))
+                                marginRight(metrics.dp(9f))
+                            }
+                            event {
+                                click { ctx.sendMessage(suggestion.text) }
+                            }
+                            Image {
+                                attr {
+                                    size(metrics.dp(18f), metrics.dp(18f))
+                                    resizeContain()
+                                    src(ImageUri.commonAssets(suggestion.iconAsset))
+                                    marginRight(metrics.dp(7f))
+                                }
+                            }
+                            Text {
+                                attr {
+                                    text(suggestion.text)
+                                    fontSize(metrics.dp(14f))
+                                    fontWeightMedium()
+                                    color(StockChatTheme.textPrimary)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -801,7 +1085,9 @@ internal class StockChatPage : BasePager() {
                 absolutePositionAllZero()
                 showScrollerIndicator(false)
                 bouncesEnable(true)
-                padding(top = 2f, bottom = 12f)
+                // 顶部不留 padding，内容直接从顶栏下缘开始；
+                // 底部留出渐隐区高度，滚到底时最后一条消息不会停在淡出区内
+                padding(bottom = ctx.layoutMetrics.composerContentFadeHeight + 8f)
             }
             event {
                 scroll { params ->
@@ -820,24 +1106,19 @@ internal class StockChatPage : BasePager() {
                 }
             }
             vfor({ ctx.messages }) { message ->
-                ChatMessageItem(
-                    message = message,
-                    scale = ctx.layoutMetrics.scale,
-                    onQuoteClick = { ctx.openStockDetail(it) },
-                    onRetry = { ctx.retryMessage(it) },
-                    onCopy = { answer ->
-                        val content = ctx.messageText(answer)
-                        if (content.isNotBlank()) {
-                            ctx.bridgeModule.copyToPasteboard(content)
-                            ctx.bridgeModule.toast("已复制回答")
-                        }
-                    },
-                    onLike = { ctx.bridgeModule.toast("感谢反馈") },
-                    onDislike = { ctx.bridgeModule.toast("已记录反馈") },
-                    onReadAloud = { ctx.readMessageAloud(it) },
-                    onMore = { ctx.bridgeModule.toast("更多操作暂未开放") },
-                )
-            }
+                    ChatMessageItem(
+                        message = message,
+                        scale = ctx.layoutMetrics.scale,
+                        isFirst = message.id == ctx.messages.firstOrNull()?.id,
+                        typingPhase = { ctx.typingDotPhase },
+                        onQuoteClick = { ctx.openStockDetail(it) },
+                        onRetry = { ctx.retryMessage(it) },
+                        onCopy = { ctx.copyMessage(it) },
+                        onRegenerate = { ctx.regenerateMessage(it) },
+                        onReadAloud = { ctx.readMessageAloud(it) },
+                        onMore = { ctx.messageMenuTargetId = it.id },
+                    )
+                }
         }
         }
     }
@@ -848,26 +1129,26 @@ internal class StockChatPage : BasePager() {
         with(container) {
         View {
             attr {
+                val effectiveInset = maxOf(
+                    ctx.keyboardHeight,
+                    pagerData.safeAreaInsets.bottom,
+                )
                 absolutePosition(
                     left = metrics.dp(18f),
                     right = metrics.dp(18f),
-                    bottom = maxOf(ctx.keyboardHeight, pagerData.safeAreaInsets.bottom) +
-                        metrics.composerBottomGap,
+                    bottom = effectiveInset + metrics.composerBottomGap,
                 )
                 height(
                     metrics.composerDockHeight(
                         focused = ctx.composerFocused,
                         voiceMode = ctx.voiceMode,
-                        hasAttachments = ctx.selectedImages.isNotEmpty(),
+                        hasAttachments = ctx.selectedImageCount > 0,
                         extraInputLines = ctx.composerExtraInputLines(),
                     )
                 )
                 zIndex(6)
-                animate(Animation.easeInOut(ctx.keyboardAnimDuration), ctx.keyboardHeight)
-                animate(Animation.easeInOut(0.26f), ctx.composerFocused)
-                animate(Animation.easeInOut(0.26f), ctx.voiceMode)
-                animate(Animation.easeInOut(0.26f), ctx.selectedImages.size)
-                animate(Animation.easeInOut(0.18f), ctx.inputLineCount)
+                // 输入面板跟随键盘抬起/落下：使用键盘回调给出的动画时长，避免瞬时跳变
+                animate(Animation.easeOut(ctx.keyboardAnimDuration), ctx.keyboardHeight)
             }
             View {
                 attr {
@@ -880,13 +1161,13 @@ internal class StockChatPage : BasePager() {
                         metrics.composerPanelHeight(
                             focused = ctx.composerFocused,
                             voiceMode = ctx.voiceMode,
-                            hasAttachments = ctx.selectedImages.isNotEmpty(),
+                            hasAttachments = ctx.selectedImageCount > 0,
                             extraInputLines = ctx.composerExtraInputLines(),
                         )
                     )
                     borderRadius(
                         metrics.dp(
-                            if (ctx.composerFocused || ctx.voiceMode || ctx.selectedImages.isNotEmpty()) {
+                            if (ctx.composerFocused || ctx.voiceMode || ctx.selectedImageCount > 0) {
                                 24f
                             } else {
                                 30f
@@ -904,10 +1185,9 @@ internal class StockChatPage : BasePager() {
                     )
                     animate(Animation.easeInOut(0.26f), ctx.composerFocused)
                     animate(Animation.easeInOut(0.26f), ctx.voiceMode)
-                    animate(Animation.easeInOut(0.26f), ctx.selectedImages.size)
                     animate(Animation.easeInOut(0.18f), ctx.inputLineCount)
                 }
-                vif({ ctx.selectedImages.isNotEmpty() }) {
+                vif({ ctx.selectedImageCount > 0 }) {
                     View {
                         attr {
                             absolutePosition(
@@ -919,7 +1199,7 @@ internal class StockChatPage : BasePager() {
                             zIndex(5)
                         }
                         ComposerImageAttachments(
-                            images = ctx.selectedImages,
+                            images = { ctx.selectedImages },
                             scale = metrics.scale,
                             onRemove = { ctx.removeSelectedImage(it) },
                         )
@@ -930,7 +1210,7 @@ internal class StockChatPage : BasePager() {
                             ctx.inputRef = it
                         }
                         attr {
-                            val hasAttachments = ctx.selectedImages.isNotEmpty()
+                            val hasAttachments = ctx.selectedImageCount > 0
                             val expanded = ctx.composerFocused || ctx.voiceMode || hasAttachments
                             val attachmentOffset = if (hasAttachments) {
                                 metrics.composerAttachmentStripHeight
@@ -972,7 +1252,6 @@ internal class StockChatPage : BasePager() {
                             zIndex(2)
                             animate(Animation.easeInOut(0.26f), ctx.composerFocused)
                             animate(Animation.easeInOut(0.26f), ctx.voiceMode)
-                            animate(Animation.easeInOut(0.26f), ctx.selectedImages.size)
                             animate(Animation.easeInOut(0.18f), ctx.inputLineCount)
                         }
                         event {
@@ -998,27 +1277,33 @@ internal class StockChatPage : BasePager() {
                             }
                             inputBlur {
                                 ctx.inputText = it.text
-                                ctx.composerFocused = false
+                                ctx.resetKeyboardState()
                             }
                             keyboardHeightChange {
+                                // 键盘回调携带系统键盘动画时长（秒），先更新时长再改高度，
+                                // 让输入面板以与键盘一致的时长做跟随动画；异常值做兜底
+                                ctx.keyboardAnimDuration = when {
+                                    it.duration <= 0f -> DEFAULT_KEYBOARD_ANIM_DURATION
+                                    it.duration > 3f -> it.duration / 1000f
+                                    else -> it.duration
+                                }.coerceIn(0.15f, 0.45f)
                                 val nextKeyboardHeight = maxOf(it.height, 0f)
                                 val nextKeyboardVisible = nextKeyboardHeight > 0.5f
                                 val keyboardWasVisible = ctx.keyboardHeight > 0f
-                                // 先记录本次键盘动画时长，再更新高度，保证后续布局动画与键盘同速
-                                ctx.keyboardAnimDuration = if (it.duration > 0.01f) it.duration else 0f
-                                ctx.keyboardHeight = nextKeyboardHeight
-                                if (ctx.keyboardVisible != nextKeyboardVisible) {
-                                    ctx.keyboardVisible = nextKeyboardVisible
-                                }
-                                if (
-                                    keyboardWasVisible &&
-                                    nextKeyboardHeight <= 0.5f &&
-                                    ctx.composerFocused
-                                ) {
-                                    ctx.composerFocused = false
-                                    setTimeout(0) {
-                                        if (ctx::inputRef.isInitialized) {
-                                            ctx.inputRef.view?.blur()
+                                if (!ctx.composerFocused || ctx.voiceMode || ctx.imagePickerOpen) {
+                                    ctx.resetKeyboardState()
+                                } else if (nextKeyboardVisible) {
+                                    ctx.keyboardVisible = true
+                                    ctx.keyboardHeight = nextKeyboardHeight
+                                } else {
+                                    ctx.keyboardHeight = 0f
+                                    ctx.keyboardVisible = false
+                                    if (keyboardWasVisible) {
+                                        ctx.composerFocused = false
+                                        setTimeout(0) {
+                                            if (ctx::inputRef.isInitialized) {
+                                                ctx.inputRef.view?.blur()
+                                            }
                                         }
                                     }
                                 }
@@ -1031,7 +1316,7 @@ internal class StockChatPage : BasePager() {
                 vif({ ctx.voiceMode }) {
                     Text {
                         attr {
-                            val attachmentOffset = if (ctx.selectedImages.isNotEmpty()) {
+                            val attachmentOffset = if (ctx.selectedImageCount > 0) {
                                 metrics.composerAttachmentStripHeight
                             } else {
                                 0f
@@ -1059,7 +1344,7 @@ internal class StockChatPage : BasePager() {
                 }
                 View {
                     attr {
-                        val hasAttachments = ctx.selectedImages.isNotEmpty()
+                        val hasAttachments = ctx.selectedImageCount > 0
                         val attachmentOffset = if (hasAttachments) metrics.composerAttachmentStripHeight else 0f
                         absolutePosition(
                             top = attachmentOffset,
@@ -1098,7 +1383,7 @@ internal class StockChatPage : BasePager() {
                     attr {
                         val expanded = ctx.composerFocused ||
                             ctx.voiceMode ||
-                            ctx.selectedImages.isNotEmpty()
+                            ctx.selectedImageCount > 0
                         absolutePosition(
                             left = metrics.dp(14f),
                             right = metrics.dp(14f),
@@ -1109,10 +1394,9 @@ internal class StockChatPage : BasePager() {
                         height(metrics.dp(42f))
                         flexDirectionRow()
                         alignItemsCenter()
-                        zIndex(4)
+                        zIndex(6)
                         animate(Animation.easeInOut(0.26f), ctx.composerFocused)
                         animate(Animation.easeInOut(0.26f), ctx.voiceMode)
-                        animate(Animation.easeInOut(0.26f), ctx.selectedImages.size)
                     }
                     View {
                         attr {
@@ -1127,7 +1411,7 @@ internal class StockChatPage : BasePager() {
                         attr {
                             val showModel = ctx.composerFocused ||
                                 ctx.voiceMode ||
-                                ctx.selectedImages.isNotEmpty()
+                                ctx.selectedImageCount > 0
                             width(metrics.dp(104f))
                             height(metrics.dp(34f))
                             borderRadius(metrics.dp(17f))
@@ -1142,19 +1426,22 @@ internal class StockChatPage : BasePager() {
                             touchEnable(showModel)
                             animate(Animation.easeOut(0.2f), showModel)
                         }
-                        Text {
+                        event {
+                            click { ctx.openModelMenu() }
+                        }
+                        Image {
                             attr {
-                                text("Qwen")
-                                fontSize(metrics.dp(11f))
-                                fontWeightBold()
-                                color(StockChatTheme.accent)
+                                size(metrics.dp(18f), metrics.dp(18f))
+                                resizeContain()
+                                src(ImageUri.commonAssets("tongyi-qianwen.png"))
+                                marginRight(metrics.dp(6f))
                             }
                         }
                         Text {
                             attr {
-                                text("  Auto⌄")
+                                text(ctx.selectedModel().displayName)
                                 fontSize(metrics.dp(14f))
-                                fontWeightMedium()
+                                fontWeightBold()
                                 color(StockChatTheme.textPrimary)
                             }
                         }
@@ -1175,10 +1462,10 @@ internal class StockChatPage : BasePager() {
                     }
                     // 发送按钮用 vif 整体挂载/移除：此前用 width/opacity 动画收起，
                     // 在进入语音模式时收起动画可能不生效，导致灰色圆形残留并遮挡加号按钮
-                    vif({ ctx.composerFocused && !ctx.voiceMode }) {
+                    vif({ !ctx.voiceMode && (ctx.composerFocused || ctx.selectedImageCount > 0) }) {
                         View {
                             attr {
-                                val hasAttachments = ctx.selectedImages.isNotEmpty()
+                                val hasAttachments = ctx.selectedImageCount > 0
                                 val canSend = !ctx.isSending && (ctx.inputText.isNotBlank() || hasAttachments)
                                 width(metrics.dp(42f))
                                 height(metrics.dp(42f))
@@ -1222,6 +1509,13 @@ internal class StockChatPage : BasePager() {
                     opacity(if (ctx.composerFocused) 0f else 1f)
                     animation(Animation.easeOut(0.14f), ctx.composerFocused)
                 }
+                Text {
+                    attr {
+                        text("内容由 AI 生成")
+                        fontSize(metrics.dp(11f))
+                        color(StockChatTheme.textTertiary)
+                    }
+                }
             }
         }
         }
@@ -1239,8 +1533,9 @@ internal class StockChatPage : BasePager() {
                         backgroundLinearGradient(
                             Direction.TO_BOTTOM,
                             ColorStop(Color(0x00F6F7F4), 0f),
+                            // 中段起完全不透明：输入面板顶缘约在遮罩 48% 处，往下必须实色盖住输入框
                             ColorStop(
-                                if (ctx.voicePressCanceled) Color(0xCDE7B35A) else Color(0xC843D7BB),
+                                if (ctx.voicePressCanceled) Color(0xFFE7B35A) else Color(0xFF43D7BB),
                                 0.48f,
                             ),
                             ColorStop(
@@ -1302,11 +1597,350 @@ internal class StockChatPage : BasePager() {
         }
     }
 
+    // 消息「更多」底部弹出菜单：暗色遮罩 + 白色圆角面板，点击遮罩或取消关闭。
+    // 常驻挂载（不用 vif）以支持开合过渡动画：遮罩淡入淡出、面板自底部滑入滑出
+    private fun MessageMenuOverlay(container: ViewContainer<*, *>) {
+        val ctx = this
+        val metrics = ctx.layoutMetrics
+        with(container) {
+            View {
+                attr {
+                    val open = ctx.messageMenuTargetId.isNotEmpty()
+                    absolutePositionAllZero()
+                    backgroundColor(Color(0x8C141A18))
+                    opacity(if (open) 1f else 0f)
+                    touchEnable(open)
+                    zIndex(11)
+                    animation(Animation.easeOut(0.24f), ctx.messageMenuTargetId)
+                }
+                event {
+                    click { ctx.messageMenuTargetId = "" }
+                }
+            }
+            View {
+                attr {
+                    val open = ctx.messageMenuTargetId.isNotEmpty()
+                    absolutePosition(left = 0f, right = 0f, bottom = 0f)
+                    borderRadius(metrics.dp(22f), metrics.dp(22f), 0f, 0f)
+                    backgroundColor(StockChatTheme.surface)
+                    padding(bottom = pagerData.safeAreaInsets.bottom + metrics.dp(6f))
+                    // 关闭态整体下移自身高度藏到屏幕外，开合切换即形成滑入滑出
+                    transform(Translate(0f, if (open) 0f else 1f))
+                    touchEnable(open)
+                    zIndex(12)
+                    animation(Animation.easeOut(0.28f), ctx.messageMenuTargetId)
+                }
+                ctx.MessageMenuItem(this, "复制内容", divider = false) { target ->
+                    ctx.copyMessage(target)
+                }
+                ctx.MessageMenuItem(this, "节选复制") {
+                    ctx.bridgeModule.toast("节选复制暂未开放")
+                }
+                ctx.MessageMenuItem(this, "重新生成") { target ->
+                    ctx.regenerateMessage(target)
+                }
+                ctx.MessageMenuItem(this, "朗读") { target ->
+                    ctx.readMessageAloud(target)
+                }
+                ctx.MessageMenuItem(this, "分享") {
+                    ctx.bridgeModule.toast("分享功能暂未开放")
+                }
+                ctx.MessageMenuItem(
+                    this,
+                    "删除",
+                    labelColor = StockChatTheme.positive,
+                ) { target ->
+                    ctx.deleteMessage(target)
+                }
+                View {
+                    attr {
+                        height(metrics.dp(8f))
+                        backgroundColor(Color(0xFFF2F3F1))
+                    }
+                }
+                View {
+                    attr {
+                        height(metrics.dp(58f))
+                        allCenter()
+                    }
+                    event {
+                        click { ctx.messageMenuTargetId = "" }
+                    }
+                    Text {
+                        attr {
+                            text("取消")
+                            fontSize(metrics.dp(18f))
+                            fontWeightBold()
+                            color(StockChatTheme.textPrimary)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun MessageMenuItem(
+        container: ViewContainer<*, *>,
+        label: String,
+        labelColor: Color = StockChatTheme.textPrimary,
+        divider: Boolean = true,
+        onClick: (ChatMessage) -> Unit,
+    ) {
+        val ctx = this
+        val metrics = ctx.layoutMetrics
+        with(container) {
+            if (divider) {
+                View {
+                    attr {
+                        height(0.7f)
+                        backgroundColor(StockChatTheme.border)
+                    }
+                }
+            }
+            View {
+                attr {
+                    height(metrics.dp(58f))
+                    allCenter()
+                }
+                event {
+                    click {
+                        val target = ctx.messages.firstOrNull { it.id == ctx.messageMenuTargetId }
+                        ctx.messageMenuTargetId = ""
+                        if (target != null) {
+                            onClick(target)
+                        }
+                    }
+                }
+                Text {
+                    attr {
+                        text(label)
+                        fontSize(metrics.dp(18f))
+                        color(labelColor)
+                    }
+                }
+            }
+        }
+    }
+
+    // 模型选择底部弹层：与消息菜单一样常驻挂载，遮罩淡入淡出、面板自底部滑入滑出
+    private fun ModelMenuOverlay(container: ViewContainer<*, *>) {
+        val ctx = this
+        val metrics = ctx.layoutMetrics
+        with(container) {
+            View {
+                attr {
+                    absolutePositionAllZero()
+                    backgroundColor(Color(0x7A141A18))
+                    opacity(if (ctx.modelMenuOpen) 1f else 0f)
+                    touchEnable(ctx.modelMenuOpen)
+                    zIndex(13)
+                    animation(Animation.easeOut(0.24f), ctx.modelMenuOpen)
+                }
+                event {
+                    click { ctx.closeModelMenu() }
+                }
+            }
+            View {
+                attr {
+                    absolutePosition(left = 0f, right = 0f, bottom = 0f)
+                    height(metrics.dp(466f) + pagerData.safeAreaInsets.bottom)
+                    borderRadius(metrics.dp(28f), metrics.dp(28f), 0f, 0f)
+                    backgroundColor(StockChatTheme.surface)
+                    padding(
+                        left = metrics.dp(20f),
+                        right = metrics.dp(20f),
+                        bottom = pagerData.safeAreaInsets.bottom + metrics.dp(12f),
+                    )
+                    transform(Translate(0f, if (ctx.modelMenuOpen) 0f else 1f))
+                    touchEnable(ctx.modelMenuOpen)
+                    zIndex(14)
+                    animation(Animation.easeOut(0.28f), ctx.modelMenuOpen)
+                }
+                View {
+                    attr {
+                        width(metrics.dp(44f))
+                        height(metrics.dp(5f))
+                        borderRadius(metrics.dp(3f))
+                        backgroundColor(StockChatTheme.borderStrong)
+                        alignSelfCenter()
+                        marginTop(metrics.dp(12f))
+                    }
+                }
+                Text {
+                    attr {
+                        text("选择模型")
+                        fontSize(metrics.dp(22f))
+                        fontWeightBold()
+                        color(StockChatTheme.textPrimary)
+                        textAlignCenter()
+                        marginTop(metrics.dp(20f))
+                        marginBottom(metrics.dp(10f))
+                    }
+                }
+                CHAT_MODEL_OPTIONS.forEach { option ->
+                    ctx.ModelMenuItem(this, option)
+                }
+                Text {
+                    attr {
+                        text("模型选择仅影响后续回答；图片问题自动使用千问视觉模型")
+                        fontSize(metrics.dp(11f))
+                        color(StockChatTheme.textTertiary)
+                        textAlignCenter()
+                        marginTop(metrics.dp(8f))
+                    }
+                }
+            }
+        }
+    }
+
+    private fun ModelMenuItem(
+        container: ViewContainer<*, *>,
+        option: ChatModelOption,
+    ) {
+        val ctx = this
+        val metrics = ctx.layoutMetrics
+        with(container) {
+            View {
+                attr {
+                    height(metrics.dp(76f))
+                    borderRadius(metrics.dp(18f))
+                    flexDirectionRow()
+                    alignItemsCenter()
+                    padding(left = metrics.dp(12f), right = metrics.dp(12f))
+                    backgroundColor(
+                        if (option.id == ctx.selectedModelId) {
+                            StockChatTheme.accentSoft
+                        } else {
+                            StockChatTheme.surface
+                        }
+                    )
+                }
+                event {
+                    click { ctx.selectModel(option.id) }
+                }
+                View {
+                    attr {
+                        size(metrics.dp(40f), metrics.dp(40f))
+                        borderRadius(metrics.dp(13f))
+                        backgroundColor(Color(0xFF171A18))
+                        allCenter()
+                    }
+                    Text {
+                        attr {
+                            text("Q")
+                            fontSize(metrics.dp(20f))
+                            fontWeightBold()
+                            color(Color.WHITE)
+                        }
+                    }
+                }
+                View {
+                    attr {
+                        flex(1f)
+                        marginLeft(metrics.dp(12f))
+                    }
+                    View {
+                        attr {
+                            flexDirectionRow()
+                            alignItemsCenter()
+                        }
+                        Text {
+                            attr {
+                                text(option.displayName)
+                                fontSize(metrics.dp(17f))
+                                fontWeightBold()
+                                color(StockChatTheme.textPrimary)
+                            }
+                        }
+                        View {
+                            attr {
+                                backgroundColor(Color(0xFFDDF5EC))
+                                borderRadius(metrics.dp(5f))
+                                padding(
+                                    top = metrics.dp(2f),
+                                    left = metrics.dp(5f),
+                                    right = metrics.dp(5f),
+                                    bottom = metrics.dp(2f),
+                                )
+                                marginLeft(metrics.dp(7f))
+                            }
+                            Text {
+                                attr {
+                                    text(option.badge)
+                                    fontSize(metrics.dp(11f))
+                                    color(StockChatTheme.accent)
+                                }
+                            }
+                        }
+                        Text {
+                            attr {
+                                text(option.multiplier)
+                                fontSize(metrics.dp(13f))
+                                color(StockChatTheme.textTertiary)
+                                marginLeft(metrics.dp(7f))
+                            }
+                        }
+                    }
+                    Text {
+                        attr {
+                            text(option.description)
+                            fontSize(metrics.dp(12f))
+                            color(StockChatTheme.textSecondary)
+                            marginTop(metrics.dp(4f))
+                        }
+                    }
+                }
+                Text {
+                    attr {
+                        text("✓")
+                        fontSize(metrics.dp(24f))
+                        fontWeightBold()
+                        color(StockChatTheme.accent)
+                        opacity(if (option.id == ctx.selectedModelId) 1f else 0f)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun openModelMenu() {
+        if (::inputRef.isInitialized) {
+            inputRef.view?.blur()
+        }
+        resetKeyboardState()
+        messageMenuTargetId = ""
+        closeDrawer()
+        modelMenuOpen = true
+    }
+
+    private fun closeModelMenu() {
+        modelMenuOpen = false
+    }
+
+    private fun selectModel(modelId: String) {
+        if (CHAT_MODEL_OPTIONS.none { it.id == modelId }) {
+            return
+        }
+        selectedModelId = modelId
+        closeModelMenu()
+    }
+
+    private fun selectedModel(): ChatModelOption {
+        return CHAT_MODEL_OPTIONS.firstOrNull { it.id == selectedModelId }
+            ?: CHAT_MODEL_OPTIONS.first()
+    }
+
     private fun focusComposer() {
         composerFocused = true
         voiceMode = false
         closeDrawer()
         focusTextInputAfterLayout()
+    }
+
+    private fun resetKeyboardState() {
+        keyboardHeight = 0f
+        keyboardVisible = false
+        composerFocused = false
     }
 
     private fun focusTextInputAfterLayout() {
@@ -1460,10 +2094,8 @@ internal class StockChatPage : BasePager() {
         if (::inputRef.isInitialized) {
             inputRef.view?.blur()
         }
+        resetKeyboardState()
         voiceMode = true
-        composerFocused = false
-        keyboardVisible = false
-        keyboardHeight = 0f
         closeDrawer()
     }
 
@@ -1554,7 +2186,7 @@ internal class StockChatPage : BasePager() {
         if (::inputRef.isInitialized) {
             inputRef.view?.blur()
         }
-        composerFocused = false
+        resetKeyboardState()
         voiceRequestToken += 1
         val currentVoiceToken = voiceRequestToken
         voicePressReleaseRequested = false
@@ -1680,13 +2312,18 @@ internal class StockChatPage : BasePager() {
             bridgeModule.toast("图片选择器已打开")
             return
         }
-        val remainingCount = MAX_IMAGE_SELECTION_COUNT - selectedImages.size
+        val remainingCount = MAX_IMAGE_SELECTION_COUNT - selectedImageCount
         if (remainingCount <= 0) {
             bridgeModule.toast("最多选择 9 张图片")
             return
         }
         imagePickerOpen = true
+        if (::inputRef.isInitialized) {
+            inputRef.view?.blur()
+        }
+        resetKeyboardState()
         bridgeModule.pickImages(remainingCount) pickerResult@{ result ->
+            resetKeyboardState()
             imagePickerOpen = false
             if (result == null) {
                 bridgeModule.toast("图片选择暂时不可用")
@@ -1702,29 +2339,56 @@ internal class StockChatPage : BasePager() {
                 return@pickerResult
             }
             val imageArray = result.optJSONArray("images")
-            var addedCount = 0
+            val previewImageArray = result.optJSONArray("previewImages")
+            val newImagePreviews = mutableListOf<String>()
+            val newImagePayloads = mutableListOf<String>()
             if (imageArray != null) {
                 for (index in 0 until imageArray.length()) {
-                    if (selectedImages.size >= MAX_IMAGE_SELECTION_COUNT) {
+                    if (selectedImagePreviews.size + newImagePreviews.size >= MAX_IMAGE_SELECTION_COUNT) {
                         break
                     }
-                    val imageUri = imageArray.optString(index).orEmpty().trim()
-                    if (imageUri.isNotEmpty() && imageUri !in selectedImages) {
-                        selectedImages.add(imageUri)
-                        addedCount += 1
+                    val imagePayload = imageArray.optString(index).orEmpty().trim()
+                    val imagePreview = previewImageArray
+                        ?.optString(index)
+                        .orEmpty()
+                        .trim()
+                        .ifBlank { imagePayload }
+                    if (
+                        imagePayload.isNotEmpty() &&
+                        imagePreview.isNotEmpty() &&
+                        imagePreview !in selectedImagePreviews &&
+                        imagePreview !in newImagePreviews
+                    ) {
+                        newImagePreviews.add(imagePreview)
+                        newImagePayloads.add(imagePayload)
                     }
                 }
             }
-            if (addedCount == 0) {
+            selectedImagePreviews.addAll(newImagePreviews)
+            selectedImagePayloads.addAll(newImagePayloads)
+            selectedImages.addAll(newImagePreviews)
+            selectedImageCount = selectedImagePreviews.size
+            if (newImagePreviews.isEmpty()) {
                 bridgeModule.toast("没有选择新的图片")
-            } else if (result.optInt("truncated", 0) == 1) {
-                bridgeModule.toast("已保留前 9 张图片")
+            } else {
+                if (result.optInt("truncated", 0) == 1) {
+                    bridgeModule.toast("已保留前 9 张图片")
+                }
             }
         }
     }
 
     private fun removeSelectedImage(imageUri: String) {
-        selectedImages.remove(imageUri)
+        val imageIndex = selectedImagePreviews.indexOf(imageUri)
+        if (imageIndex < 0) {
+            return
+        }
+        selectedImagePreviews.removeAt(imageIndex)
+        selectedImages.removeAt(imageIndex)
+        if (imageIndex < selectedImagePayloads.size) {
+            selectedImagePayloads.removeAt(imageIndex)
+        }
+        selectedImageCount = selectedImagePreviews.size
     }
 
     private fun sendMessage(submittedText: String? = null) {
@@ -1735,7 +2399,15 @@ internal class StockChatPage : BasePager() {
             bridgeModule.toast("请先结束语音输入")
             return
         }
-        val attachedImages = selectedImages.toList()
+        val attachedImages = selectedImagePreviews.toList()
+        val attachedImagePayloads = selectedImagePayloads.toList()
+        if (
+            attachedImages.size != attachedImagePayloads.size ||
+            attachedImagePayloads.any { !it.startsWith("data:image/") }
+        ) {
+            bridgeModule.toast("图片处理失败，请重新选择")
+            return
+        }
         val typedQuestion = (submittedText ?: inputText).trim()
         val question = typedQuestion.ifBlank {
             if (attachedImages.isNotEmpty()) IMAGE_ONLY_QUESTION else ""
@@ -1750,11 +2422,12 @@ internal class StockChatPage : BasePager() {
         }
         inputText = ""
         inputLineCount = 1
+        selectedImagePreviews.clear()
         selectedImages.clear()
+        selectedImagePayloads.clear()
+        selectedImageCount = 0
         voiceMode = false
-        composerFocused = false
-        keyboardVisible = false
-        keyboardHeight = 0f
+        resetKeyboardState()
         isSending = true
         stickMessageListToBottom = true
         messageListNearBottom = true
@@ -1765,7 +2438,12 @@ internal class StockChatPage : BasePager() {
                 role = ChatRole.USER,
                 blocks = buildList {
                     if (attachedImages.isNotEmpty()) {
-                        add(AnswerBlock.ImageGallery(attachedImages))
+                        add(
+                            AnswerBlock.ImageGallery(
+                                images = attachedImages,
+                                requestImages = attachedImagePayloads,
+                            )
+                        )
                     }
                     add(AnswerBlock.Markdown(question, question))
                 },
@@ -1782,6 +2460,7 @@ internal class StockChatPage : BasePager() {
             )
         )
         persistChatHistory()
+        updateTypingIndicatorTimer()
         completeAnswer(answerId, question, 0, currentRequestToken)
     }
 
@@ -1792,8 +2471,15 @@ internal class StockChatPage : BasePager() {
         currentRequestToken: Int,
     ) {
         val history = conversationHistoryBefore(messageId)
+        val attachedImages = imagesBeforeAnswer(messageId)
         runCatching {
-            dataSource.answer(question, history, attempt) response@{ answer ->
+            dataSource.answer(
+                question,
+                history,
+                attachedImages,
+                selectedModel().id,
+                attempt,
+            ) response@{ answer ->
                 if (currentRequestToken != requestToken) {
                     return@response
                 }
@@ -1809,6 +2495,23 @@ internal class StockChatPage : BasePager() {
                 )
             }
         }
+    }
+
+    private fun imagesBeforeAnswer(messageId: String): List<String> {
+        val answerIndex = messages.indexOfFirst { it.id == messageId }
+        if (answerIndex <= 0) {
+            return emptyList()
+        }
+        for (index in (answerIndex - 1) downTo 0) {
+            val message = messages[index]
+            if (message.role == ChatRole.USER) {
+                return message.blocks
+                    .filterIsInstance<AnswerBlock.ImageGallery>()
+                    .flatMap { it.requestImages }
+                    .filter { it.startsWith("data:image/") }
+            }
+        }
+        return emptyList()
     }
 
     private fun conversationHistoryBefore(messageId: String): List<ChatHistoryItem> {
@@ -1865,6 +2568,8 @@ internal class StockChatPage : BasePager() {
                 id = messageId,
                 role = ChatRole.ASSISTANT,
                 blocks = answer.blocks,
+                // 保留原始提问，「重新生成」直接复用
+                retryQuestion = question,
             )
             is ChatAnswer.Failure -> ChatMessage(
                 id = messageId,
@@ -1880,6 +2585,7 @@ internal class StockChatPage : BasePager() {
             isSending = false
             persistChatHistory()
         }
+        updateTypingIndicatorTimer()
     }
 
     private fun retryMessage(message: ChatMessage) {
@@ -1896,17 +2602,85 @@ internal class StockChatPage : BasePager() {
         requestToken += 1
         val currentRequestToken = requestToken
         messages[index] = message.copy(
+            blocks = emptyList(),
             state = MessageState.GENERATING,
             retryAttempt = message.retryAttempt + 1,
             errorMessage = "",
         )
         persistChatHistory()
+        updateTypingIndicatorTimer()
         completeAnswer(
             message.id,
             message.retryQuestion,
             message.retryAttempt + 1,
             currentRequestToken,
         )
+    }
+
+    // 「重新生成」：已完成的回答也可重来；老会话可能没存 retryQuestion，回退到前一条用户消息
+    private fun regenerateMessage(message: ChatMessage) {
+        if (isSending) {
+            bridgeModule.toast("请等待当前回答完成")
+            return
+        }
+        val index = messages.indexOfFirst { it.id == message.id }
+        if (index < 0) {
+            return
+        }
+        val question = message.retryQuestion.ifBlank {
+            messages.take(index)
+                .lastOrNull { it.role == ChatRole.USER }
+                ?.let(::messageText)
+                .orEmpty()
+        }
+        if (question.isBlank()) {
+            bridgeModule.toast("找不到对应的提问，无法重新生成")
+            return
+        }
+        val prepared = messages[index].copy(retryQuestion = question)
+        messages[index] = prepared
+        retryMessage(prepared)
+    }
+
+    private fun copyMessage(message: ChatMessage) {
+        val content = messageText(message)
+        if (content.isNotBlank()) {
+            bridgeModule.copyToPasteboard(content)
+            bridgeModule.toast("已复制回答")
+        }
+    }
+
+    private fun deleteMessage(message: ChatMessage) {
+        val index = messages.indexOfFirst { it.id == message.id }
+        if (index < 0) {
+            return
+        }
+        messages.removeAt(index)
+        if (messages.isEmpty()) {
+            // persistChatHistory 对空列表直接返回，这里显式清掉库里的旧消息
+            chatHistoryRepository.clearSession(activeSessionId)
+            refreshRecentSessions()
+        } else {
+            persistChatHistory()
+        }
+        bridgeModule.toast("已删除")
+    }
+
+    private fun updateTypingIndicatorTimer() {
+        val waitingFirstToken = messages.any {
+            it.state == MessageState.GENERATING && it.blocks.isEmpty()
+        }
+        if (waitingFirstToken && typingDotTimer == null) {
+            typingDotPhase = 0
+            typingDotTimer = Timer().also { timer ->
+                timer.schedule(0, 320) {
+                    typingDotPhase = (typingDotPhase + 1) % 3
+                }
+            }
+        } else if (!waitingFirstToken && typingDotTimer != null) {
+            typingDotTimer?.cancel()
+            typingDotTimer = null
+        }
     }
 
     private fun openStockDetail(quote: StockQuote) {
@@ -1979,7 +2753,9 @@ internal class StockChatPage : BasePager() {
         messages.clear()
         messageSequence = 0
         isSending = false
+        messageMenuTargetId = ""
         loadMessagesForActiveSession()
+        updateTypingIndicatorTimer()
         closeDrawer()
     }
 
@@ -1991,15 +2767,19 @@ internal class StockChatPage : BasePager() {
         messages.clear()
         inputText = ""
         inputLineCount = 1
+        selectedImagePreviews.clear()
         selectedImages.clear()
+        selectedImagePayloads.clear()
+        selectedImageCount = 0
         voiceMode = false
         isSending = false
-        composerFocused = false
-        keyboardVisible = false
-        keyboardHeight = 0f
+        resetKeyboardState()
         stickMessageListToBottom = true
         messageListNearBottom = true
         drawerOpen = false
+        messageMenuTargetId = ""
+        modelMenuOpen = false
+        updateTypingIndicatorTimer()
         if (::inputRef.isInitialized) {
             inputRef.view?.setText("")
             inputRef.view?.blur()

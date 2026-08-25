@@ -32,8 +32,8 @@ Kuikly 页面中的布局数值使用逻辑布局单位（Android 侧接近 dp�
 
 ## 欢迎 Logo
 
-欢迎态使用 `assets/common/stockchat_logo.png`，通过
-`ImageUri.commonAssets("stockchat_logo.png")` 加载，并按原图比例自适应宽度，避免
+欢迎态使用 `assets/common/stockchat_logo_v2.png`，通过
+`ImageUri.commonAssets("stockchat_logo_v2.png")` 加载，并按原图比例自适应宽度，避免
 绑定到具体页面目录。
 
 ## Markdown
