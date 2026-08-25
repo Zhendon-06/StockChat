@@ -69,6 +69,8 @@ internal class StockChatPage : BasePager() {
     // 跟随系统键盘动画时长（秒），由 keyboardHeightChange 事件携带，使输入框与键盘同速联动
     private var keyboardAnimDuration by observable(0.2f)
     private var inputText by observable("")
+    // 输入内容折行后的行数（估算），驱动输入框与面板同步增高
+    private var inputLineCount by observable(1)
     private var isSending by observable(false)
     private var voiceInputState by observable(VoiceInputState.IDLE)
     private var voiceMode by observable(false)
@@ -81,7 +83,8 @@ internal class StockChatPage : BasePager() {
     private var selectedImages by observableList<String>()
     private var messageSequence = 0
     private var sessionSequence = 0
-    private var activeSessionId = ""
+    // 当前会话 id：必须是 observable，抽屉列表项的高亮依赖它驱动重渲染
+    private var activeSessionId by observable("")
     private var requestToken = 0
     private var voiceRequestToken = 0
     private var speechSynthesisRequestToken = 0
@@ -304,7 +307,35 @@ internal class StockChatPage : BasePager() {
                     height(1f)
                     backgroundColor(StockChatTheme.border)
                     marginTop(metrics.dp(6f))
-                    marginBottom(metrics.dp(18f))
+                    marginBottom(metrics.dp(8f))
+                }
+            }
+
+            View {
+                attr {
+                    height(metrics.dp(48f))
+                    flexDirectionRow()
+                    alignItemsCenter()
+                    marginTop(metrics.dp(2f))
+                }
+                event {
+                    click { ctx.startNewChat() }
+                }
+                Text {
+                    attr {
+                        text("＋")
+                        fontSize(metrics.dp(25f))
+                        color(StockChatTheme.textPrimary)
+                        marginRight(metrics.dp(10f))
+                    }
+                }
+                Text {
+                    attr {
+                        text("新建对话")
+                        fontSize(metrics.dp(16f))
+                        fontWeightBold()
+                        color(StockChatTheme.textPrimary)
+                    }
                 }
             }
             View {
@@ -325,33 +356,6 @@ internal class StockChatPage : BasePager() {
                         text("管理")
                         fontSize(metrics.dp(13f))
                         color(StockChatTheme.accent)
-                    }
-                }
-            }
-            View {
-                attr {
-                    height(metrics.dp(48f))
-                    flexDirectionRow()
-                    alignItemsCenter()
-                    marginTop(metrics.dp(8f))
-                }
-                event {
-                    click { ctx.startNewChat() }
-                }
-                Text {
-                    attr {
-                        text("＋")
-                        fontSize(metrics.dp(25f))
-                        color(StockChatTheme.textPrimary)
-                        marginRight(metrics.dp(10f))
-                    }
-                }
-                Text {
-                    attr {
-                        text("新建对话")
-                        fontSize(metrics.dp(16f))
-                        fontWeightBold()
-                        color(StockChatTheme.textPrimary)
                     }
                 }
             }
@@ -490,17 +494,19 @@ internal class StockChatPage : BasePager() {
                         top = pagerData.statusBarHeight + metrics.dp(76f),
                         left = 0f,
                         right = 0f,
-                        bottom = metrics.composerContentBottom(
-                            maxOf(ctx.keyboardHeight, pagerData.safeAreaInsets.bottom),
-                            ctx.composerFocused,
-                            ctx.voiceMode,
-                            ctx.selectedImages.isNotEmpty(),
-                        ),
+                    bottom = metrics.composerContentBottom(
+                        maxOf(ctx.keyboardHeight, pagerData.safeAreaInsets.bottom),
+                        ctx.composerFocused,
+                        ctx.voiceMode,
+                        ctx.selectedImages.isNotEmpty(),
+                        ctx.composerExtraInputLines(),
+                    ),
                     )
                     animate(Animation.easeInOut(ctx.keyboardAnimDuration), ctx.keyboardHeight)
                     animate(Animation.easeInOut(0.26f), ctx.composerFocused)
                     animate(Animation.easeInOut(0.26f), ctx.voiceMode)
                     animate(Animation.easeInOut(0.26f), ctx.selectedImages.size)
+                    animate(Animation.easeInOut(0.18f), ctx.inputLineCount)
                 }
                 vif({ ctx.messages.isEmpty() }) {
                     ctx.WelcomeContent(this)
@@ -578,6 +584,9 @@ internal class StockChatPage : BasePager() {
                         fontWeightMedium()
                         color(StockChatTheme.textPrimary)
                         textAlignCenter()
+                        // 给定确定宽度并限单行，长标题截断显示，避免溢出遮挡两侧按钮
+                        width(pagerData.pageViewWidth - metrics.dp(78f) - metrics.dp(145f))
+                        lines(1)
                     }
                 }
             }
@@ -850,6 +859,7 @@ internal class StockChatPage : BasePager() {
                         focused = ctx.composerFocused,
                         voiceMode = ctx.voiceMode,
                         hasAttachments = ctx.selectedImages.isNotEmpty(),
+                        extraInputLines = ctx.composerExtraInputLines(),
                     )
                 )
                 zIndex(6)
@@ -857,6 +867,7 @@ internal class StockChatPage : BasePager() {
                 animate(Animation.easeInOut(0.26f), ctx.composerFocused)
                 animate(Animation.easeInOut(0.26f), ctx.voiceMode)
                 animate(Animation.easeInOut(0.26f), ctx.selectedImages.size)
+                animate(Animation.easeInOut(0.18f), ctx.inputLineCount)
             }
             View {
                 attr {
@@ -870,6 +881,7 @@ internal class StockChatPage : BasePager() {
                             focused = ctx.composerFocused,
                             voiceMode = ctx.voiceMode,
                             hasAttachments = ctx.selectedImages.isNotEmpty(),
+                            extraInputLines = ctx.composerExtraInputLines(),
                         )
                     )
                     borderRadius(
@@ -893,6 +905,7 @@ internal class StockChatPage : BasePager() {
                     animate(Animation.easeInOut(0.26f), ctx.composerFocused)
                     animate(Animation.easeInOut(0.26f), ctx.voiceMode)
                     animate(Animation.easeInOut(0.26f), ctx.selectedImages.size)
+                    animate(Animation.easeInOut(0.18f), ctx.inputLineCount)
                 }
                 vif({ ctx.selectedImages.isNotEmpty() }) {
                     View {
@@ -932,7 +945,13 @@ internal class StockChatPage : BasePager() {
                                 left = metrics.dp(if (expanded) 20f else 61f),
                                 right = metrics.dp(if (expanded) 20f else 60f),
                             )
-                            height(metrics.dp(38f))
+                            // 单行高 38dp（23 行高 + 15 上下留白）；超过一行后按行数撑高，面板同步增高
+                            val visibleLines = if (expanded && !ctx.voiceMode) {
+                                ctx.inputLineCount
+                            } else {
+                                1
+                            }
+                            height(metrics.dp(15f) + metrics.composerInputLineHeight * visibleLines)
                             text(ctx.inputText)
                             fontSize(metrics.dp(17f))
                             lineHeight(metrics.dp(23f))
@@ -954,16 +973,28 @@ internal class StockChatPage : BasePager() {
                             animate(Animation.easeInOut(0.26f), ctx.composerFocused)
                             animate(Animation.easeInOut(0.26f), ctx.voiceMode)
                             animate(Animation.easeInOut(0.26f), ctx.selectedImages.size)
+                            animate(Animation.easeInOut(0.18f), ctx.inputLineCount)
                         }
                         event {
                             textDidChange(isSyncEdit = true) {
                                 ctx.inputText = it.text
+                                ctx.updateInputLineMetrics(it.text)
                             }
                             inputFocus {
                                 ctx.inputText = it.text
                                 ctx.closeDrawer()
-                                ctx.voiceMode = false
+                                if (ctx.voiceMode) {
+                                    // 语音模式下输入框不应持有焦点（如长按触发录音前后的异常聚焦回调），
+                                    // 立即交还焦点，避免焦点态与语音态叠加导致按钮行显示错乱
+                                    setTimeout(0) {
+                                        if (ctx.voiceMode && ctx::inputRef.isInitialized) {
+                                            ctx.inputRef.view?.blur()
+                                        }
+                                    }
+                                    return@inputFocus
+                                }
                                 ctx.composerFocused = true
+                                ctx.updateInputLineMetrics(it.text)
                             }
                             inputBlur {
                                 ctx.inputText = it.text
@@ -1142,36 +1173,37 @@ internal class StockChatPage : BasePager() {
                             ctx.openImagePicker()
                         }
                     }
-                    View {
-                        attr {
-                            val hasAttachments = ctx.selectedImages.isNotEmpty()
-                            val showSend = ctx.composerFocused && !ctx.voiceMode
-                            val canSend = !ctx.isSending && (ctx.inputText.isNotBlank() || hasAttachments)
-                            width(metrics.dp(if (showSend) 42f else 0f))
-                            height(metrics.dp(42f))
-                            borderRadius(metrics.dp(21f))
-                            marginLeft(metrics.dp(if (showSend) 12f else 0f))
-                            backgroundColor(
-                                if (!canSend) {
-                                    Color(0xFFE4EAE7)
-                                } else {
-                                    StockChatTheme.accent
-                                }
-                            )
-                            allCenter()
-                            opacity(if (showSend) 1f else 0f)
-                            touchEnable(showSend && canSend)
-                            animate(Animation.easeOut(0.2f), showSend)
-                        }
-                        event {
-                            click { ctx.sendMessage() }
-                        }
-                        Text {
+                    // 发送按钮用 vif 整体挂载/移除：此前用 width/opacity 动画收起，
+                    // 在进入语音模式时收起动画可能不生效，导致灰色圆形残留并遮挡加号按钮
+                    vif({ ctx.composerFocused && !ctx.voiceMode }) {
+                        View {
                             attr {
-                                text("↑")
-                                fontSize(metrics.dp(23f))
-                                fontWeightBold()
-                                color(Color.WHITE)
+                                val hasAttachments = ctx.selectedImages.isNotEmpty()
+                                val canSend = !ctx.isSending && (ctx.inputText.isNotBlank() || hasAttachments)
+                                width(metrics.dp(42f))
+                                height(metrics.dp(42f))
+                                borderRadius(metrics.dp(21f))
+                                marginLeft(metrics.dp(12f))
+                                backgroundColor(
+                                    if (!canSend) {
+                                        Color(0xFFE4EAE7)
+                                    } else {
+                                        StockChatTheme.accent
+                                    }
+                                )
+                                allCenter()
+                                touchEnable(canSend)
+                            }
+                            event {
+                                click { ctx.sendMessage() }
+                            }
+                            Text {
+                                attr {
+                                    text("↑")
+                                    fontSize(metrics.dp(23f))
+                                    fontWeightBold()
+                                    color(Color.WHITE)
+                                }
                             }
                         }
                     }
@@ -1278,12 +1310,33 @@ internal class StockChatPage : BasePager() {
     }
 
     private fun focusTextInputAfterLayout() {
+        updateInputLineMetrics(inputText)
         setTimeout(0) {
             if (composerFocused && !voiceMode && ::inputRef.isInitialized) {
                 inputRef.view?.setText(inputText)
                 inputRef.view?.focus()
             }
         }
+    }
+
+    // 输入框处于聚焦非语音态时，超出单行的部分行数，用于撑高输入框和面板
+    private fun composerExtraInputLines(): Int {
+        return if (composerFocused && !voiceMode) {
+            (inputLineCount - 1).coerceAtLeast(0)
+        } else {
+            0
+        }
+    }
+
+    internal fun updateInputLineMetrics(text: String) {
+        val metrics = layoutMetrics
+        // 展开态输入框可用宽 = 页宽 - 面板左右外边距 18*2 - 输入框左右内边距 20*2
+        val availableWidth = (pagerData.pageViewWidth - metrics.dp(76f)) * 0.97f
+        inputLineCount = estimateWrappedLineCount(
+            text,
+            metrics.dp(17f),
+            availableWidth,
+        ).coerceIn(1, MAX_INPUT_LINES)
     }
 
     private fun InputModeMark(
@@ -1696,6 +1749,7 @@ internal class StockChatPage : BasePager() {
             inputRef.view?.blur()
         }
         inputText = ""
+        inputLineCount = 1
         selectedImages.clear()
         voiceMode = false
         composerFocused = false
@@ -1936,6 +1990,7 @@ internal class StockChatPage : BasePager() {
         activeSessionId = nextSessionId()
         messages.clear()
         inputText = ""
+        inputLineCount = 1
         selectedImages.clear()
         voiceMode = false
         isSending = false
@@ -2070,6 +2125,7 @@ internal class StockChatPage : BasePager() {
     companion object {
         private const val MAX_HISTORY_TURNS = 6
         private const val MAX_RECENT_SESSIONS = 6
+        private const val MAX_INPUT_LINES = 5
         private const val DRAWER_SWIPE_DISTANCE = 56f
         private const val VOICE_CANCEL_DISTANCE = 56f
         private const val MAX_IMAGE_SELECTION_COUNT = 9

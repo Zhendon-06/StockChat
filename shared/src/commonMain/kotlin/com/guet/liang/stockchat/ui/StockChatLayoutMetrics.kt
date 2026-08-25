@@ -13,6 +13,8 @@ internal class StockChatLayoutMetrics(pageWidth: Float) {
     val composerBottomGap = dp(7f)
     val composerContentGap = dp(10f)
     val composerAttachmentStripHeight = dp(82f)
+    // 输入框单行高度，多行时面板按行同步增高
+    val composerInputLineHeight = dp(23f)
 
     fun dp(value: Float): Float = value * scale
 
@@ -20,26 +22,32 @@ internal class StockChatLayoutMetrics(pageWidth: Float) {
         focused: Boolean,
         voiceMode: Boolean = false,
         hasAttachments: Boolean = false,
+        extraInputLines: Int = 0,
     ): Float {
         val baseHeight = if (focused || voiceMode || hasAttachments) {
             composerExpandedHeight
         } else {
             composerCollapsedHeight
         }
-        return baseHeight + if (hasAttachments) composerAttachmentStripHeight else 0f
+        return baseHeight +
+            composerInputLineHeight * extraInputLines.coerceAtLeast(0) +
+            if (hasAttachments) composerAttachmentStripHeight else 0f
     }
 
     fun composerDockHeight(
         focused: Boolean,
         voiceMode: Boolean = false,
         hasAttachments: Boolean = false,
-    ): Float = composerPanelHeight(focused, voiceMode, hasAttachments) + composerFooterHeight
+        extraInputLines: Int = 0,
+    ): Float = composerPanelHeight(focused, voiceMode, hasAttachments, extraInputLines) +
+        composerFooterHeight
 
     fun composerContentBottom(
         bottomInset: Float,
         focused: Boolean,
         voiceMode: Boolean = false,
         hasAttachments: Boolean = false,
+        extraInputLines: Int = 0,
     ): Float = bottomInset + composerBottomGap +
-        composerDockHeight(focused, voiceMode, hasAttachments) + composerContentGap
+        composerDockHeight(focused, voiceMode, hasAttachments, extraInputLines) + composerContentGap
 }
