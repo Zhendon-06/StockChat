@@ -30,6 +30,7 @@ internal sealed class AnswerBlock {
 
     data class ImageGallery(
         val images: List<String>,
+        val requestImages: List<String> = emptyList(),
     ) : AnswerBlock()
 }
 

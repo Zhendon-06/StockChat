@@ -536,6 +536,7 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
                         "success" to 1,
                         "cancelled" to if (result.cancelled) 1 else 0,
                         "images" to result.images,
+                        "previewImages" to result.previewImages,
                         "truncated" to if (result.truncated) 1 else 0,
                     ),
                 )

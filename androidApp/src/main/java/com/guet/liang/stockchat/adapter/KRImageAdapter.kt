@@ -12,6 +12,7 @@ import android.util.Log
 import android.widget.ImageView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.RequestBuilder
+import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.request.target.CustomTarget
 import com.bumptech.glide.request.transition.Transition
 import com.tencent.kuikly.core.render.android.KuiklyRenderViewContext
@@ -83,6 +84,11 @@ class KRImageAdapter(val context: Context) : IKRImageAdapter {
                 ImageView.ScaleType.FIT_CENTER -> requestBuilder.fitCenter()
                 else -> {}
             }
+        }
+        if (imageLoadOption.isAssets()) {
+            requestBuilder
+                .diskCacheStrategy(DiskCacheStrategy.NONE)
+                .skipMemoryCache(true)
         }
         requestBuilder
             .into(object : CustomTarget<Drawable>() {

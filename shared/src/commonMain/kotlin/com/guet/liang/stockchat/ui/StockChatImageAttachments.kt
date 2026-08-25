@@ -4,6 +4,7 @@ import com.tencent.kuikly.core.base.Border
 import com.tencent.kuikly.core.base.BorderStyle
 import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.core.base.ViewContainer
+import com.tencent.kuikly.core.base.attr.CaptureRule
 import com.tencent.kuikly.core.directives.vfor
 import com.tencent.kuikly.core.reactive.collection.ObservableList
 import com.tencent.kuikly.core.views.Image
@@ -12,7 +13,7 @@ import com.tencent.kuikly.core.views.Text
 import com.tencent.kuikly.core.views.View
 
 internal fun ViewContainer<*, *>.ComposerImageAttachments(
-    images: ObservableList<String>,
+    images: () -> ObservableList<String>,
     scale: Float,
     onRemove: (String) -> Unit,
 ) {
@@ -20,11 +21,13 @@ internal fun ViewContainer<*, *>.ComposerImageAttachments(
         attr {
             height(70f * scale)
             flexDirectionRow()
+            alignItemsCenter()
             showScrollerIndicator(false)
             bouncesEnable(true)
             scrollEnable(true)
+            padding(left = 4f * scale, right = 4f * scale)
         }
-        vfor({ images }) { imageUri ->
+        vfor(images) { imageUri ->
             View {
                 attr {
                     size(64f * scale, 64f * scale)
@@ -43,20 +46,31 @@ internal fun ViewContainer<*, *>.ComposerImageAttachments(
                 }
                 View {
                     attr {
-                        absolutePosition(top = 4f * scale, right = 4f * scale)
-                        size(22f * scale, 22f * scale)
-                        borderRadius(11f * scale)
-                        backgroundColor(Color(0xCC17201D))
+                        absolutePosition(top = 0f, right = 0f)
+                        size(32f * scale, 32f * scale)
                         allCenter()
+                        touchEnable(true)
+                        zIndex(10)
+                        capture(CaptureRule.click())
                     }
                     event {
                         click { onRemove(imageUri) }
                     }
-                    Text {
+                    View {
                         attr {
-                            text("×")
-                            fontSize(16f * scale)
-                            color(Color.WHITE)
+                            size(22f * scale, 22f * scale)
+                            borderRadius(11f * scale)
+                            backgroundColor(Color(0xCC17201D))
+                            allCenter()
+                            touchEnable(false)
+                        }
+                        Text {
+                            attr {
+                                text("×")
+                                fontSize(16f * scale)
+                                color(Color.WHITE)
+                                touchEnable(false)
+                            }
                         }
                     }
                 }
@@ -73,7 +87,9 @@ internal fun ViewContainer<*, *>.MessageImageGallery(
         return
     }
     val imageSize = if (images.size == 1) 176f * scale else 122f * scale
-    val galleryWidth = if (images.size == 1) imageSize else 290f * scale
+    val itemSpacing = 8f * scale
+    val contentWidth = images.size * imageSize + (images.size - 1).coerceAtLeast(0) * itemSpacing
+    val galleryWidth = if (images.size == 1) imageSize else minOf(290f * scale, contentWidth)
     Scroller {
         attr {
             width(galleryWidth)
@@ -84,7 +100,7 @@ internal fun ViewContainer<*, *>.MessageImageGallery(
             scrollEnable(images.size > 2)
             marginBottom(8f * scale)
         }
-        images.forEach { imageUri ->
+        images.forEachIndexed { index, imageUri ->
             Image {
                 attr {
                     size(imageSize, imageSize)
@@ -92,7 +108,9 @@ internal fun ViewContainer<*, *>.MessageImageGallery(
                     src(imageUri, false)
                     borderRadius(18f * scale)
                     border(Border(1f, BorderStyle.SOLID, StockChatTheme.borderStrong))
-                    marginRight(8f * scale)
+                    if (index < images.lastIndex) {
+                        marginRight(itemSpacing)
+                    }
                 }
             }
         }

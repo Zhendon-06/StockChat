@@ -16,6 +16,7 @@ internal data class AliyunApiConfig(
     val apiKey: String,
     val baseUrl: String = "https://dashscope.aliyuncs.com/compatible-mode/v1",
     val chatModel: String = "qwen-plus",
+    val visionModel: String = "qwen-vl-plus",
 )
 
 internal data class MimoVoiceApiConfig(
@@ -36,6 +37,8 @@ internal class AliyunStockChatDataSource(
     override fun answer(
         question: String,
         history: List<ChatHistoryItem>,
+        images: List<String>,
+        model: String,
         attempt: Int,
         callback: (ChatAnswer) -> Unit,
     ) {
@@ -70,12 +73,40 @@ internal class AliyunStockChatDataSource(
             put(
                 JSONObject().apply {
                     put("role", "user")
-                    put("content", question)
+                    put(
+                        "content",
+                        if (images.isEmpty()) {
+                            question
+                        } else {
+                            JSONArray().apply {
+                                images.forEach { imageUrl ->
+                                    put(
+                                        JSONObject().apply {
+                                            put("type", "image_url")
+                                            put(
+                                                "image_url",
+                                                JSONObject().apply { put("url", imageUrl) },
+                                            )
+                                        }
+                                    )
+                                }
+                                put(
+                                    JSONObject().apply {
+                                        put("type", "text")
+                                        put("text", question)
+                                    }
+                                )
+                            }
+                        }
+                    )
                 }
             )
         }
         val requestBody = JSONObject().apply {
-            put("model", config.chatModel)
+            put(
+                "model",
+                if (images.isEmpty()) model.ifBlank { config.chatModel } else config.visionModel,
+            )
             put("messages", messages)
             put("thinking", JSONObject().apply { put("type", "disabled") })
             put("max_completion_tokens", 1024)

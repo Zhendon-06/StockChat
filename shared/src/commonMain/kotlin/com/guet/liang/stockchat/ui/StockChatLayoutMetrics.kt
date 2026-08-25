@@ -6,12 +6,14 @@ internal class StockChatLayoutMetrics(pageWidth: Float) {
 
     val scale = (availableWidth / referenceWidth).coerceIn(0.88f, 1.12f)
     val drawerWidth = availableWidth * 0.78f
-    val welcomeLogoWidth = (availableWidth * 0.34f).coerceIn(120f, 140f)
+    // 欢迎页主视觉（方形图形 logo）边长：接近 WorkBuddy 吉祥物的视觉分量
+    val welcomeHeroSize = (availableWidth * 0.36f).coerceIn(130f, 162f)
     val composerCollapsedHeight = dp(68f)
     val composerExpandedHeight = dp(112f)
     val composerFooterHeight = dp(26f)
     val composerBottomGap = dp(7f)
-    val composerContentGap = dp(10f)
+    // 输入框上缘的内容渐隐过渡高度：消息延伸到面板顶边，最后这段淡出到页面背景
+    val composerContentFadeHeight = dp(36f)
     val composerAttachmentStripHeight = dp(82f)
     // 输入框单行高度，多行时面板按行同步增高
     val composerInputLineHeight = dp(23f)
@@ -49,5 +51,5 @@ internal class StockChatLayoutMetrics(pageWidth: Float) {
         hasAttachments: Boolean = false,
         extraInputLines: Int = 0,
     ): Float = bottomInset + composerBottomGap +
-        composerDockHeight(focused, voiceMode, hasAttachments, extraInputLines) + composerContentGap
+        composerDockHeight(focused, voiceMode, hasAttachments, extraInputLines)
 }
