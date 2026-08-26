@@ -518,7 +518,22 @@ internal class StockChatPage : BasePager() {
         val ctx = this
         val metrics = ctx.layoutMetrics
         with(container) {
-            vif({ ctx.selectedHomeTab == HOME_TAB_WATCHLIST && !ctx.homeContentHidden }) {
+            View {
+                attr {
+                    absolutePositionAllZero()
+                    val active = ctx.selectedHomeTab == HOME_TAB_WATCHLIST
+                    opacity(1f)
+                    transform(
+                        Translate(
+                            0f,
+                            0f,
+                            if (active) 0f else pagerData.pageViewWidth,
+                            0f,
+                        )
+                    )
+                    touchEnable(active)
+                    animation(Animation.easeInOut(0.35f), ctx.selectedHomeTab)
+                }
                 View {
                     attr {
                         absolutePositionAllZero()
@@ -527,49 +542,65 @@ internal class StockChatPage : BasePager() {
                         padding(left = metrics.dp(32f), right = metrics.dp(32f))
                     }
                     View {
-                    attr {
-                        size(metrics.dp(72f), metrics.dp(72f))
-                        borderRadius(metrics.dp(22f))
-                        backgroundColor(StockChatTheme.accentSoft)
-                        flexDirectionRow()
-                        alignItemsFlexEnd()
-                        justifyContentCenter()
-                        padding(bottom = metrics.dp(18f))
-                    }
-                    // 三根高低错落的行情柱，作为自选行情的示意图形
-                    listOf(16f, 28f, 21f).forEach { barHeight ->
-                        View {
-                            attr {
-                                width(metrics.dp(6f))
-                                height(metrics.dp(barHeight))
-                                borderRadius(metrics.dp(3f))
-                                backgroundColor(StockChatTheme.accent)
-                                margin(left = metrics.dp(3f), right = metrics.dp(3f))
+                        attr {
+                            size(metrics.dp(72f), metrics.dp(72f))
+                            borderRadius(metrics.dp(22f))
+                            backgroundColor(StockChatTheme.accentSoft)
+                            flexDirectionRow()
+                            alignItemsFlexEnd()
+                            justifyContentCenter()
+                            padding(bottom = metrics.dp(18f))
+                        }
+                        // 三根高低错落的行情柱，作为自选行情的示意图形
+                        listOf(16f, 28f, 21f).forEach { barHeight ->
+                            View {
+                                attr {
+                                    width(metrics.dp(6f))
+                                    height(metrics.dp(barHeight))
+                                    borderRadius(metrics.dp(3f))
+                                    backgroundColor(StockChatTheme.accent)
+                                    margin(left = metrics.dp(3f), right = metrics.dp(3f))
+                                }
                             }
                         }
                     }
-                }
-                Text {
-                    attr {
-                        text("自选行情")
-                        fontSize(metrics.dp(20f))
-                        fontWeightBold()
-                        color(StockChatTheme.textPrimary)
-                        marginTop(metrics.dp(20f))
+                    Text {
+                        attr {
+                            text("自选行情")
+                            fontSize(metrics.dp(20f))
+                            fontWeightBold()
+                            color(StockChatTheme.textPrimary)
+                            marginTop(metrics.dp(20f))
+                        }
                     }
-                }
-                Text {
-                    attr {
-                        text("自选股与指数追踪功能即将上线\n当前演示版本请先使用 AI 问答")
-                        fontSize(metrics.dp(13f))
-                        color(StockChatTheme.textSecondary)
-                        textAlignCenter()
-                        marginTop(metrics.dp(10f))
+                    Text {
+                        attr {
+                            text("自选股与指数追踪功能即将上线\n当前演示版本请先使用 AI 问答")
+                            fontSize(metrics.dp(13f))
+                            color(StockChatTheme.textSecondary)
+                            textAlignCenter()
+                            marginTop(metrics.dp(10f))
+                        }
                     }
+                    // 与欢迎页同款分段开关，保证切到自选行情后仍可切回 AI 问答
+                    ctx.HomeTabSwitcher(this, marginTopDp = 24f, widthDp = 232f)
                 }
-                // 与欢迎页同款分段开关，保证切到自选行情后仍可切回 AI 问答
-                ctx.HomeTabSwitcher(this, marginTopDp = 24f, widthDp = 232f)
             }
+        }
+    }
+
+    // 主页内容容器：同时挂载 AI 问答与自选行情两层，通过裁剪避免切换时滑出边界，
+    // 实际显隐/层级/位移由各内容层自己绑定 selectedHomeTab 控制
+    private fun HomeContentLayer(container: ViewContainer<*, *>) {
+        val ctx = this
+        with(container) {
+            View {
+                attr {
+                    absolutePositionAllZero()
+                    overflow(true)
+                }
+                ctx.WelcomeContent(this)
+                ctx.WatchlistPlaceholder(this)
             }
         }
     }
@@ -710,11 +741,10 @@ internal class StockChatPage : BasePager() {
                     animate(Animation.easeOut(ctx.keyboardAnimDuration), ctx.keyboardHeight)
                     animate(Animation.easeOut(0.2f), ctx.composerExpanded)
                 }
-                // 两个模式常驻挂载于同一 vif 内：selectedHomeTab 驱动交叉切换动画，
-                // 键盘弹出/收起驱动整块向上飞离/坠回的动画（见各自根节点的 transform）
-                vif({ ctx.messages.isEmpty() }) {
-                    ctx.WelcomeContent(this)
-                    ctx.WatchlistPlaceholder(this)
+                // 主页内容（AI 问答 / 自选行情）常驻挂载，通过 opacity + translate 做交叉切换动画；
+                // 键盘弹出/收起时整块卸载/恢复，避免与输入面板动画时序冲突
+                vif({ ctx.messages.isEmpty() && !ctx.homeContentHidden }) {
+                    ctx.HomeContentLayer(this)
                 }
                 vif({ ctx.messages.isNotEmpty() }) {
                     ctx.MessageList(this)
@@ -936,47 +966,62 @@ internal class StockChatPage : BasePager() {
         val ctx = this
         val metrics = ctx.layoutMetrics
         with(container) {
-        vif({ ctx.selectedHomeTab == HOME_TAB_CHAT && !ctx.homeContentHidden }) {
             View {
                 attr {
                     absolutePositionAllZero()
+                    val active = ctx.selectedHomeTab == HOME_TAB_CHAT
+                    opacity(1f)
+                    transform(
+                        Translate(
+                            0f,
+                            0f,
+                            if (active) 0f else -pagerData.pageViewWidth,
+                            0f,
+                        )
+                    )
+                    touchEnable(active)
+                    animation(Animation.easeInOut(0.35f), ctx.selectedHomeTab)
                 }
                 View {
                     attr {
-                        absolutePosition(
-                            top = 0f,
-                            left = 0f,
-                            right = 0f,
-                            bottom = metrics.dp(136f),
-                        )
-                        alignItemsCenter()
-                        justifyContentCenter()
-                        padding(left = metrics.dp(24f), right = metrics.dp(24f))
+                        absolutePositionAllZero()
                     }
-                    // 主视觉只放图形 logo，品牌名交给标题说一次，避免与横排 wordmark 重复
-                    Image {
+                    View {
                         attr {
-                            size(metrics.welcomeHeroSize, metrics.welcomeHeroSize)
-                            resizeContain()
-                            src(ImageUri.commonAssets("stockchat_app_icon.png"))
+                            absolutePosition(
+                                top = 0f,
+                                left = 0f,
+                                right = 0f,
+                                bottom = metrics.dp(136f),
+                            )
+                            alignItemsCenter()
+                            justifyContentCenter()
+                            padding(left = metrics.dp(24f), right = metrics.dp(24f))
                         }
-                    }
-                    Text {
-                        attr {
-                            text("StockChat，我帮你看行情")
-                            fontSize(metrics.dp(26f))
-                            fontWeightBold()
-                            color(StockChatTheme.textPrimary)
-                            textAlignCenter()
-                            marginTop(metrics.dp(26f))
+                        // 主视觉只放图形 logo，品牌名交给标题说一次，避免与横排 wordmark 重复
+                        Image {
+                            attr {
+                                size(metrics.welcomeHeroSize, metrics.welcomeHeroSize)
+                                resizeContain()
+                                src(ImageUri.commonAssets("stockchat_app_icon.png"))
+                            }
                         }
+                        Text {
+                            attr {
+                                text("StockChat，我帮你看行情")
+                                fontSize(metrics.dp(26f))
+                                fontWeightBold()
+                                color(StockChatTheme.textPrimary)
+                                textAlignCenter()
+                                marginTop(metrics.dp(26f))
+                            }
+                        }
+                        // 欢迎语下方的分段开关：与抽屉内为同一组件、同一状态，选中态完全一致
+                        ctx.HomeTabSwitcher(this, marginTopDp = 28f, widthDp = 232f)
                     }
-                    // 欢迎语下方的分段开关：与抽屉内为同一组件、同一状态，选中态完全一致
-                    ctx.HomeTabSwitcher(this, marginTopDp = 28f, widthDp = 232f)
+                    ctx.SuggestionCardRow(this)
                 }
-                ctx.SuggestionCardRow(this)
             }
-        }
         }
     }
 
@@ -1518,7 +1563,7 @@ internal class StockChatPage : BasePager() {
                 }
                 Text {
                     attr {
-                        text("内容由 AI 生成")
+                        text("")
                         fontSize(metrics.dp(11f))
                         color(StockChatTheme.textTertiary)
                     }
