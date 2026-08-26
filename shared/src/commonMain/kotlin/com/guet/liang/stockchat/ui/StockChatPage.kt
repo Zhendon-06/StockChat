@@ -57,6 +57,7 @@ import com.tencent.kuikly.core.views.View
 
 private const val CHAT_PAGE_NAME = "router"
 private const val STOCK_DETAIL_PAGE_NAME = "stock_detail"
+private const val IMAGE_PREVIEW_PAGE_NAME = "stock_image_preview"
 private const val DEFAULT_CHAT_MODEL_ID = "qwen-plus"
 private const val HOME_TAB_CHAT = 0
 private const val HOME_TAB_WATCHLIST = 1
@@ -116,15 +117,27 @@ private val CHAT_MODEL_OPTIONS = listOf(
 internal class StockChatPage : BasePager() {
     private var drawerOpen by observable(false)
     private var composerFocused by observable(false)
+    // 输入面板展开态，与聚焦态解耦：聚焦时进入展开，键盘收起后仍保持展开，
+    // 点击页面空白区域才收缩——收缩的意义是"焦点离开输入后还给页面更多空间"，
+    // 而不是紧跟键盘状态。这也让收缩动画天然避开键盘回落动画（互相打断问题）
+    private var composerExpanded by observable(false)
     private var keyboardHeight by observable(0f)
     private var keyboardVisible by observable(false)
     // 键盘动画时长（秒），来自 keyboardHeightChange 回调，驱动输入面板跟随键盘平滑移动
     private var keyboardAnimDuration by observable(DEFAULT_KEYBOARD_ANIM_DURATION)
     // 主页与抽屉共用的分段 Tab（AI 问答 / 自选行情），保证两处选中态始终一致
     private var selectedHomeTab by observable(HOME_TAB_CHAT)
-    // 欢迎区/自选行情整块飞离屏幕的单一动画开关：由键盘三个信号归并而来。
-    // 动画只绑它一个，避免三个信号先后到达时把同一条飞行动画打断在半路
-    private var homeContentFlownUp by observable(false)
+    // 键盘弹出/输入聚焦时主页内容（欢迎区/自选行情）直接整块卸载，不做联动动画
+    private var homeContentHidden by observable(false)
+    // 键盘关闭后的强制归位计数，见 scheduleComposerDockResync
+    private var composerDockNudge by observable(0)
+    // 键盘回落动画进行中的标记：期间主页内容不回挂（避免挂载大子树拖慢回落），
+    // 空白点击/滑动触发的收缩也挂起到回落播完（避免同节点两动画互相打断）
+    private var keyboardDropSettling by observable(false)
+    // 空白交互发生在键盘在场/回落期间时的挂起收缩标记，回落播完后执行
+    private var collapseComposerAfterSettle = false
+    // 回落任务代次：键盘在回落窗口内再次弹起又收起时，作废旧定时器防止提前解冻
+    private var dockSettleGeneration = 0
     private var inputText by observable("")
     // 输入内容折行后的行数（估算），驱动输入框与面板同步增高
     private var inputLineCount by observable(1)
@@ -162,8 +175,6 @@ internal class StockChatPage : BasePager() {
     private var drawerPanStartY = 0f
     private var messageListNearBottom = true
     private var stickMessageListToBottom = true
-    // 键盘落底动画播放中（composerFocused 的退出被延迟排定），期间避免重复翻转聚焦态
-    private var keyboardDropSettling = false
     private lateinit var dataSource: StockChatDataSource
     private lateinit var speechRecognitionService: MimoSpeechRecognitionService
     private lateinit var speechSynthesisService: MimoSpeechSynthesisService
@@ -203,11 +214,12 @@ internal class StockChatPage : BasePager() {
                 "left" -> closeDrawer()
             }
         }
-        // 键盘/聚焦三信号归并成单一飞行开关；observable 值不变时不会重复触发动画
+        // 键盘/聚焦任一信号出现，主页内容立即卸载；信号全部消失后立即恢复。
+        // 不做任何过渡动画，避免与键盘动画联动时序打架
         bindValueChange({
-            composerFocused || keyboardVisible || keyboardHeight > 0f
-        }) { flown ->
-            homeContentFlownUp = flown == true
+            composerFocused || keyboardVisible || keyboardHeight > 0f || keyboardDropSettling
+        }) { hidden ->
+            homeContentHidden = hidden == true
         }
     }
 
@@ -506,30 +518,15 @@ internal class StockChatPage : BasePager() {
         val ctx = this
         val metrics = ctx.layoutMetrics
         with(container) {
-            View {
-                attr {
-                    val active = ctx.selectedHomeTab == HOME_TAB_WATCHLIST
-                    // 与欢迎页一致：键盘弹出时整块向上飞离屏幕，键盘收起后坠回原位
-                    val flownUp = ctx.homeContentFlownUp
-                    absolutePositionAllZero()
-                    alignItemsCenter()
-                    justifyContentCenter()
-                    padding(left = metrics.dp(32f), right = metrics.dp(32f))
-                    opacity(if (active) 1f else 0f)
-                    // 选中时从右侧滑入，切走时向右滑出并淡出，与 AI 问答形成交叉过渡
-                    transform(
-                        Translate(
-                            percentageX = 0f,
-                            percentageY = 0f,
-                            offsetX = if (active) 0f else metrics.dp(32f),
-                            offsetY = if (flownUp) -pagerData.pageViewHeight * 0.72f else 0f,
-                        )
-                    )
-                    animation(Animation.easeInOut(0.26f), ctx.selectedHomeTab)
-                    animation(Animation.springEaseOut(0.45f, 0.8f, 0.15f), ctx.homeContentFlownUp)
-                    touchEnable(active && !flownUp)
-                }
+            vif({ ctx.selectedHomeTab == HOME_TAB_WATCHLIST && !ctx.homeContentHidden }) {
                 View {
+                    attr {
+                        absolutePositionAllZero()
+                        alignItemsCenter()
+                        justifyContentCenter()
+                        padding(left = metrics.dp(32f), right = metrics.dp(32f))
+                    }
+                    View {
                     attr {
                         size(metrics.dp(72f), metrics.dp(72f))
                         borderRadius(metrics.dp(22f))
@@ -572,6 +569,7 @@ internal class StockChatPage : BasePager() {
                 }
                 // 与欢迎页同款分段开关，保证切到自选行情后仍可切回 AI 问答
                 ctx.HomeTabSwitcher(this, marginTopDp = 24f, widthDp = 232f)
+            }
             }
         }
     }
@@ -686,6 +684,11 @@ internal class StockChatPage : BasePager() {
             }
             event {
                 pan { params -> ctx.handleDrawerPan(params) }
+                // 点输入框以外的任意区域（顶栏/聊天区/欢迎区等，凡是没被子视图
+                // 消费的点击都会冒泡到这里）：键盘弹起时先收键盘（面板保持展开）；
+                // 键盘已收起时再点，面板才收缩还给页面空间。输入 dock 自己吞掉
+                // 区域内的点击，不会冒泡到这
+                click { ctx.handleBlankAreaTap() }
             }
             View {
                 attr {
@@ -696,14 +699,16 @@ internal class StockChatPage : BasePager() {
                         right = 0f,
                     bottom = metrics.composerContentBottom(
                         maxOf(ctx.keyboardHeight, pagerData.safeAreaInsets.bottom),
-                        ctx.composerFocused,
+                        ctx.composerExpanded,
                         ctx.voiceMode,
                         ctx.selectedImageCount > 0,
                         ctx.composerExtraInputLines(),
-                    ),
+                    ) + (ctx.composerDockNudge % 2) * 0.1f,
                     )
-                    // 消息区随键盘高度平滑伸缩，与键盘动画时长保持一致
+                    // 展开态与键盘态解耦后两个信号不会在键盘回落期间并发变化
+                    // （收缩只发生在键盘静止时），可以安全地各绑各的动画
                     animate(Animation.easeOut(ctx.keyboardAnimDuration), ctx.keyboardHeight)
+                    animate(Animation.easeOut(0.2f), ctx.composerExpanded)
                 }
                 // 两个模式常驻挂载于同一 vif 内：selectedHomeTab 驱动交叉切换动画，
                 // 键盘弹出/收起驱动整块向上飞离/坠回的动画（见各自根节点的 transform）
@@ -724,11 +729,11 @@ internal class StockChatPage : BasePager() {
                             right = 0f,
                             bottom = metrics.composerContentBottom(
                                 maxOf(ctx.keyboardHeight, pagerData.safeAreaInsets.bottom),
-                                ctx.composerFocused,
+                                ctx.composerExpanded,
                                 ctx.voiceMode,
                                 ctx.selectedImageCount > 0,
                                 ctx.composerExtraInputLines(),
-                            ),
+                            ) + (ctx.composerDockNudge % 2) * 0.1f,
                         )
                         height(metrics.composerContentFadeHeight)
                         backgroundLinearGradient(
@@ -738,8 +743,9 @@ internal class StockChatPage : BasePager() {
                         )
                         touchEnable(false)
                         zIndex(5)
-                        // 渐隐层跟随输入面板一起随键盘平滑移动
+                        // 与消息区容器保持一致的两条动画绑定
                         animate(Animation.easeOut(ctx.keyboardAnimDuration), ctx.keyboardHeight)
+                        animate(Animation.easeOut(0.2f), ctx.composerExpanded)
                     }
                 }
             }
@@ -930,62 +936,46 @@ internal class StockChatPage : BasePager() {
         val ctx = this
         val metrics = ctx.layoutMetrics
         with(container) {
-        View {
-            attr {
-                val active = ctx.selectedHomeTab == HOME_TAB_CHAT
-                // 键盘弹出时整块从当前位置向上飞离屏幕，键盘收起后坠回原位
-                val flownUp = ctx.homeContentFlownUp
-                absolutePositionAllZero()
-                opacity(if (active) 1f else 0f)
-                transform(
-                    Translate(
-                        percentageX = 0f,
-                        percentageY = 0f,
-                        // 切到自选行情时向左滑出并淡出，切回时从左滑入
-                        offsetX = if (active) 0f else -metrics.dp(32f),
-                        // 0.72 倍页高足以让主视觉区飞出屏幕顶部；底部的快捷问题行
-                        // 不参与长途飞行，起飞时原地快速淡出（见 SuggestionCardRow）
-                        offsetY = if (flownUp) -pagerData.pageViewHeight * 0.72f else 0f,
-                    )
-                )
-                animation(Animation.springEaseOut(0.45f, 0.8f, 0.15f), ctx.homeContentFlownUp)
-                animation(Animation.easeInOut(0.26f), ctx.selectedHomeTab)
-                touchEnable(active && !flownUp)
-            }
+        vif({ ctx.selectedHomeTab == HOME_TAB_CHAT && !ctx.homeContentHidden }) {
             View {
                 attr {
-                    absolutePosition(
-                        top = 0f,
-                        left = 0f,
-                        right = 0f,
-                        bottom = metrics.dp(136f),
-                    )
-                    alignItemsCenter()
-                    justifyContentCenter()
-                    padding(left = metrics.dp(24f), right = metrics.dp(24f))
+                    absolutePositionAllZero()
                 }
-                // 主视觉只放图形 logo，品牌名交给标题说一次，避免与横排 wordmark 重复
-                Image {
+                View {
                     attr {
-                        size(metrics.welcomeHeroSize, metrics.welcomeHeroSize)
-                        resizeContain()
-                        src(ImageUri.commonAssets("stockchat_app_icon.png"))
+                        absolutePosition(
+                            top = 0f,
+                            left = 0f,
+                            right = 0f,
+                            bottom = metrics.dp(136f),
+                        )
+                        alignItemsCenter()
+                        justifyContentCenter()
+                        padding(left = metrics.dp(24f), right = metrics.dp(24f))
                     }
-                }
-                Text {
-                    attr {
-                        text("StockChat，我帮你看行情")
-                        fontSize(metrics.dp(26f))
-                        fontWeightBold()
-                        color(StockChatTheme.textPrimary)
-                        textAlignCenter()
-                        marginTop(metrics.dp(26f))
+                    // 主视觉只放图形 logo，品牌名交给标题说一次，避免与横排 wordmark 重复
+                    Image {
+                        attr {
+                            size(metrics.welcomeHeroSize, metrics.welcomeHeroSize)
+                            resizeContain()
+                            src(ImageUri.commonAssets("stockchat_app_icon.png"))
+                        }
                     }
+                    Text {
+                        attr {
+                            text("StockChat，我帮你看行情")
+                            fontSize(metrics.dp(26f))
+                            fontWeightBold()
+                            color(StockChatTheme.textPrimary)
+                            textAlignCenter()
+                            marginTop(metrics.dp(26f))
+                        }
+                    }
+                    // 欢迎语下方的分段开关：与抽屉内为同一组件、同一状态，选中态完全一致
+                    ctx.HomeTabSwitcher(this, marginTopDp = 28f, widthDp = 232f)
                 }
-                // 欢迎语下方的分段开关：与抽屉内为同一组件、同一状态，选中态完全一致
-                ctx.HomeTabSwitcher(this, marginTopDp = 28f, widthDp = 232f)
+                ctx.SuggestionCardRow(this)
             }
-            ctx.SuggestionCardRow(this)
         }
         }
     }
@@ -1002,11 +992,6 @@ internal class StockChatPage : BasePager() {
                         bottom = metrics.dp(6f),
                     )
                     height(metrics.dp(46f))
-                    // 快捷问题行贴近屏幕底部，跟随整块飞出会划过全屏太夸张，
-                    // 起飞时原地快速淡出，坠回时再淡入
-                    opacity(if (ctx.homeContentFlownUp) 0f else 1f)
-                    animation(Animation.easeOut(0.18f), ctx.homeContentFlownUp)
-                    touchEnable(!ctx.homeContentFlownUp)
                 }
                 Scroller {
                     attr {
@@ -1015,6 +1000,8 @@ internal class StockChatPage : BasePager() {
                         alignItemsCenter()
                         showScrollerIndicator(false)
                         bouncesEnable(true)
+                        // 推荐 chip 自己消费横向手势，避免触发页面级 drawer 滑动
+                        capture(CaptureRule.pan(CaptureRuleDirection.HORIZONTAL))
                         padding(left = metrics.dp(18f), right = metrics.dp(8f))
                     }
                     WELCOME_SUGGESTIONS.forEach { suggestion ->
@@ -1071,6 +1058,10 @@ internal class StockChatPage : BasePager() {
                 padding(bottom = ctx.layoutMetrics.composerContentFadeHeight + 8f)
             }
             event {
+                // 滚动容器会消费触摸，点击/拖动到不了根容器的空白点击处理，
+                // 在这里单独接上：点消息区空白或开始拖动列表都视作离开输入
+                click { ctx.handleBlankAreaTap() }
+                dragBegin { ctx.handleBlankAreaTap() }
                 scroll { params ->
                     val remaining = params.contentHeight - params.offsetY - params.viewHeight
                     ctx.messageListNearBottom = remaining <= 48f
@@ -1093,6 +1084,7 @@ internal class StockChatPage : BasePager() {
                         isFirst = message.id == ctx.messages.firstOrNull()?.id,
                         typingPhase = { ctx.typingDotPhase },
                         onQuoteClick = { ctx.openStockDetail(it) },
+                        onImageClick = { ctx.openImagePreview(it) },
                         onRetry = { ctx.retryMessage(it) },
                         onCopy = { ctx.copyMessage(it) },
                         onRegenerate = { ctx.regenerateMessage(it) },
@@ -1117,19 +1109,28 @@ internal class StockChatPage : BasePager() {
                 absolutePosition(
                     left = metrics.dp(18f),
                     right = metrics.dp(18f),
-                    bottom = effectiveInset + metrics.composerBottomGap,
+                    // nudge 项：键盘关闭后强制归位用的 0.1px 无感偏移
+                    bottom = effectiveInset + metrics.composerBottomGap +
+                        (ctx.composerDockNudge % 2) * 0.1f,
                 )
                 height(
                     metrics.composerDockHeight(
-                        focused = ctx.composerFocused,
+                        focused = ctx.composerExpanded,
                         voiceMode = ctx.voiceMode,
                         hasAttachments = ctx.selectedImageCount > 0,
                         extraInputLines = ctx.composerExtraInputLines(),
                     )
                 )
                 zIndex(6)
-                // 输入面板跟随键盘抬起/落下：使用键盘回调给出的动画时长，避免瞬时跳变
+                // 展开态与键盘态解耦：键盘回落期间展开态不变，回落动画不会被
+                // 无动画的几何更新打断；收缩只发生在键盘静止时，两条动画不并发
                 animate(Animation.easeOut(ctx.keyboardAnimDuration), ctx.keyboardHeight)
+                animate(Animation.easeOut(0.2f), ctx.composerExpanded)
+            }
+            event {
+                // 吃掉输入区内未被子视图消费的点击，避免冒泡到根容器被当成
+                // 空白区域点击而收缩面板
+                click { }
             }
             View {
                 attr {
@@ -1140,7 +1141,7 @@ internal class StockChatPage : BasePager() {
                     )
                     height(
                         metrics.composerPanelHeight(
-                            focused = ctx.composerFocused,
+                            focused = ctx.composerExpanded,
                             voiceMode = ctx.voiceMode,
                             hasAttachments = ctx.selectedImageCount > 0,
                             extraInputLines = ctx.composerExtraInputLines(),
@@ -1148,7 +1149,7 @@ internal class StockChatPage : BasePager() {
                     )
                     borderRadius(
                         metrics.dp(
-                            if (ctx.composerFocused || ctx.voiceMode || ctx.selectedImageCount > 0) {
+                            if (ctx.composerExpanded || ctx.voiceMode || ctx.selectedImageCount > 0) {
                                 24f
                             } else {
                                 30f
@@ -1164,8 +1165,9 @@ internal class StockChatPage : BasePager() {
                             Color(0x1A000000),
                         )
                     )
-                    animate(Animation.easeInOut(0.26f), ctx.composerFocused)
-                    animate(Animation.easeInOut(0.26f), ctx.voiceMode)
+                    animate(Animation.easeOut(0.2f), ctx.composerExpanded)
+                    animate(Animation.easeOut(0.2f), ctx.voiceMode)
+                    animate(Animation.easeOut(0.2f), ctx.selectedImageCount)
                     animate(Animation.easeInOut(0.18f), ctx.inputLineCount)
                 }
                 vif({ ctx.selectedImageCount > 0 }) {
@@ -1183,6 +1185,7 @@ internal class StockChatPage : BasePager() {
                             images = { ctx.selectedImages },
                             scale = metrics.scale,
                             onRemove = { ctx.removeSelectedImage(it) },
+                            onPreview = { ctx.openImagePreview(it) },
                         )
                     }
                 }
@@ -1192,7 +1195,7 @@ internal class StockChatPage : BasePager() {
                         }
                         attr {
                             val hasAttachments = ctx.selectedImageCount > 0
-                            val expanded = ctx.composerFocused || ctx.voiceMode || hasAttachments
+                            val expanded = ctx.composerExpanded || ctx.voiceMode || hasAttachments
                             val attachmentOffset = if (hasAttachments) {
                                 metrics.composerAttachmentStripHeight
                             } else {
@@ -1222,17 +1225,19 @@ internal class StockChatPage : BasePager() {
                             tintColor(
                                 if (ctx.voiceMode) Color(0x00000000) else StockChatTheme.accent
                             )
-                            placeholder(if (ctx.composerFocused) "发消息…" else ctx.voiceInputHint())
+                            placeholder(if (ctx.composerExpanded) "发消息…" else ctx.voiceInputHint())
                             placeholderColor(
                                 if (ctx.voiceMode) Color(0x00000000) else StockChatTheme.textTertiary
                             )
                             returnKeyTypeSend()
                             enablesReturnKeyAutomatically(true)
                             maxTextLength(300)
-                            touchEnable(ctx.composerFocused && !ctx.voiceMode)
+                            // 展开未聚焦时也可点：直接点输入区域原生聚焦拉起键盘
+                            touchEnable(ctx.composerExpanded && !ctx.voiceMode)
                             zIndex(2)
-                            animate(Animation.easeInOut(0.26f), ctx.composerFocused)
-                            animate(Animation.easeInOut(0.26f), ctx.voiceMode)
+                            animate(Animation.easeOut(0.2f), ctx.composerExpanded)
+                            animate(Animation.easeOut(0.2f), ctx.voiceMode)
+                            animate(Animation.easeOut(0.2f), ctx.selectedImageCount)
                             animate(Animation.easeInOut(0.18f), ctx.inputLineCount)
                         }
                         event {
@@ -1254,6 +1259,8 @@ internal class StockChatPage : BasePager() {
                                     return@inputFocus
                                 }
                                 ctx.composerFocused = true
+                                ctx.composerExpanded = true
+                                ctx.collapseComposerAfterSettle = false
                                 ctx.updateInputLineMetrics(it.text)
                             }
                             inputBlur {
@@ -1261,13 +1268,13 @@ internal class StockChatPage : BasePager() {
                                 ctx.resetKeyboardState()
                             }
                             keyboardHeightChange {
-                                // 键盘回调携带系统键盘动画时长（秒），先更新时长再改高度，
-                                // 让输入面板以与键盘一致的时长做跟随动画；异常值做兜底
+                                // 安卓上 duration 常回调为 0，直接沿用会导致面板瞬移没有过渡；
+                                // 无有效时长时用 0.25s 兜底，有则归一并限制在合理区间
                                 ctx.keyboardAnimDuration = when {
-                                    it.duration <= 0f -> DEFAULT_KEYBOARD_ANIM_DURATION
+                                    it.duration <= 0.01f -> DEFAULT_KEYBOARD_ANIM_DURATION
                                     it.duration > 3f -> it.duration / 1000f
                                     else -> it.duration
-                                }.coerceIn(0.15f, 0.45f)
+                                }.coerceIn(0.15f, 0.35f)
                                 val nextKeyboardHeight = maxOf(it.height, 0f)
                                 val nextKeyboardVisible = nextKeyboardHeight > 0.5f
                                 val keyboardWasVisible = ctx.keyboardHeight > 0f
@@ -1280,8 +1287,13 @@ internal class StockChatPage : BasePager() {
                                     ctx.keyboardHeight = 0f
                                     ctx.keyboardVisible = false
                                     if (keyboardWasVisible) {
-                                        // 聚焦态退出与失焦延迟到面板落底动画结束，避免打断动画
-                                        ctx.settleComposerAfterKeyboardDrop(alsoBlur = true)
+                                        // 键盘回落只退出聚焦态，面板保持展开（composerExpanded
+                                        // 不变），点空白区域才收缩，见 handleBlankAreaTap
+                                        ctx.beginComposerDockSettle()
+                                        ctx.composerFocused = false
+                                        if (ctx::inputRef.isInitialized) {
+                                            ctx.inputRef.view?.blur()
+                                        }
                                     }
                                 }
                             }
@@ -1316,6 +1328,9 @@ internal class StockChatPage : BasePager() {
                                 }
                             )
                             zIndex(4)
+                            animate(Animation.easeOut(0.2f), ctx.voiceMode)
+                            animate(Animation.easeOut(0.2f), ctx.selectedImageCount)
+                            animate(Animation.easeInOut(0.18f), ctx.inputLineCount)
                         }
                     }
                 }
@@ -1332,6 +1347,8 @@ internal class StockChatPage : BasePager() {
                         touchEnable(!ctx.composerFocused)
                         zIndex(3)
                         capture(if (ctx.voiceMode) CaptureRule.longPress() else null)
+                        animate(Animation.easeOut(0.2f), ctx.voiceMode)
+                        animate(Animation.easeOut(0.2f), ctx.selectedImageCount)
                     }
                     event {
                         click {
@@ -1358,7 +1375,7 @@ internal class StockChatPage : BasePager() {
                 }
                 View {
                     attr {
-                        val expanded = ctx.composerFocused ||
+                        val expanded = ctx.composerExpanded ||
                             ctx.voiceMode ||
                             ctx.selectedImageCount > 0
                         absolutePosition(
@@ -1372,8 +1389,8 @@ internal class StockChatPage : BasePager() {
                         flexDirectionRow()
                         alignItemsCenter()
                         zIndex(6)
-                        animate(Animation.easeInOut(0.26f), ctx.composerFocused)
-                        animate(Animation.easeInOut(0.26f), ctx.voiceMode)
+                        animate(Animation.easeOut(0.2f), ctx.composerExpanded)
+                        animate(Animation.easeOut(0.2f), ctx.voiceMode)
                     }
                     View {
                         attr {
@@ -1386,7 +1403,7 @@ internal class StockChatPage : BasePager() {
                     }
                     View {
                         attr {
-                            val showModel = ctx.composerFocused ||
+                            val showModel = ctx.composerExpanded ||
                                 ctx.voiceMode ||
                                 ctx.selectedImageCount > 0
                             width(metrics.dp(104f))
@@ -1437,17 +1454,34 @@ internal class StockChatPage : BasePager() {
                             ctx.openImagePicker()
                         }
                     }
-                    // 发送按钮用 vif 整体挂载/移除：此前用 width/opacity 动画收起，
-                    // 在进入语音模式时收起动画可能不生效，导致灰色圆形残留并遮挡加号按钮
-                    vif({ !ctx.voiceMode && (ctx.composerFocused || ctx.selectedImageCount > 0) }) {
+                    View {
+                        attr {
+                            val visible = !ctx.voiceMode && (ctx.composerExpanded || ctx.selectedImageCount > 0)
+                            width(if (visible) metrics.dp(42f) else 0f)
+                            height(metrics.dp(42f))
+                            marginLeft(if (visible) metrics.dp(12f) else 0f)
+                            opacity(if (visible) 1f else 0f)
+                            touchEnable(visible)
+                            animate(Animation.easeOut(0.22f), ctx.composerExpanded)
+                            animate(Animation.easeOut(0.22f), ctx.voiceMode)
+                            animate(Animation.easeOut(0.22f), ctx.selectedImageCount)
+                        }
+                        event {
+                            click {
+                                // 可见性必须在点击时实时判断：构建期缓存的布尔值会永远
+                                // 停留在初始 false，导致按钮显示出来了却点不了
+                                val visibleNow = !ctx.voiceMode &&
+                                    (ctx.composerExpanded || ctx.selectedImageCount > 0)
+                                if (visibleNow) {
+                                    ctx.sendMessage()
+                                }
+                            }
+                        }
                         View {
                             attr {
-                                val hasAttachments = ctx.selectedImageCount > 0
-                                val canSend = !ctx.isSending && (ctx.inputText.isNotBlank() || hasAttachments)
-                                width(metrics.dp(42f))
-                                height(metrics.dp(42f))
+                                val canSend = !ctx.isSending && (ctx.inputText.isNotBlank() || ctx.selectedImageCount > 0)
+                                size(metrics.dp(42f), metrics.dp(42f))
                                 borderRadius(metrics.dp(21f))
-                                marginLeft(metrics.dp(12f))
                                 backgroundColor(
                                     if (!canSend) {
                                         Color(0xFFE4EAE7)
@@ -1456,10 +1490,6 @@ internal class StockChatPage : BasePager() {
                                     }
                                 )
                                 allCenter()
-                                touchEnable(canSend)
-                            }
-                            event {
-                                click { ctx.sendMessage() }
                             }
                             Text {
                                 attr {
@@ -1483,8 +1513,8 @@ internal class StockChatPage : BasePager() {
                     height(metrics.dp(16f))
                     justifyContentCenter()
                     alignItemsCenter()
-                    opacity(if (ctx.composerFocused) 0f else 1f)
-                    animation(Animation.easeOut(0.14f), ctx.composerFocused)
+                    opacity(if (ctx.composerExpanded) 0f else 1f)
+                    animation(Animation.easeOut(0.14f), ctx.composerExpanded)
                 }
                 Text {
                     attr {
@@ -1909,24 +1939,32 @@ internal class StockChatPage : BasePager() {
 
     private fun focusComposer() {
         composerFocused = true
+        composerExpanded = true
+        collapseComposerAfterSettle = false
         voiceMode = false
         closeDrawer()
         focusTextInputAfterLayout()
     }
 
-    // 键盘从展开状态收起时：keyboardHeight 归零会启动输入面板的落底跟随动画，
-    // 若同一帧再翻转 composerFocused 触发第二次动画属性重设，落底动画会被打断
-    // 冻结在半空（面板卡死）。因此聚焦态的退出统一延迟到落底动画播完之后
-    private fun settleComposerAfterKeyboardDrop(alsoBlur: Boolean) {
-        keyboardDropSettling = true
-        setTimeout((keyboardAnimDuration * 1000).toInt() + 60) {
-            keyboardDropSettling = false
-            if (keyboardHeight <= 0f && !keyboardVisible) {
-                composerFocused = false
-                if (alsoBlur && ::inputRef.isInitialized) {
-                    inputRef.view?.blur()
-                }
+    // 点击/滑动输入框以外的区域：用户焦点离开输入，面板收缩还给页面空间。
+    // 键盘在场时先收键盘，收缩挂起到回落动画播完再播（两个动画在同一批节点上
+    // 并发会互相打断）；键盘静止时立即收缩
+    private fun handleBlankAreaTap() {
+        if (voiceMode || voicePressActive) {
+            return
+        }
+        val keyboardWasUp = keyboardVisible || keyboardHeight > 0f
+        if (composerFocused || keyboardWasUp) {
+            if (::inputRef.isInitialized) {
+                inputRef.view?.blur()
             }
+            resetKeyboardState()
+        }
+        if (keyboardWasUp || keyboardDropSettling) {
+            // 回落窗口结束时由 beginComposerDockSettle 的定时器执行收缩
+            collapseComposerAfterSettle = true
+        } else {
+            composerExpanded = false
         }
     }
 
@@ -1934,11 +1972,39 @@ internal class StockChatPage : BasePager() {
         val keyboardWasUp = keyboardHeight > 0f
         keyboardHeight = 0f
         keyboardVisible = false
-        when {
-            keyboardWasUp -> settleComposerAfterKeyboardDrop(alsoBlur = false)
-            // 落底延迟任务已排定（如 blur 回调紧随而至的二次调用），由它统一退出聚焦态
-            keyboardDropSettling -> Unit
-            else -> composerFocused = false
+        if (keyboardWasUp) {
+            beginComposerDockSettle()
+        }
+        composerFocused = false
+    }
+
+    // 键盘开始落下时调用：标记回落窗口（keyboardDropSettling）。窗口内主页
+    // 内容不回挂（避免挂载大子树拖慢回落）、空白点击不触发面板收缩（避免
+    // 收缩动画打断同节点的回落动画），并调度 nudge 兜底归位
+    private fun beginComposerDockSettle() {
+        keyboardDropSettling = true
+        val generation = ++dockSettleGeneration
+        setTimeout(((keyboardAnimDuration + 0.03f) * 1000).toInt()) {
+            if (generation == dockSettleGeneration) {
+                keyboardDropSettling = false
+                // 回落期间挂起的空白交互收缩，此刻键盘动画已结束，可安全播放
+                if (collapseComposerAfterSettle) {
+                    collapseComposerAfterSettle = false
+                    composerExpanded = false
+                }
+            }
+        }
+        scheduleComposerDockResync()
+    }
+
+    // 键盘落底动画应结束的时刻，再强制同步一次跟随键盘的容器位置：
+    // composerDockNudge 自增会让 bottom 产生 0.1px 的无感变化，以一次无动画的
+    // 属性更新把原生侧位置拉回正确值——兜底修复回落动画被打断后面板悬停的问题
+    private fun scheduleComposerDockResync() {
+        setTimeout(((keyboardAnimDuration + 0.12f) * 1000).toInt()) {
+            if (keyboardHeight <= 0f && !keyboardVisible) {
+                composerDockNudge += 1
+            }
         }
     }
 
@@ -1952,9 +2018,9 @@ internal class StockChatPage : BasePager() {
         }
     }
 
-    // 输入框处于聚焦非语音态时，超出单行的部分行数，用于撑高输入框和面板
+    // 输入面板处于展开非语音态时，超出单行的部分行数，用于撑高输入框和面板
     private fun composerExtraInputLines(): Int {
-        return if (composerFocused && !voiceMode) {
+        return if (composerExpanded && !voiceMode) {
             (inputLineCount - 1).coerceAtLeast(0)
         } else {
             0
@@ -1993,6 +2059,7 @@ internal class StockChatPage : BasePager() {
                     resizeContain()
                     src(ImageUri.commonAssets("composer_voice_32.png"))
                     opacity(if (ctx.voiceMode) 0f else 1f)
+                    animation(Animation.easeOut(0.18f), ctx.voiceMode)
                 }
             }
             View {
@@ -2006,6 +2073,7 @@ internal class StockChatPage : BasePager() {
                         borderRadius(4f * scale)
                         border(Border(2f * scale, BorderStyle.SOLID, StockChatTheme.textPrimary))
                         opacity(if (ctx.voiceMode) 1f else 0f)
+                        animation(Animation.easeOut(0.18f), ctx.voiceMode)
                     }
                     repeat(3) { row ->
                         repeat(5) { column ->
@@ -2084,6 +2152,8 @@ internal class StockChatPage : BasePager() {
         if (voiceMode) {
             cancelVoicePress()
             composerFocused = true
+            composerExpanded = true
+            collapseComposerAfterSettle = false
             voiceMode = false
             closeDrawer()
             focusTextInputAfterLayout()
@@ -2692,6 +2762,19 @@ internal class StockChatPage : BasePager() {
         acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(STOCK_DETAIL_PAGE_NAME, params)
     }
 
+    private fun openImagePreview(imageUri: String) {
+        if (imageUri.isBlank()) {
+            return
+        }
+        cancelVoiceInput()
+        if (::inputRef.isInitialized) {
+            inputRef.view?.blur()
+        }
+        val params = JSONObject()
+        params.put(ImagePreviewPage.IMAGE_URI_PARAM, imageUri)
+        acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(IMAGE_PREVIEW_PAGE_NAME, params)
+    }
+
     private fun handleDrawerPan(params: PanGestureParams) {
         when (params.state) {
             "start", "move" -> {
@@ -2772,6 +2855,9 @@ internal class StockChatPage : BasePager() {
         selectedImageCount = 0
         voiceMode = false
         isSending = false
+        // 收缩要先于键盘归零：展开动画先触发、键盘动画后接管是验证过的安全
+        // 顺序（反过来会打断键盘回落，消息区冻住）
+        composerExpanded = false
         resetKeyboardState()
         stickMessageListToBottom = true
         messageListNearBottom = true

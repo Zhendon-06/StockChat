@@ -16,6 +16,7 @@ internal fun ViewContainer<*, *>.ComposerImageAttachments(
     images: () -> ObservableList<String>,
     scale: Float,
     onRemove: (String) -> Unit,
+    onPreview: (String) -> Unit,
 ) {
     Scroller {
         attr {
@@ -42,6 +43,9 @@ internal fun ViewContainer<*, *>.ComposerImageAttachments(
                         absolutePositionAllZero()
                         resizeCover()
                         src(imageUri, false)
+                    }
+                    event {
+                        click { onPreview(imageUri) }
                     }
                 }
                 View {
@@ -82,6 +86,7 @@ internal fun ViewContainer<*, *>.ComposerImageAttachments(
 internal fun ViewContainer<*, *>.MessageImageGallery(
     images: List<String>,
     scale: Float,
+    onPreview: (String) -> Unit,
 ) {
     if (images.isEmpty()) {
         return
@@ -111,6 +116,9 @@ internal fun ViewContainer<*, *>.MessageImageGallery(
                     if (index < images.lastIndex) {
                         marginRight(itemSpacing)
                     }
+                }
+                event {
+                    click { onPreview(imageUri) }
                 }
             }
         }

@@ -192,6 +192,7 @@ internal fun ViewContainer<*, *>.ChatMessageItem(
     onRegenerate: (ChatMessage) -> Unit = {},
     onReadAloud: (ChatMessage) -> Unit = {},
     onMore: (ChatMessage) -> Unit = {},
+    onImageClick: (String) -> Unit = {},
 ) {
     View {
         attr {
@@ -244,7 +245,7 @@ internal fun ViewContainer<*, *>.ChatMessageItem(
                                     }
                                 }
                             }
-                            is AnswerBlock.ImageGallery -> MessageImageGallery(block.images, scale)
+                            is AnswerBlock.ImageGallery -> MessageImageGallery(block.images, scale, onImageClick)
                             is AnswerBlock.MarketQuote -> Unit
                         }
                     }
@@ -260,11 +261,11 @@ internal fun ViewContainer<*, *>.ChatMessageItem(
                     MessageState.GENERATING -> if (message.blocks.isEmpty()) {
                         TypingIndicator(scale, typingPhase)
                     } else {
-                        AssistantBlocks(message, scale, onQuoteClick)
+                        AssistantBlocks(message, scale, onQuoteClick, onImageClick)
                     }
                     MessageState.FAILED -> FailedMessage(message.errorMessage, scale) { onRetry(message) }
                     MessageState.DELIVERED -> {
-                        AssistantBlocks(message, scale, onQuoteClick)
+                        AssistantBlocks(message, scale, onQuoteClick, onImageClick)
                         Text {
                             attr {
                                 text("仅供参考，不构成投资建议")
@@ -291,6 +292,7 @@ private fun ViewContainer<*, *>.AssistantBlocks(
     message: ChatMessage,
     scale: Float,
     onQuoteClick: (StockQuote) -> Unit,
+    onImageClick: (String) -> Unit,
 ) {
     message.blocks.forEach { block ->
         when (block) {
@@ -298,7 +300,7 @@ private fun ViewContainer<*, *>.AssistantBlocks(
             is AnswerBlock.MarketQuote -> MarketQuoteCard(block.quote, scale) {
                 onQuoteClick(block.quote)
             }
-            is AnswerBlock.ImageGallery -> MessageImageGallery(block.images, scale)
+            is AnswerBlock.ImageGallery -> MessageImageGallery(block.images, scale, onImageClick)
         }
     }
 }
