@@ -194,6 +194,7 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
         param["qwenApiKey"] = BuildConfig.QWEN_API_KEY
         param["mimoVoiceApiKey"] = BuildConfig.MIMO_VOICE_API_KEY
         param["aliyunNativeStreaming"] = 1
+        param["mimoNativeStreaming"] = 1
         return param
     }
 

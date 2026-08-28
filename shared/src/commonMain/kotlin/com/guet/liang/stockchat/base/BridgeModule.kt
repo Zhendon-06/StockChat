@@ -101,6 +101,33 @@ internal class BridgeModule : Module() {
         callNativeMethod(STOP_AUDIO_PLAYBACK, null, null)
     }
 
+    fun streamSpeechSynthesis(
+        apiKey: String,
+        url: String,
+        requestBody: JSONObject,
+        responseCallbackFn: CallbackFn,
+    ) {
+        val methodArgs = JSONObject().apply {
+            put("apiKey", apiKey)
+            put("url", url)
+            put("requestBody", requestBody.toString())
+        }
+        var callbackRef: CallbackRef? = null
+        callbackRef = toNative(
+            keepCallbackAlive = true,
+            methodName = STREAM_SPEECH_SYNTHESIS,
+            param = methodArgs.toString(),
+            callback = { payload ->
+                responseCallbackFn(payload)
+                if (payload?.optInt("success", 0) == 0 || payload?.optString("event") == "end") {
+                    callbackRef?.let(::removeCallback)
+                    callbackRef = null
+                }
+            },
+            syncCall = false,
+        ).callbackRef
+    }
+
     fun pickImages(maxCount: Int, responseCallbackFn: CallbackFn) {
         val methodArgs = JSONObject().apply {
             put("maxCount", maxCount.coerceIn(1, MAX_IMAGE_SELECTION_COUNT))
@@ -436,6 +463,7 @@ internal class BridgeModule : Module() {
         const val CANCEL_VOICE_RECORDING = "cancelVoiceRecording"
         const val PLAY_BASE64_AUDIO = "playBase64Audio"
         const val STOP_AUDIO_PLAYBACK = "stopAudioPlayback"
+        const val STREAM_SPEECH_SYNTHESIS = "streamSpeechSynthesis"
         const val PICK_IMAGES = "pickImages"
         const val STREAM_CHAT_COMPLETION = "streamChatCompletion"
         const val OBSERVE_DRAWER_GESTURES = "observeDrawerGestures"

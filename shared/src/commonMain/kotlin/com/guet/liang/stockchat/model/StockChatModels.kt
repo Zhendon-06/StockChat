@@ -78,6 +78,10 @@ internal sealed class SpeechRecognitionResult {
 }
 
 internal sealed class SpeechSynthesisResult {
+    data object Started : SpeechSynthesisResult()
+
+    data object Completed : SpeechSynthesisResult()
+
     data class Success(
         val audioBase64: String,
         val mimeType: String,

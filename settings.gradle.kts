@@ -25,5 +25,6 @@ dependencyResolutionManagement {
 rootProject.name = "StockChat"
 include(":androidApp")
 include(":shared")
+include(":table-core")
 include(":h5App")
 include(":miniApp")

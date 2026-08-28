@@ -47,7 +47,7 @@ internal class ChatHistoryRepository(
     fun replaceMessages(sessionId: String, messages: List<ChatMessage>) {
         database.transaction {
             queries.insertSession(sessionId, sessionTitle(messages))
-            queries.updateSession(sessionTitle(messages), sessionId)
+            queries.touchSession(sessionId)
             deleteSessionContent(sessionId)
             messages.forEachIndexed { messageIndex, message ->
                 queries.insertMessage(
@@ -72,6 +72,10 @@ internal class ChatHistoryRepository(
             deleteSessionContent(sessionId)
             queries.deleteSession(sessionId)
         }
+    }
+
+    fun renameSession(sessionId: String, title: String) {
+        queries.renameSession(title, sessionId)
     }
 
     private fun loadBlocks(messageId: String): List<AnswerBlock> {
@@ -198,12 +202,18 @@ internal class ChatHistoryRepository(
 
 internal object ChatHistoryDatabase {
     private var repository: ChatHistoryRepository? = null
+    private var artifactRepository: ConversationTableArtifactRepository? = null
 
     fun initialize(database: StockChatDatabase) {
         repository = ChatHistoryRepository(database)
+        artifactRepository = ConversationTableArtifactRepository(database)
     }
 
     fun repository(): ChatHistoryRepository {
         return checkNotNull(repository) { "SQLDelight database has not been initialized." }
+    }
+
+    fun artifactRepository(): ConversationTableArtifactRepository {
+        return checkNotNull(artifactRepository) { "SQLDelight database has not been initialized." }
     }
 }

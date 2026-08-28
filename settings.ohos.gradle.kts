@@ -28,4 +28,6 @@ rootProject.buildFileName = buildFileName
 
 include(":androidApp")
 include(":shared")
+include(":table-core")
 project(":shared").buildFileName = buildFileName
+project(":table-core").buildFileName = buildFileName

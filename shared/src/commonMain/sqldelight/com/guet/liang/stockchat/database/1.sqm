@@ -1,0 +1,25 @@
+CREATE TABLE conversation_table_artifact (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    source_message_count INTEGER NOT NULL,
+    row_count INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES chat_session(id) ON DELETE CASCADE
+);
+
+CREATE INDEX conversation_table_artifact_updated_at
+ON conversation_table_artifact(updated_at DESC);
+
+CREATE TABLE conversation_table_artifact_row (
+    artifact_id INTEGER NOT NULL,
+    row_index INTEGER NOT NULL,
+    sequence_number INTEGER NOT NULL,
+    user_question TEXT NOT NULL,
+    ai_answer_summary TEXT NOT NULL,
+    related_instrument TEXT NOT NULL,
+    status TEXT NOT NULL,
+    PRIMARY KEY (artifact_id, row_index),
+    FOREIGN KEY (artifact_id) REFERENCES conversation_table_artifact(id) ON DELETE CASCADE
+);
