@@ -8,10 +8,13 @@ import com.guet.liang.stockchat.data.AliyunStockChatDataSource
 import com.guet.liang.stockchat.data.ChatHistoryDatabase
 import com.guet.liang.stockchat.data.ChatHistoryRepository
 import com.guet.liang.stockchat.data.ChatSessionSummary
+import com.guet.liang.stockchat.data.ConversationTableArtifactGenerator
+import com.guet.liang.stockchat.data.ConversationTableArtifactRepository
 import com.guet.liang.stockchat.data.MimoSpeechRecognitionService
 import com.guet.liang.stockchat.data.MimoSpeechSynthesisService
 import com.guet.liang.stockchat.data.MimoVoiceApiConfig
 import com.guet.liang.stockchat.data.StockChatDataSource
+import com.guet.liang.stockchat.data.providerSymbolForQuote
 import com.guet.liang.stockchat.model.AnswerBlock
 import com.guet.liang.stockchat.model.ChatAnswer
 import com.guet.liang.stockchat.model.ChatHistoryItem
@@ -152,12 +155,16 @@ internal class StockChatPage : BasePager() {
     private var typingDotTimer: Timer? = null
     // 消息「更多」菜单当前指向的消息 id，非空时显示底部弹出菜单
     private var messageMenuTargetId by observable("")
+    private var conversationMenuOpen by observable(false)
     private var modelMenuOpen by observable(false)
     private var selectedModelId by observable(DEFAULT_CHAT_MODEL_ID)
     private var imagePickerOpen by observable(false)
     private var selectedImageCount by observable(0)
     private var messages by observableList<ChatMessage>()
     private var recentSessions by observableList<ChatSessionSummary>()
+    private var managingSessions by observable(false)
+    private var renameSessionId by observable("")
+    private var renameInputText by observable("")
     private var selectedImages by observableList<String>()
     private val selectedImagePreviews = mutableListOf<String>()
     private val selectedImagePayloads = mutableListOf<String>()
@@ -168,6 +175,10 @@ internal class StockChatPage : BasePager() {
     private var requestToken = 0
     private var voiceRequestToken = 0
     private var speechSynthesisRequestToken = 0
+    // 正在生成/播放语音的消息 id（空串 = 无朗读任务），驱动声音按钮上的流动声纹
+    private var readAloudMessageId by observable("")
+    private var readAloudWavePhase by observable(0)
+    private var readAloudWaveTimer: Timer? = null
     private var voicePressStartY = 0f
     private var voicePressReleaseRequested = false
     private var voiceWaveTimer: Timer? = null
@@ -179,8 +190,10 @@ internal class StockChatPage : BasePager() {
     private lateinit var speechRecognitionService: MimoSpeechRecognitionService
     private lateinit var speechSynthesisService: MimoSpeechSynthesisService
     private lateinit var chatHistoryRepository: ChatHistoryRepository
+    private lateinit var tableArtifactRepository: ConversationTableArtifactRepository
 
     private lateinit var inputRef: ViewRef<TextAreaView>
+    private lateinit var renameInputRef: ViewRef<TextAreaView>
     private lateinit var messageScrollerRef: ViewRef<ScrollerView<*, *>>
 
     private val layoutMetrics: StockChatLayoutMetrics
@@ -196,6 +209,7 @@ internal class StockChatPage : BasePager() {
         )
         val networkModule = acquireModule<NetworkModule>(NetworkModule.MODULE_NAME)
         chatHistoryRepository = ChatHistoryDatabase.repository()
+        tableArtifactRepository = ChatHistoryDatabase.artifactRepository()
         dataSource = AliyunStockChatDataSource(
             networkModule = networkModule,
             config = qwenConfig,
@@ -206,8 +220,13 @@ internal class StockChatPage : BasePager() {
             ) == 1,
         )
         speechRecognitionService = MimoSpeechRecognitionService(networkModule, mimoVoiceConfig)
-        speechSynthesisService = MimoSpeechSynthesisService(networkModule, mimoVoiceConfig)
-        restoreChatHistory()
+        speechSynthesisService = MimoSpeechSynthesisService(
+            networkModule = networkModule,
+            config = mimoVoiceConfig,
+            bridgeModule = bridgeModule,
+            useNativeStreaming = pageData.params.optInt("mimoNativeStreaming") == 1,
+        )
+        initializeChatSessions()
         bridgeModule.observeDrawerGestures { result ->
             when (result?.optString("direction")) {
                 "right" -> openDrawer()
@@ -255,6 +274,7 @@ internal class StockChatPage : BasePager() {
             }
             ctx.DrawerLayer(this)
             ctx.MainLayer(this)
+            ctx.SessionRenameOverlay(this)
         }
     }
 
@@ -347,7 +367,8 @@ internal class StockChatPage : BasePager() {
             ctx.HomeTabSwitcher(this, marginTopDp = 20f)
             ctx.DrawerMenuItem(this, "ranking_icon.png", "市场概览", metrics.scale) {
             }
-            ctx.DrawerMenuItem(this, "table_icon.png", "指数追踪", metrics.scale) {
+            ctx.DrawerMenuItem(this, "table_icon.png", "图表", metrics.scale) {
+                ctx.openArtifactLibrary()
             }
             ctx.DrawerMenuItem(this, "ai_generate.png", "AI 选股思路", metrics.scale) {
             }
@@ -402,24 +423,36 @@ internal class StockChatPage : BasePager() {
                 }
                 Text {
                     attr {
-                        text("管理")
+                        text(if (ctx.managingSessions) "完成" else "管理")
                         fontSize(metrics.dp(13f))
                         color(StockChatTheme.accent)
                     }
-                }
-            }
-            vif({ ctx.recentSessions.isEmpty() }) {
-                Text {
-                    attr {
-                        text("暂无已保存的对话")
-                        fontSize(metrics.dp(13f))
-                        color(StockChatTheme.textTertiary)
-                        marginTop(metrics.dp(12f))
+                    event {
+                        click { ctx.toggleSessionManagement() }
                     }
                 }
             }
-            vfor({ ctx.recentSessions }) { session ->
-                ctx.DrawerConversation(this, session, metrics.scale)
+            Scroller {
+                attr {
+                    flex(1f)
+                    showScrollerIndicator(false)
+                    bouncesEnable(true)
+                    capture(CaptureRule.pan(CaptureRuleDirection.VERTICAL))
+                    padding(bottom = metrics.dp(8f))
+                }
+                    vif({ ctx.recentSessions.isEmpty() }) {
+                        Text {
+                            attr {
+                                text("暂无已保存的对话")
+                                fontSize(metrics.dp(13f))
+                                color(StockChatTheme.textTertiary)
+                                marginTop(metrics.dp(12f))
+                            }
+                        }
+                    }
+                    vfor({ ctx.recentSessions }) { session ->
+                        ctx.DrawerConversation(this, session, metrics.scale)
+                    }
             }
 
         }
@@ -451,6 +484,114 @@ internal class StockChatPage : BasePager() {
                 }
                 ctx.HomeTabItem(this, "AI 问答", HOME_TAB_CHAT)
                 ctx.HomeTabItem(this, "自选行情", HOME_TAB_WATCHLIST)
+            }
+        }
+    }
+
+    private fun SessionRenameOverlay(container: ViewContainer<*, *>) {
+        val ctx = this
+        val metrics = ctx.layoutMetrics
+        with(container) {
+            vif({ ctx.renameSessionId.isNotEmpty() }) {
+                View {
+                    attr {
+                        absolutePositionAllZero()
+                        backgroundColor(Color(0x66000000))
+                        zIndex(20)
+                    }
+                    event {
+                        click { ctx.closeRenameDialog() }
+                    }
+                }
+                View {
+                    attr {
+                        absolutePosition(
+                            top = pagerData.statusBarHeight + metrics.dp(150f),
+                            left = metrics.dp(28f),
+                            right = metrics.dp(28f),
+                        )
+                        borderRadius(metrics.dp(18f))
+                        backgroundColor(StockChatTheme.surface)
+                        padding(all = metrics.dp(20f))
+                        zIndex(21)
+                    }
+                    Text {
+                        attr {
+                            text("重命名对话")
+                            fontSize(metrics.dp(18f))
+                            fontWeightBold()
+                            color(StockChatTheme.textPrimary)
+                        }
+                    }
+                    TextArea {
+                        ref {
+                            ctx.renameInputRef = it
+                        }
+                        attr {
+                            width(pagerData.pageViewWidth - metrics.dp(96f))
+                            height(metrics.dp(46f))
+                            marginTop(metrics.dp(16f))
+                            border(Border(1f, BorderStyle.SOLID, StockChatTheme.borderStrong))
+                            borderRadius(metrics.dp(10f))
+                            text(ctx.renameInputText)
+                            fontSize(metrics.dp(15f))
+                            color(StockChatTheme.textPrimary)
+                            placeholder("输入对话名称")
+                            placeholderColor(StockChatTheme.textTertiary)
+                            maxTextLength(40)
+                        }
+                        event {
+                            textDidChange(isSyncEdit = true) {
+                                ctx.renameInputText = it.text
+                            }
+                        }
+                    }
+                    View {
+                        attr {
+                            flexDirectionRow()
+                            justifyContentFlexEnd()
+                            alignItemsCenter()
+                            marginTop(metrics.dp(16f))
+                        }
+                        View {
+                            attr {
+                                height(metrics.dp(36f))
+                                padding(left = metrics.dp(14f), right = metrics.dp(14f))
+                                allCenter()
+                            }
+                            event {
+                                click { ctx.closeRenameDialog() }
+                            }
+                            Text {
+                                attr {
+                                    text("取消")
+                                    fontSize(metrics.dp(14f))
+                                    color(StockChatTheme.textSecondary)
+                                }
+                            }
+                        }
+                        View {
+                            attr {
+                                height(metrics.dp(36f))
+                                padding(left = metrics.dp(14f), right = metrics.dp(14f))
+                                borderRadius(metrics.dp(18f))
+                                backgroundColor(StockChatTheme.accent)
+                                allCenter()
+                            }
+                            event {
+                                click { ctx.commitSessionRename() }
+                            }
+                            Text {
+                                attr {
+                                    text("保存")
+                                    fontSize(metrics.dp(14f))
+                                    fontWeightBold()
+                                    color(Color.WHITE)
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -666,6 +807,8 @@ internal class StockChatPage : BasePager() {
                         bottom = 11f * scale,
                         right = 12f * scale,
                     )
+                    flexDirectionRow()
+                    alignItemsCenter()
                     borderRadius(14f * scale)
                     marginTop(5f * scale)
                     backgroundColor(
@@ -677,22 +820,68 @@ internal class StockChatPage : BasePager() {
                     )
                 }
                 event {
-                    click { ctx.selectSession(session.id) }
-                }
-                Text {
-                    attr {
-                        text(session.title.ifBlank { "新对话" })
-                        fontSize(14f * scale)
-                        fontWeightMedium()
-                        color(StockChatTheme.textPrimary)
+                    click {
+                        if (!ctx.managingSessions) {
+                            ctx.selectSession(session.id)
+                        }
                     }
                 }
-                Text {
+                View {
                     attr {
-                        text("已保存到本地数据库")
-                        fontSize(11f * scale)
-                        color(StockChatTheme.textTertiary)
-                        marginTop(4f * scale)
+                        flex(1f)
+                    }
+                    Text {
+                        attr {
+                            text(session.title.ifBlank { "新对话" })
+                            fontSize(14f * scale)
+                            fontWeightMedium()
+                            color(StockChatTheme.textPrimary)
+                            lines(1)
+                        }
+                    }
+                    Text {
+                        attr {
+                            text("已保存到本地数据库")
+                            fontSize(11f * scale)
+                            color(StockChatTheme.textTertiary)
+                            marginTop(4f * scale)
+                        }
+                    }
+                }
+                vif({ ctx.managingSessions }) {
+                    View {
+                        attr {
+                            width(44f * scale)
+                            height(36f * scale)
+                            allCenter()
+                        }
+                        event {
+                            click { ctx.openRenameDialog(session) }
+                        }
+                        Text {
+                            attr {
+                                text("编辑")
+                                fontSize(12f * scale)
+                                color(StockChatTheme.accent)
+                            }
+                        }
+                    }
+                    View {
+                        attr {
+                            width(44f * scale)
+                            height(36f * scale)
+                            allCenter()
+                        }
+                        event {
+                            click { ctx.deleteSession(session.id) }
+                        }
+                        Text {
+                            attr {
+                                text("删除")
+                                fontSize(12f * scale)
+                                color(StockChatTheme.positive)
+                            }
+                        }
                     }
                 }
             }
@@ -784,6 +973,7 @@ internal class StockChatPage : BasePager() {
             ctx.VoiceRecordingOverlay(this)
             ctx.MessageMenuOverlay(this)
             ctx.ModelMenuOverlay(this)
+            ctx.ConversationMenuOverlay(this)
             View {
                 attr {
                     absolutePositionAllZero()
@@ -896,7 +1086,7 @@ internal class StockChatPage : BasePager() {
                         allCenter()
                     }
                     event {
-                        click { ctx.bridgeModule.toast("更多选项暂未开放") }
+                        click { ctx.openConversationMenu() }
                     }
                     ctx.MoreMark(this, metrics.scale)
                 }
@@ -1134,7 +1324,10 @@ internal class StockChatPage : BasePager() {
                         onCopy = { ctx.copyMessage(it) },
                         onRegenerate = { ctx.regenerateMessage(it) },
                         onReadAloud = { ctx.readMessageAloud(it) },
-                        onMore = { ctx.messageMenuTargetId = it.id },
+                        readAloudPhase = {
+                            if (ctx.readAloudMessageId == message.id) ctx.readAloudWavePhase else -1
+                        },
+                        onMore = { ctx.openMessageMenu(it.id) },
                     )
                 }
         }
@@ -1685,9 +1878,6 @@ internal class StockChatPage : BasePager() {
                 ctx.MessageMenuItem(this, "复制内容", divider = false) { target ->
                     ctx.copyMessage(target)
                 }
-                ctx.MessageMenuItem(this, "节选复制") {
-                    ctx.bridgeModule.toast("节选复制暂未开放")
-                }
                 ctx.MessageMenuItem(this, "重新生成") { target ->
                     ctx.regenerateMessage(target)
                 }
@@ -1845,6 +2035,102 @@ internal class StockChatPage : BasePager() {
         }
     }
 
+    private fun ConversationMenuOverlay(container: ViewContainer<*, *>) {
+        val ctx = this
+        val metrics = ctx.layoutMetrics
+        with(container) {
+            vif({ ctx.conversationMenuOpen }) {
+                View {
+                    attr {
+                        absolutePositionAllZero()
+                        backgroundColor(Color(0x00000000))
+                        zIndex(15)
+                    }
+                    event {
+                        click { ctx.closeConversationMenu() }
+                    }
+                }
+                View {
+                    attr {
+                        absolutePosition(
+                            top = pagerData.statusBarHeight + metrics.dp(76f),
+                            right = metrics.dp(18f),
+                        )
+                        width(metrics.dp(220f))
+                        borderRadius(metrics.dp(22f))
+                        backgroundColor(StockChatTheme.surface)
+                        padding(all = metrics.dp(8f))
+                        boxShadow(
+                            BoxShadow(
+                                metrics.dp(1f),
+                                metrics.dp(8f),
+                                metrics.dp(24f),
+                                Color(0x26000000),
+                            )
+                        )
+                        zIndex(16)
+                    }
+                    View {
+                        attr {
+                            height(metrics.dp(64f))
+                            borderRadius(metrics.dp(16f))
+                            flexDirectionRow()
+                            alignItemsCenter()
+                            padding(left = metrics.dp(16f), right = metrics.dp(12f))
+                        }
+                        event {
+                            click { ctx.createConversationTableArtifact() }
+                        }
+                        View {
+                            attr {
+                                size(metrics.dp(42f), metrics.dp(42f))
+                                borderRadius(metrics.dp(13f))
+                                backgroundColor(StockChatTheme.accentSoft)
+                                allCenter()
+                            }
+                            Image {
+                                attr {
+                                    size(metrics.dp(23f), metrics.dp(23f))
+                                    resizeContain()
+                                    src(ImageUri.commonAssets("table_icon.png"))
+                                }
+                            }
+                        }
+                        View {
+                            attr {
+                                flex(1f)
+                                marginLeft(metrics.dp(12f))
+                            }
+                            Text {
+                                attr {
+                                    text("产物表格")
+                                    fontSize(metrics.dp(17f))
+                                    fontWeightMedium()
+                                    color(StockChatTheme.textPrimary)
+                                }
+                            }
+                            Text {
+                                attr {
+                                    text("汇总当前对话")
+                                    fontSize(metrics.dp(11f))
+                                    color(StockChatTheme.textTertiary)
+                                    marginTop(metrics.dp(2f))
+                                }
+                            }
+                        }
+                        Text {
+                            attr {
+                                text("›")
+                                fontSize(metrics.dp(24f))
+                                color(StockChatTheme.textTertiary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private fun ModelMenuItem(
         container: ViewContainer<*, *>,
         option: ChatModelOption,
@@ -1955,12 +2241,72 @@ internal class StockChatPage : BasePager() {
         }
     }
 
+    private fun openConversationMenu() {
+        cancelVoiceInput()
+        if (::inputRef.isInitialized) {
+            inputRef.view?.blur()
+        }
+        resetKeyboardState()
+        messageMenuTargetId = ""
+        modelMenuOpen = false
+        closeDrawer()
+        conversationMenuOpen = true
+    }
+
+    private fun closeConversationMenu() {
+        conversationMenuOpen = false
+    }
+
+    private fun openMessageMenu(messageId: String) {
+        conversationMenuOpen = false
+        modelMenuOpen = false
+        messageMenuTargetId = messageId
+    }
+
+    private fun createConversationTableArtifact() {
+        closeConversationMenu()
+        if (messages.none { it.role == ChatRole.USER }) {
+            bridgeModule.toast("当前对话还没有可汇总的内容")
+            return
+        }
+        try {
+            persistChatHistory()
+            val snapshot = ConversationTableArtifactGenerator.generate(
+                title = conversationTitle(),
+                messages = messages,
+            )
+            val artifactId = tableArtifactRepository.upsert(activeSessionId, snapshot)
+            openTableArtifact(artifactId)
+        } catch (_: Throwable) {
+            bridgeModule.toast("产物表格生成失败，请重试")
+        }
+    }
+
+    private fun openArtifactLibrary() {
+        closeDrawer()
+        closeConversationMenu()
+        acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
+            CONVERSATION_TABLE_ARTIFACTS_PAGE_NAME,
+            JSONObject(),
+        )
+    }
+
+    private fun openTableArtifact(artifactId: Long) {
+        val params = JSONObject()
+        params.put(CONVERSATION_TABLE_ARTIFACT_ID_PARAM, artifactId.toString())
+        acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
+            CONVERSATION_TABLE_ARTIFACT_PAGE_NAME,
+            params,
+        )
+    }
+
     private fun openModelMenu() {
         if (::inputRef.isInitialized) {
             inputRef.view?.blur()
         }
         resetKeyboardState()
         messageMenuTargetId = ""
+        conversationMenuOpen = false
         closeDrawer()
         modelMenuOpen = true
     }
@@ -1987,6 +2333,7 @@ internal class StockChatPage : BasePager() {
         composerExpanded = true
         collapseComposerAfterSettle = false
         voiceMode = false
+        conversationMenuOpen = false
         closeDrawer()
         focusTextInputAfterLayout()
     }
@@ -2637,7 +2984,11 @@ internal class StockChatPage : BasePager() {
             val content = message.blocks.mapNotNull { block ->
                 when (block) {
                     is AnswerBlock.Markdown -> block.source.trim().ifEmpty { null }
-                    is AnswerBlock.MarketQuote -> null
+                    is AnswerBlock.MarketQuote -> providerSymbolForQuote(block.quote)?.let { providerSymbol ->
+                        "[行情标的:$providerSymbol|${block.quote.name}] " +
+                            "${block.quote.updatedAt}，现价 ${block.quote.price}，" +
+                            "涨跌 ${block.quote.change}（${block.quote.changePercent}）"
+                    }
                     is AnswerBlock.ImageGallery -> null
                 }
             }.joinToString("\n\n").trim()
@@ -2803,7 +3154,7 @@ internal class StockChatPage : BasePager() {
             inputRef.view?.blur()
         }
         val params = JSONObject()
-        params.put("symbol", quote.symbol)
+        params.put("symbol", providerSymbolForQuote(quote) ?: quote.symbol)
         acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(STOCK_DETAIL_PAGE_NAME, params)
     }
 
@@ -2861,11 +3212,88 @@ internal class StockChatPage : BasePager() {
 
     private fun openDrawer() {
         cancelVoiceInput()
+        conversationMenuOpen = false
+        messageMenuTargetId = ""
+        modelMenuOpen = false
         drawerOpen = true
     }
 
     private fun closeDrawer() {
         drawerOpen = false
+        if (managingSessions || renameSessionId.isNotEmpty()) {
+            managingSessions = false
+            closeRenameDialog()
+        }
+    }
+
+    private fun toggleSessionManagement() {
+        managingSessions = !managingSessions
+        if (!managingSessions) {
+            closeRenameDialog()
+        }
+    }
+
+    private fun openRenameDialog(session: ChatSessionSummary) {
+        if (!managingSessions) {
+            return
+        }
+        if (::inputRef.isInitialized) {
+            inputRef.view?.blur()
+        }
+        resetKeyboardState()
+        renameSessionId = session.id
+        renameInputText = session.title.ifBlank { "新对话" }
+    }
+
+    private fun closeRenameDialog() {
+        if (::renameInputRef.isInitialized) {
+            renameInputRef.view?.blur()
+        }
+        renameSessionId = ""
+        renameInputText = ""
+    }
+
+    private fun commitSessionRename() {
+        val sessionId = renameSessionId
+        val title = renameInputText.trim().take(40)
+        if (sessionId.isBlank()) {
+            return
+        }
+        if (title.isBlank()) {
+            bridgeModule.toast("对话名称不能为空")
+            return
+        }
+        chatHistoryRepository.renameSession(sessionId, title)
+        closeRenameDialog()
+        refreshRecentSessions()
+        bridgeModule.toast("已重命名")
+    }
+
+    private fun deleteSession(sessionId: String) {
+        if (sessionId.isBlank()) {
+            return
+        }
+        closeRenameDialog()
+        val deletingActiveSession = sessionId == activeSessionId
+        persistChatHistory()
+        requestToken += 1
+        chatHistoryRepository.clearSession(sessionId)
+        refreshRecentSessions()
+        if (deletingActiveSession) {
+            activeSessionId = recentSessions.firstOrNull()?.id ?: nextSessionId()
+            messages.clear()
+            messageSequence = 0
+            inputText = ""
+            inputLineCount = 1
+            selectedImagePreviews.clear()
+            selectedImages.clear()
+            selectedImagePayloads.clear()
+            selectedImageCount = 0
+            isSending = false
+            loadMessagesForActiveSession()
+            updateTypingIndicatorTimer()
+        }
+        bridgeModule.toast("已删除对话")
     }
 
     private fun selectSession(sessionId: String) {
@@ -2881,6 +3309,7 @@ internal class StockChatPage : BasePager() {
         messageSequence = 0
         isSending = false
         messageMenuTargetId = ""
+        conversationMenuOpen = false
         loadMessagesForActiveSession()
         updateTypingIndicatorTimer()
         closeDrawer()
@@ -2908,6 +3337,7 @@ internal class StockChatPage : BasePager() {
         messageListNearBottom = true
         drawerOpen = false
         messageMenuTargetId = ""
+        conversationMenuOpen = false
         modelMenuOpen = false
         updateTypingIndicatorTimer()
         if (::inputRef.isInitialized) {
@@ -2930,6 +3360,11 @@ internal class StockChatPage : BasePager() {
     }
 
     private fun readMessageAloud(message: ChatMessage) {
+        // 再次点击同一条消息的声音按钮视为停止播放
+        if (readAloudMessageId == message.id) {
+            stopSpeechPlayback()
+            return
+        }
         val content = messageText(message)
         if (content.isBlank()) {
             bridgeModule.toast("没有可朗读的内容")
@@ -2942,27 +3377,44 @@ internal class StockChatPage : BasePager() {
         speechSynthesisRequestToken += 1
         val currentRequestToken = speechSynthesisRequestToken
         bridgeModule.stopAudioPlayback()
-        bridgeModule.toast("MiMo 正在生成语音…")
+        // 生成与播放进度不再弹 toast，用声音按钮上的流动声纹反馈
+        beginReadAloudIndicator(message.id)
         speechSynthesisService.synthesize(content) synthesis@{ result ->
             if (currentRequestToken != speechSynthesisRequestToken) {
                 return@synthesis
             }
             when (result) {
+                // 流式播放开始：声纹从生成时起就已在流动，无需额外反馈
+                SpeechSynthesisResult.Started -> Unit
+                SpeechSynthesisResult.Completed -> endReadAloudIndicator()
                 is SpeechSynthesisResult.Success -> {
                     bridgeModule.playBase64Audio(
                         audioBase64 = result.audioBase64,
                         mimeType = result.mimeType,
-                    ) { payload ->
+                    ) playback@{ payload ->
+                        if (currentRequestToken != speechSynthesisRequestToken) {
+                            return@playback
+                        }
                         if (payload?.optInt("success", 0) != 1) {
+                            endReadAloudIndicator()
                             bridgeModule.toast(
                                 payload?.optString("errorMessage")
                                     ?.ifBlank { "语音播放失败，请稍后重试" }
                                     ?: "语音播放失败，请稍后重试"
                             )
+                        } else {
+                            scheduleReadAloudFinish(
+                                currentRequestToken,
+                                message.id,
+                                result.audioBase64,
+                            )
                         }
                     }
                 }
-                is SpeechSynthesisResult.Failure -> bridgeModule.toast(result.message)
+                is SpeechSynthesisResult.Failure -> {
+                    endReadAloudIndicator()
+                    bridgeModule.toast(result.message)
+                }
             }
         }
     }
@@ -2970,6 +3422,94 @@ internal class StockChatPage : BasePager() {
     private fun stopSpeechPlayback() {
         speechSynthesisRequestToken += 1
         bridgeModule.stopAudioPlayback()
+        endReadAloudIndicator()
+    }
+
+    private fun beginReadAloudIndicator(messageId: String) {
+        readAloudMessageId = messageId
+        if (readAloudWaveTimer == null) {
+            readAloudWavePhase = 0
+            readAloudWaveTimer = Timer().also { timer ->
+                timer.schedule(0, 120) {
+                    readAloudWavePhase = (readAloudWavePhase + 1) % 120
+                }
+            }
+        }
+    }
+
+    private fun endReadAloudIndicator() {
+        readAloudMessageId = ""
+        readAloudWaveTimer?.cancel()
+        readAloudWaveTimer = null
+    }
+
+    // 非流式播放没有完成回调：从 WAV 头解析时长，到点后收起声纹；
+    // 解析失败兜底 60s，避免声纹无限滚动
+    private fun scheduleReadAloudFinish(
+        requestToken: Int,
+        messageId: String,
+        audioBase64: String,
+    ) {
+        val durationMs = estimateWavDurationMs(audioBase64) ?: 60_000L
+        setTimeout((durationMs + 300).coerceAtMost(120_000L).toInt()) {
+            if (requestToken == speechSynthesisRequestToken && readAloudMessageId == messageId) {
+                endReadAloudIndicator()
+            }
+        }
+    }
+
+    private fun estimateWavDurationMs(audioBase64: String): Long? {
+        // WAV 头 44 字节：byteRate 在偏移 28、data 块大小在偏移 40（均小端 int32）
+        val header = decodeBase64Prefix(audioBase64, 44) ?: return null
+        if (header[0] != 'R'.code.toByte() || header[1] != 'I'.code.toByte() ||
+            header[2] != 'F'.code.toByte() || header[3] != 'F'.code.toByte()
+        ) {
+            return null
+        }
+        fun littleEndianInt(offset: Int): Long {
+            var value = 0L
+            for (i in 3 downTo 0) {
+                value = (value shl 8) or (header[offset + i].toLong() and 0xFF)
+            }
+            return value
+        }
+        val byteRate = littleEndianInt(28)
+        val dataSize = littleEndianInt(40)
+        if (byteRate <= 0 || dataSize <= 0) {
+            return null
+        }
+        return (dataSize * 1000 / byteRate).coerceAtLeast(800L)
+    }
+
+    private fun decodeBase64Prefix(text: String, byteCount: Int): ByteArray? {
+        val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        val output = ByteArray(byteCount)
+        var outputCount = 0
+        var buffer = 0
+        var bufferBits = 0
+        for (char in text) {
+            if (outputCount >= byteCount) {
+                break
+            }
+            if (char == '=') {
+                break
+            }
+            if (char == '\n' || char == '\r' || char == ' ') {
+                continue
+            }
+            val value = alphabet.indexOf(char)
+            if (value < 0) {
+                return null
+            }
+            buffer = (buffer shl 6) or value
+            bufferBits += 6
+            if (bufferBits >= 8) {
+                bufferBits -= 8
+                output[outputCount] = ((buffer shr bufferBits) and 0xFF).toByte()
+                outputCount += 1
+            }
+        }
+        return if (outputCount >= byteCount) output else null
     }
 
     private fun messageText(message: ChatMessage): String {
@@ -2995,19 +3535,16 @@ internal class StockChatPage : BasePager() {
             ?: "新对话"
     }
 
-    private fun restoreChatHistory() {
+    private fun initializeChatSessions() {
         val sessions = chatHistoryRepository.loadSessions()
         recentSessions.clear()
-        sessions.take(MAX_RECENT_SESSIONS).forEach { session ->
+        sessions.forEach { session ->
             recentSessions.add(session)
             session.id.substringAfterLast('_').toIntOrNull()?.let {
                 sessionSequence = maxOf(sessionSequence, it)
             }
         }
-        if (activeSessionId.isBlank()) {
-            activeSessionId = sessions.firstOrNull()?.id ?: nextSessionId()
-        }
-        loadMessagesForActiveSession()
+        activeSessionId = nextSessionId()
     }
 
     private fun loadMessagesForActiveSession() {
@@ -3022,7 +3559,7 @@ internal class StockChatPage : BasePager() {
 
     private fun refreshRecentSessions() {
         recentSessions.clear()
-        chatHistoryRepository.loadSessions().take(MAX_RECENT_SESSIONS).forEach { session ->
+        chatHistoryRepository.loadSessions().forEach { session ->
             recentSessions.add(session)
         }
     }
@@ -3034,7 +3571,6 @@ internal class StockChatPage : BasePager() {
 
     companion object {
         private const val MAX_HISTORY_TURNS = 6
-        private const val MAX_RECENT_SESSIONS = 6
         private const val MAX_INPUT_LINES = 5
         private const val DRAWER_SWIPE_DISTANCE = 56f
         private const val VOICE_CANCEL_DISTANCE = 56f

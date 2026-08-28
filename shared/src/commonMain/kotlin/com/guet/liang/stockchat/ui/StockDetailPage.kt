@@ -1,10 +1,8 @@
 package com.guet.liang.stockchat.ui
 
 import com.guet.liang.stockchat.base.BasePager
-import com.guet.liang.stockchat.base.setTimeout
-import com.guet.liang.stockchat.data.MockStockChatDataSource
-import com.guet.liang.stockchat.data.StockChatDataSource
-import com.guet.liang.stockchat.model.StockDetailResult
+import com.guet.liang.stockchat.data.MarketDataResult
+import com.guet.liang.stockchat.data.TencentMarketDataService
 import com.guet.liang.stockchat.model.StockQuote
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.base.Border
@@ -13,6 +11,7 @@ import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.core.base.ViewBuilder
 import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.directives.vif
+import com.tencent.kuikly.core.module.NetworkModule
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.reactive.handler.observable
 import com.tencent.kuikly.core.views.Canvas
@@ -33,12 +32,21 @@ private sealed class DetailUiState {
 internal class StockDetailPage : BasePager() {
     private var detailState by observable<DetailUiState>(DetailUiState.Loading)
     private var symbol = ""
-    private val dataSource: StockChatDataSource = MockStockChatDataSource
+    private var loadToken = 0
+    private lateinit var marketDataService: TencentMarketDataService
 
     override fun created() {
         super.created()
         symbol = pageData.params.optString("symbol").trim().uppercase()
+        marketDataService = TencentMarketDataService(
+            acquireModule<NetworkModule>(NetworkModule.MODULE_NAME)
+        )
         loadDetail()
+    }
+
+    override fun pageWillDestroy() {
+        loadToken += 1
+        super.pageWillDestroy()
     }
 
     override fun body(): ViewBuilder {
@@ -257,6 +265,8 @@ internal class StockDetailPage : BasePager() {
             }
             View {
                 attr {
+                    width(pagerData.pageViewWidth - 36f)
+                    alignSelfCenter()
                     padding(top = 20f, left = 18f, bottom = 18f, right = 18f)
                     borderRadius(22f)
                     backgroundColor(StockChatTheme.surface)
@@ -331,6 +341,8 @@ internal class StockDetailPage : BasePager() {
             }
             View {
                 attr {
+                    width(pagerData.pageViewWidth - 36f)
+                    alignSelfCenter()
                     marginTop(14f)
                     padding(top = 18f, left = 16f, bottom = 14f, right = 16f)
                     borderRadius(22f)
@@ -403,6 +415,8 @@ internal class StockDetailPage : BasePager() {
             ctx.InsightCard(this, "AI 解读", quote.aiInsight, true)
             View {
                 attr {
+                    width(pagerData.pageViewWidth - 36f)
+                    alignSelfCenter()
                     marginTop(14f)
                     padding(top = 13f, left = 14f, bottom = 13f, right = 14f)
                     borderRadius(16f)
@@ -440,6 +454,7 @@ internal class StockDetailPage : BasePager() {
             attr {
                 height(188f)
                 marginTop(18f)
+                alignSelfStretch()
             }
         }) { context, width, height ->
             val gridColor = Color(0xFFE9EDEB)
@@ -487,6 +502,8 @@ internal class StockDetailPage : BasePager() {
         with(container) {
         View {
             attr {
+                width(pagerData.pageViewWidth - 36f)
+                alignSelfCenter()
                 marginTop(14f)
                 padding(top = 17f, left = 16f, bottom = 17f, right = 16f)
                 borderRadius(20f)
@@ -536,11 +553,18 @@ internal class StockDetailPage : BasePager() {
 
     private fun loadDetail() {
         detailState = DetailUiState.Loading
-        setTimeout(420) {
-            detailState = when (val result = dataSource.stockDetail(symbol)) {
-                is StockDetailResult.Success -> DetailUiState.Content(result.quote)
-                StockDetailResult.Empty -> DetailUiState.Empty
-                is StockDetailResult.Failure -> DetailUiState.Error(result.message)
+        loadToken += 1
+        val currentLoadToken = loadToken
+        marketDataService.loadDetail(symbol) result@{ result ->
+            if (currentLoadToken != loadToken) {
+                return@result
+            }
+            detailState = when (result) {
+                is MarketDataResult.Success -> result.snapshots.firstOrNull()?.quote
+                    ?.let(DetailUiState::Content)
+                    ?: DetailUiState.Empty
+                MarketDataResult.Empty -> DetailUiState.Empty
+                is MarketDataResult.Failure -> DetailUiState.Error(result.message)
             }
         }
     }

@@ -4,8 +4,10 @@ import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioRecord
+import android.media.AudioTrack
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.os.Handler
@@ -42,6 +44,9 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
     private var recordingCleanupInProgress = false
     private var audioPlayer: MediaPlayer? = null
     private var audioPlaybackFile: File? = null
+    private var streamingAudioTrack: AudioTrack? = null
+    private var streamingSpeechConnection: HttpURLConnection? = null
+    @Volatile
     private var audioPlaybackSequence = 0
 
     override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? {
@@ -118,6 +123,10 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
                 stopAudioPlayback(callback)
             }
 
+            "streamSpeechSynthesis" -> {
+                streamSpeechSynthesis(params, callback)
+            }
+
             "pickImages" -> {
                 pickImages(params, callback)
             }
@@ -153,6 +162,7 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
             activeRecording.also { activeRecording = null }
         }
         recording?.let(::cancelRecordingSession)
+        releaseStreamingSpeechPlayback()
         releaseAudioPlayer()
         mainHandler.removeCallbacksAndMessages(null)
         super.onDestroy()
@@ -163,6 +173,7 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
         callback: KuiklyRenderCallback?,
     ) {
         audioPlaybackSequence += 1
+        releaseStreamingSpeechPlayback()
         val playbackSequence = audioPlaybackSequence
         val payload = runCatching { JSONObject(params ?: "{}") }.getOrNull()
         val audioBase64 = payload?.optString("audioBase64").orEmpty()
@@ -273,8 +284,272 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
 
     private fun stopAudioPlayback(callback: KuiklyRenderCallback?) {
         audioPlaybackSequence += 1
+        releaseStreamingSpeechPlayback()
         releaseAudioPlayer()
         deliverCallback(callback, successResult())
+    }
+
+    private fun streamSpeechSynthesis(
+        params: String?,
+        callback: KuiklyRenderCallback?,
+    ) {
+        val payload = runCatching { JSONObject(params ?: "{}") }.getOrNull()
+        val apiKey = payload?.optString("apiKey")?.trim().orEmpty()
+        val requestUrl = payload?.optString("url")?.trim().orEmpty()
+        val requestBody = payload?.optString("requestBody").orEmpty()
+        if (apiKey.isEmpty() || requestUrl.isEmpty() || requestBody.isEmpty()) {
+            deliverCallback(
+                callback,
+                failureResult("INVALID_TTS_STREAM_REQUEST", "MiMo 流式语音请求参数不完整。"),
+            )
+            return
+        }
+
+        audioPlaybackSequence += 1
+        val playbackSequence = audioPlaybackSequence
+        releaseStreamingSpeechPlayback()
+        releaseAudioPlayer()
+        Thread(
+            {
+                var connection: HttpURLConnection? = null
+                var audioTrack: AudioTrack? = null
+                try {
+                    connection = (URL(requestUrl).openConnection() as HttpURLConnection).apply {
+                        requestMethod = "POST"
+                        doInput = true
+                        doOutput = true
+                        connectTimeout = STREAM_CONNECT_TIMEOUT_MS
+                        readTimeout = STREAM_READ_TIMEOUT_MS
+                        setRequestProperty("Content-Type", "application/json")
+                        setRequestProperty("Accept", "text/event-stream")
+                        setRequestProperty("api-key", apiKey)
+                    }
+                    synchronized(recordingLock) {
+                        if (destroyed || playbackSequence != audioPlaybackSequence) {
+                            connection.disconnect()
+                            deliverCallback(
+                                callback,
+                                mapOf("success" to 1, "event" to "end"),
+                            )
+                            return@Thread
+                        }
+                        streamingSpeechConnection = connection
+                    }
+                    connection.outputStream.use { output ->
+                        output.write(requestBody.toByteArray(Charsets.UTF_8))
+                    }
+                    val statusCode = connection.responseCode
+                    if (statusCode !in 200..299) {
+                        val responseText = (connection.errorStream ?: connection.inputStream)
+                            .bufferedReader(Charsets.UTF_8)
+                            .use(BufferedReader::readText)
+                        val message = runCatching {
+                            JSONObject(responseText).optJSONObject("error")?.optString("message")
+                        }.getOrNull().orEmpty().ifBlank {
+                            "MiMo 语音请求失败（HTTP $statusCode）。"
+                        }
+                        deliverCallback(
+                            callback,
+                            failureResult("MIMO_TTS_HTTP_$statusCode", message),
+                        )
+                        return@Thread
+                    }
+
+                    var receivedAudio = false
+                    var playbackStarted = false
+                    var writtenFrames = 0L
+                    connection.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+                        reader.forEachLine { line ->
+                            if (destroyed || playbackSequence != audioPlaybackSequence) {
+                                return@forEachLine
+                            }
+                            if (!line.startsWith("data:")) {
+                                return@forEachLine
+                            }
+                            val data = line.removePrefix("data:").trim()
+                            if (data.isEmpty() || data == "[DONE]") {
+                                return@forEachLine
+                            }
+                            val audioBase64 = runCatching {
+                                JSONObject(data)
+                                    .optJSONArray("choices")
+                                    ?.optJSONObject(0)
+                                    ?.optJSONObject("delta")
+                                    ?.optJSONObject("audio")
+                                    ?.optString("data")
+                                    .orEmpty()
+                            }.getOrNull().orEmpty()
+                            if (audioBase64.isEmpty()) {
+                                return@forEachLine
+                            }
+                            val pcmBytes = runCatching {
+                                Base64.decode(audioBase64, Base64.DEFAULT)
+                            }.getOrElse {
+                                throw IllegalArgumentException("MiMo 返回了无效的音频分片。")
+                            }
+                            if (pcmBytes.isEmpty()) {
+                                return@forEachLine
+                            }
+                            val nextWrittenBytes = writtenFrames * TTS_BYTES_PER_FRAME + pcmBytes.size
+                            if (nextWrittenBytes > MAX_PLAYBACK_AUDIO_BYTES) {
+                                throw IllegalArgumentException("语音数据超过播放大小限制。")
+                            }
+                            if (audioTrack == null) {
+                                audioTrack = createStreamingAudioTrack()
+                                synchronized(recordingLock) {
+                                    if (destroyed || playbackSequence != audioPlaybackSequence) {
+                                        return@forEachLine
+                                    }
+                                    streamingAudioTrack = audioTrack
+                                }
+                                audioTrack?.play()
+                            }
+                            writeStreamingAudio(audioTrack ?: return@forEachLine, pcmBytes)
+                            writtenFrames += pcmBytes.size / TTS_BYTES_PER_FRAME
+                            receivedAudio = true
+                            if (!playbackStarted) {
+                                playbackStarted = true
+                                deliverCallback(
+                                    callback,
+                                    mapOf("success" to 1, "event" to "start"),
+                                )
+                            }
+                        }
+                    }
+                    if (destroyed || playbackSequence != audioPlaybackSequence) {
+                        deliverCallback(callback, mapOf("success" to 1, "event" to "end"))
+                        return@Thread
+                    }
+                    if (!receivedAudio || audioTrack == null) {
+                        deliverCallback(
+                            callback,
+                            failureResult("EMPTY_AUDIO", "MiMo 没有返回可播放的语音。"),
+                        )
+                        return@Thread
+                    }
+                    awaitStreamingPlayback(audioTrack ?: return@Thread, writtenFrames, playbackSequence)
+                    deliverCallback(callback, mapOf("success" to 1, "event" to "end"))
+                } catch (throwable: Throwable) {
+                    if (destroyed || playbackSequence != audioPlaybackSequence) {
+                        deliverCallback(callback, mapOf("success" to 1, "event" to "end"))
+                    } else {
+                        deliverCallback(
+                            callback,
+                            failureResult(
+                                "MIMO_TTS_STREAM_FAILED",
+                                throwable.message ?: "MiMo 流式语音生成失败，请稍后重试。",
+                            ),
+                        )
+                    }
+                } finally {
+                    synchronized(recordingLock) {
+                        if (streamingSpeechConnection === connection) {
+                            streamingSpeechConnection = null
+                        }
+                        if (streamingAudioTrack === audioTrack) {
+                            streamingAudioTrack = null
+                        }
+                    }
+                    connection?.disconnect()
+                    releaseAudioTrack(audioTrack)
+                }
+            },
+            "StockChatMimoTtsStream",
+        ).start()
+    }
+
+    private fun createStreamingAudioTrack(): AudioTrack {
+        val minBufferSize = AudioTrack.getMinBufferSize(
+            TTS_SAMPLE_RATE_HZ,
+            AudioFormat.CHANNEL_OUT_MONO,
+            AudioFormat.ENCODING_PCM_16BIT,
+        )
+        if (minBufferSize <= 0) {
+            throw IllegalStateException("当前设备不支持 MiMo 流式音频格式。")
+        }
+        return AudioTrack.Builder()
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+            )
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .setSampleRate(TTS_SAMPLE_RATE_HZ)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                    .build()
+            )
+            .setBufferSizeInBytes(minBufferSize)
+            .setTransferMode(AudioTrack.MODE_STREAM)
+            .build()
+            .also { audioTrack ->
+                if (audioTrack.state != AudioTrack.STATE_INITIALIZED) {
+                    releaseAudioTrack(audioTrack)
+                    throw IllegalStateException("当前设备无法初始化流式语音播放。")
+                }
+            }
+    }
+
+    private fun writeStreamingAudio(audioTrack: AudioTrack, pcmBytes: ByteArray) {
+        var offset = 0
+        while (offset < pcmBytes.size) {
+            val written = audioTrack.write(
+                pcmBytes,
+                offset,
+                pcmBytes.size - offset,
+                AudioTrack.WRITE_BLOCKING,
+            )
+            if (written <= 0) {
+                throw IllegalStateException("流式语音播放写入失败（$written）。")
+            }
+            offset += written
+        }
+    }
+
+    private fun awaitStreamingPlayback(
+        audioTrack: AudioTrack,
+        writtenFrames: Long,
+        playbackSequence: Int,
+    ) {
+        val deadline = System.currentTimeMillis() + STREAM_PLAYBACK_DRAIN_TIMEOUT_MS
+        while (
+            !destroyed &&
+            playbackSequence == audioPlaybackSequence &&
+            audioTrack.playbackHeadPosition.toLong() < writtenFrames &&
+            System.currentTimeMillis() < deadline
+        ) {
+            Thread.sleep(STREAM_PLAYBACK_POLL_INTERVAL_MS)
+        }
+        if (
+            !destroyed &&
+            playbackSequence == audioPlaybackSequence &&
+            audioTrack.playbackHeadPosition.toLong() < writtenFrames
+        ) {
+            throw IllegalStateException("流式语音播放未能正常结束。")
+        }
+    }
+
+    private fun releaseStreamingSpeechPlayback() {
+        val connection: HttpURLConnection?
+        val audioTrack: AudioTrack?
+        synchronized(recordingLock) {
+            connection = streamingSpeechConnection
+            streamingSpeechConnection = null
+            audioTrack = streamingAudioTrack
+            streamingAudioTrack = null
+        }
+        connection?.disconnect()
+        releaseAudioTrack(audioTrack)
+    }
+
+    private fun releaseAudioTrack(audioTrack: AudioTrack?) {
+        audioTrack ?: return
+        runCatching { audioTrack.pause() }
+        runCatching { audioTrack.flush() }
+        runCatching { audioTrack.stop() }
+        runCatching { audioTrack.release() }
     }
 
     private fun releaseAudioPlayer() {
@@ -974,6 +1249,10 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
         private const val RECORDING_THREAD_JOIN_TIMEOUT_MS = 2_000L
         private const val MAX_IMAGE_SELECTION_COUNT = 9
         private const val MAX_PLAYBACK_AUDIO_BYTES = 24 * 1024 * 1024
+        private const val TTS_SAMPLE_RATE_HZ = 24_000
+        private const val TTS_BYTES_PER_FRAME = 2
+        private const val STREAM_PLAYBACK_POLL_INTERVAL_MS = 20L
+        private const val STREAM_PLAYBACK_DRAIN_TIMEOUT_MS = 10_000L
         private const val ALIYUN_CHAT_COMPLETIONS_URL =
             "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
         private const val STREAM_CONNECT_TIMEOUT_MS = 30_000

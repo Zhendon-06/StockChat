@@ -58,6 +58,32 @@ CREATE TABLE market_quote_trend_point (
     FOREIGN KEY (block_id) REFERENCES market_quote_block(block_id) ON DELETE CASCADE
 );
 
+CREATE TABLE conversation_table_artifact (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    source_message_count INTEGER NOT NULL,
+    row_count INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES chat_session(id) ON DELETE CASCADE
+);
+
+CREATE INDEX conversation_table_artifact_updated_at
+ON conversation_table_artifact(updated_at DESC);
+
+CREATE TABLE conversation_table_artifact_row (
+    artifact_id INTEGER NOT NULL,
+    row_index INTEGER NOT NULL,
+    sequence_number INTEGER NOT NULL,
+    user_question TEXT NOT NULL,
+    ai_answer_summary TEXT NOT NULL,
+    related_instrument TEXT NOT NULL,
+    status TEXT NOT NULL,
+    PRIMARY KEY (artifact_id, row_index),
+    FOREIGN KEY (artifact_id) REFERENCES conversation_table_artifact(id) ON DELETE CASCADE
+);
+
 selectSession:
 SELECT * FROM chat_session WHERE id = ?;
 
@@ -83,6 +109,23 @@ SELECT point_value FROM market_quote_trend_point
 WHERE block_id = ?
 ORDER BY point_index ASC;
 
+selectConversationTableArtifact:
+SELECT * FROM conversation_table_artifact
+WHERE id = ?;
+
+selectConversationTableArtifactIdBySession:
+SELECT id FROM conversation_table_artifact
+WHERE session_id = ?;
+
+selectConversationTableArtifacts:
+SELECT * FROM conversation_table_artifact
+ORDER BY updated_at DESC, id DESC;
+
+selectConversationTableArtifactRows:
+SELECT * FROM conversation_table_artifact_row
+WHERE artifact_id = ?
+ORDER BY row_index ASC;
+
 insertSession:
 INSERT OR IGNORE INTO chat_session(id, title, created_at, updated_at)
 VALUES (
@@ -92,9 +135,15 @@ VALUES (
     CAST(strftime('%s', 'now') AS INTEGER) * 1000 + CAST(substr(strftime('%f', 'now'), 4, 3) AS INTEGER)
 );
 
-updateSession:
+renameSession:
 UPDATE chat_session
 SET title = ?, updated_at =
+    CAST(strftime('%s', 'now') AS INTEGER) * 1000 + CAST(substr(strftime('%f', 'now'), 4, 3) AS INTEGER)
+WHERE id = ?;
+
+touchSession:
+UPDATE chat_session
+SET updated_at =
     CAST(strftime('%s', 'now') AS INTEGER) * 1000 + CAST(substr(strftime('%f', 'now'), 4, 3) AS INTEGER)
 WHERE id = ?;
 
@@ -147,6 +196,47 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 insertTrendPoint:
 INSERT INTO market_quote_trend_point(block_id, point_index, point_value)
 VALUES (?, ?, ?);
+
+insertConversationTableArtifact:
+INSERT OR IGNORE INTO conversation_table_artifact(
+    session_id,
+    title,
+    source_message_count,
+    row_count,
+    created_at,
+    updated_at
+)
+VALUES (
+    ?, ?, ?, ?,
+    CAST(strftime('%s', 'now') AS INTEGER) * 1000 + CAST(substr(strftime('%f', 'now'), 4, 3) AS INTEGER),
+    CAST(strftime('%s', 'now') AS INTEGER) * 1000 + CAST(substr(strftime('%f', 'now'), 4, 3) AS INTEGER)
+);
+
+updateConversationTableArtifact:
+UPDATE conversation_table_artifact
+SET
+    title = ?,
+    source_message_count = ?,
+    row_count = ?,
+    updated_at =
+        CAST(strftime('%s', 'now') AS INTEGER) * 1000 + CAST(substr(strftime('%f', 'now'), 4, 3) AS INTEGER)
+WHERE session_id = ?;
+
+insertConversationTableArtifactRow:
+INSERT INTO conversation_table_artifact_row(
+    artifact_id,
+    row_index,
+    sequence_number,
+    user_question,
+    ai_answer_summary,
+    related_instrument,
+    status
+)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+deleteConversationTableArtifactRows:
+DELETE FROM conversation_table_artifact_row
+WHERE artifact_id = ?;
 
 deleteTrendPointsForSession:
 DELETE FROM market_quote_trend_point

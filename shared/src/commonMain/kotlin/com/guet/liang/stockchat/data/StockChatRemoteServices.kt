@@ -6,7 +6,6 @@ import com.guet.liang.stockchat.model.ChatHistoryItem
 import com.guet.liang.stockchat.model.ChatRole
 import com.guet.liang.stockchat.model.SpeechRecognitionResult
 import com.guet.liang.stockchat.model.SpeechSynthesisResult
-import com.guet.liang.stockchat.model.StockDetailResult
 import com.guet.liang.stockchat.base.BridgeModule
 import com.tencent.kuikly.core.module.NetworkModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
@@ -33,6 +32,7 @@ internal class AliyunStockChatDataSource(
     private val bridgeModule: BridgeModule? = null,
     private val useNativeStreaming: Boolean = false,
 ) : StockChatDataSource {
+    private val marketDataService = TencentMarketDataService(networkModule)
 
     override fun answer(
         question: String,
@@ -42,8 +42,94 @@ internal class AliyunStockChatDataSource(
         attempt: Int,
         callback: (ChatAnswer) -> Unit,
     ) {
+        val marketPlan = if (images.isEmpty()) {
+            SecuritiesQueryRouter.route(question, history)
+        } else {
+            null
+        }
+        if (marketPlan != null) {
+            answerMarketQuery(
+                question = question,
+                history = history,
+                model = model,
+                plan = marketPlan,
+                callback = callback,
+            )
+            return
+        }
+        answerWithAi(
+            question = question,
+            history = history,
+            images = images,
+            model = model,
+            snapshots = emptyList(),
+            plan = null,
+            attempt = attempt,
+            callback = callback,
+        )
+    }
+
+    private fun answerMarketQuery(
+        question: String,
+        history: List<ChatHistoryItem>,
+        model: String,
+        plan: SecuritiesQueryPlan,
+        callback: (ChatAnswer) -> Unit,
+    ) {
+        marketDataService.load(plan) { result ->
+            when (result) {
+                is MarketDataResult.Success -> {
+                    if (plan.needsAi && config.apiKey.isNotBlank()) {
+                        answerWithAi(
+                            question = question,
+                            history = history,
+                            images = emptyList(),
+                            model = model,
+                            snapshots = result.snapshots,
+                            plan = plan,
+                            attempt = 0,
+                            callback = callback,
+                        )
+                    } else {
+                        callback(
+                            ChatAnswer.Success(
+                                marketAnswerBlocks(
+                                    plan = plan,
+                                    snapshots = result.snapshots,
+                                    aiUnavailable = plan.needsAi,
+                                )
+                            )
+                        )
+                    }
+                }
+                MarketDataResult.Empty -> callback(
+                    ChatAnswer.Failure("未找到对应证券，请尝试输入完整名称、六位代码或带交易所的代码。")
+                )
+                is MarketDataResult.Failure -> callback(ChatAnswer.Failure(result.message))
+            }
+        }
+    }
+
+    private fun answerWithAi(
+        question: String,
+        history: List<ChatHistoryItem>,
+        images: List<String>,
+        model: String,
+        snapshots: List<TencentMarketSnapshot>,
+        plan: SecuritiesQueryPlan?,
+        attempt: Int,
+        callback: (ChatAnswer) -> Unit,
+    ) {
         if (config.apiKey.isBlank()) {
-            callback(ChatAnswer.Failure(MISSING_API_KEY_MESSAGE))
+            if (snapshots.isNotEmpty() && plan != null) {
+                callback(
+                    ChatAnswer.Success(
+                        marketAnswerBlocks(plan, snapshots, aiUnavailable = true)
+                    )
+                )
+            } else {
+                MockStockChatDataSource.answer(question, history, images, model, attempt, callback)
+            }
             return
         }
 
@@ -54,6 +140,11 @@ internal class AliyunStockChatDataSource(
             history.dropLast(1)
         } else {
             history
+        }
+        val questionWithMarketContext = if (snapshots.isEmpty()) {
+            question
+        } else {
+            "$question\n\n${marketContext(snapshots)}"
         }
         val messages = JSONArray().apply {
             put(
@@ -76,7 +167,7 @@ internal class AliyunStockChatDataSource(
                     put(
                         "content",
                         if (images.isEmpty()) {
-                            question
+                            questionWithMarketContext
                         } else {
                             JSONArray().apply {
                                 images.forEach { imageUrl ->
@@ -93,7 +184,7 @@ internal class AliyunStockChatDataSource(
                                 put(
                                     JSONObject().apply {
                                         put("type", "text")
-                                        put("text", question)
+                                        put("text", questionWithMarketContext)
                                     }
                                 )
                             }
@@ -113,10 +204,10 @@ internal class AliyunStockChatDataSource(
             put("stream", true)
         }
         if (useNativeStreaming && bridgeModule != null) {
-            streamWithNativeBridge(requestBody, callback)
+            streamWithNativeBridge(requestBody, plan, snapshots, callback)
         } else {
             request(requestBody) { response, error ->
-                handleCompletedResponse(response, error, callback)
+                handleCompletedResponse(response, error, plan, snapshots, callback)
             }
         }
     }
@@ -124,20 +215,28 @@ internal class AliyunStockChatDataSource(
     private fun handleCompletedResponse(
         response: JSONObject?,
         error: String?,
+        plan: SecuritiesQueryPlan?,
+        snapshots: List<TencentMarketSnapshot>,
         callback: (ChatAnswer) -> Unit,
     ) {
             if (error != null) {
-                callback(ChatAnswer.Failure(error))
+                callback(aiFailureOrMarketFallback(error, plan, snapshots))
                 return
             }
             val directContent = response?.assistantContent().orEmpty()
             if (directContent.isNotEmpty()) {
-                callback(ChatAnswer.Success(answerBlocks(directContent)))
+                callback(ChatAnswer.Success(answerBlocks(directContent, snapshots)))
                 return
             }
             val streamDeltas = response?.streamDeltas().orEmpty()
             if (streamDeltas.isEmpty()) {
-                callback(ChatAnswer.Failure("阿里云百炼没有返回可展示的回答，请稍后重试。"))
+                callback(
+                    aiFailureOrMarketFallback(
+                        "阿里云百炼没有返回可展示的回答，请稍后重试。",
+                        plan,
+                        snapshots,
+                    )
+                )
                 return
             }
             var streamedContent = ""
@@ -147,14 +246,22 @@ internal class AliyunStockChatDataSource(
             }
             val content = streamedContent.trim()
             if (content.isEmpty()) {
-                callback(ChatAnswer.Failure("阿里云百炼没有返回可展示的回答，请稍后重试。"))
+                callback(
+                    aiFailureOrMarketFallback(
+                        "阿里云百炼没有返回可展示的回答，请稍后重试。",
+                        plan,
+                        snapshots,
+                    )
+                )
                 return
             }
-            callback(ChatAnswer.Success(answerBlocks(content)))
+            callback(ChatAnswer.Success(answerBlocks(content, snapshots)))
     }
 
     private fun streamWithNativeBridge(
         requestBody: JSONObject,
+        plan: SecuritiesQueryPlan?,
+        snapshots: List<TencentMarketSnapshot>,
         callback: (ChatAnswer) -> Unit,
     ) {
         var streamedContent = ""
@@ -162,10 +269,12 @@ internal class AliyunStockChatDataSource(
             val success = payload?.optInt("success", 0) == 1
             if (!success) {
                 callback(
-                    ChatAnswer.Failure(
+                    aiFailureOrMarketFallback(
                         payload?.optString("errorMessage")?.ifBlank {
                             "阿里云百炼请求失败，请稍后重试。"
-                        } ?: "阿里云百炼请求失败，请稍后重试。"
+                        } ?: "阿里云百炼请求失败，请稍后重试。",
+                        plan,
+                        snapshots,
                     )
                 )
                 return@streamChatCompletion
@@ -181,17 +290,19 @@ internal class AliyunStockChatDataSource(
                 "end" -> {
                     val content = streamedContent.trim()
                     if (content.isEmpty()) {
-                        callback(ChatAnswer.Failure("阿里云百炼没有返回可展示的回答，请稍后重试。"))
+                        callback(
+                            aiFailureOrMarketFallback(
+                                "阿里云百炼没有返回可展示的回答，请稍后重试。",
+                                plan,
+                                snapshots,
+                            )
+                        )
                     } else {
-                        callback(ChatAnswer.Success(answerBlocks(content)))
+                        callback(ChatAnswer.Success(answerBlocks(content, snapshots)))
                     }
                 }
             }
         }
-    }
-
-    override fun stockDetail(symbol: String): StockDetailResult {
-        return MockStockChatDataSource.stockDetail(symbol)
     }
 
     private fun request(
@@ -223,13 +334,76 @@ internal class AliyunStockChatDataSource(
         }
     }
 
-    private fun answerBlocks(content: String): List<AnswerBlock> {
-        return listOf(
-            AnswerBlock.Markdown(
-                source = content.trim(),
-                fallbackText = content.trim(),
+    private fun answerBlocks(
+        content: String,
+        snapshots: List<TencentMarketSnapshot>,
+    ): List<AnswerBlock> {
+        return buildList {
+            add(
+                AnswerBlock.Markdown(
+                    source = content.trim(),
+                    fallbackText = content.trim(),
+                )
             )
-        )
+            snapshots.forEach { snapshot ->
+                add(AnswerBlock.MarketQuote(snapshot.quote))
+            }
+        }
+    }
+
+    private fun marketAnswerBlocks(
+        plan: SecuritiesQueryPlan,
+        snapshots: List<TencentMarketSnapshot>,
+        aiUnavailable: Boolean,
+    ): List<AnswerBlock> {
+        val names = snapshots.joinToString("、") { snapshot ->
+            "${snapshot.quote.name}（${snapshot.quote.symbol}）"
+        }
+        val headline = when (plan.intent) {
+            SecuritiesIntent.QUOTE -> "已获取 $names 的最新行情快照。"
+            SecuritiesIntent.TREND -> "已获取 $names 的最新行情与走势数据。"
+            SecuritiesIntent.COMPARE -> "已获取 $names 的同期行情，可通过卡片对比价格与涨跌幅。"
+            SecuritiesIntent.ANALYSIS -> "已获取 $names 的最新行情。"
+        }
+        val aiNotice = if (aiUnavailable) {
+            "\n\nAI 深度解读当前不可用，先展示可核验的行情数据。"
+        } else {
+            ""
+        }
+        val markdown = "$headline$aiNotice\n\n数据来源：腾讯证券公开行情接口；" +
+            "行情时间以卡片标注为准。仅供参考，不构成投资建议。"
+        return buildList {
+            add(AnswerBlock.Markdown(markdown, markdown))
+            snapshots.forEach { snapshot ->
+                add(AnswerBlock.MarketQuote(snapshot.quote))
+            }
+        }
+    }
+
+    private fun marketContext(snapshots: List<TencentMarketSnapshot>): String {
+        val lines = snapshots.joinToString("\n") { snapshot ->
+            val quote = snapshot.quote
+            val trend = quote.trendPoints.takeLast(10).joinToString(",")
+            "- ${quote.name}（${quote.symbol}，${snapshot.providerSymbol}）：" +
+                "现价 ${quote.price}，涨跌 ${quote.change}（${quote.changePercent}），" +
+                "昨收 ${snapshot.previousClose}，今开 ${snapshot.open}，最高 ${snapshot.high}，" +
+                "最低 ${snapshot.low}，成交量 ${snapshot.volume} 手，成交额 ${snapshot.amount} 万元，" +
+                "换手率 ${snapshot.turnoverRate}%，市盈率 ${snapshot.priceEarningsRatio}，" +
+                "振幅 ${snapshot.amplitude}%，最近走势点（从旧到新）[$trend]，${quote.updatedAt}"
+        }
+        return "以下是本次请求刚获取的腾讯证券行情工具数据，实时数字只能引用这些字段：\n$lines"
+    }
+
+    private fun aiFailureOrMarketFallback(
+        message: String,
+        plan: SecuritiesQueryPlan?,
+        snapshots: List<TencentMarketSnapshot>,
+    ): ChatAnswer {
+        return if (plan != null && snapshots.isNotEmpty()) {
+            ChatAnswer.Success(marketAnswerBlocks(plan, snapshots, aiUnavailable = true))
+        } else {
+            ChatAnswer.Failure(message)
+        }
     }
 
     companion object {
@@ -238,6 +412,8 @@ internal class AliyunStockChatDataSource(
 
         private const val SYSTEM_PROMPT =
             "你是 StockMate，一名中文股票研究助手。请用简洁 Markdown 回答股票、指数和市场问题。" +
+                "当用户消息附带腾讯证券行情工具数据时，实时数字只能引用该数据并注明数据时间；" +
+                "未提供新闻、公告或基本面证据时，不得臆测涨跌原因。" +
                 "不得声称掌握未提供的实时行情，不得编造价格或确定性收益；不确定时要明确说明。" +
                 "回答应给出观察依据、主要风险，并以‘仅供参考，不构成投资建议’结尾。"
     }
@@ -324,6 +500,8 @@ internal class MimoSpeechRecognitionService(
 internal class MimoSpeechSynthesisService(
     private val networkModule: NetworkModule,
     private val config: MimoVoiceApiConfig,
+    private val bridgeModule: BridgeModule? = null,
+    private val useNativeStreaming: Boolean = false,
 ) {
     val isConfigured: Boolean
         get() = config.apiKey.isNotBlank()
@@ -369,6 +547,37 @@ internal class MimoSpeechSynthesisService(
                 }
             )
             put("stream", false)
+        }
+        if (useNativeStreaming && bridgeModule != null) {
+            requestBody.put(
+                "audio",
+                JSONObject().apply {
+                    put("format", "pcm16")
+                    put("voice", config.ttsVoice)
+                }
+            )
+            requestBody.put("stream", true)
+            bridgeModule.streamSpeechSynthesis(
+                apiKey = config.apiKey,
+                url = "${config.baseUrl.trimEnd('/')}/chat/completions",
+                requestBody = requestBody,
+            ) { payload ->
+                if (payload?.optInt("success", 0) != 1) {
+                    callback(
+                        SpeechSynthesisResult.Failure(
+                            payload?.optString("errorMessage")?.ifBlank {
+                                "MiMo 语音生成失败，请稍后重试。"
+                            } ?: "MiMo 语音生成失败，请稍后重试。"
+                        )
+                    )
+                } else {
+                    when (payload.optString("event")) {
+                        "start" -> callback(SpeechSynthesisResult.Started)
+                        "end" -> callback(SpeechSynthesisResult.Completed)
+                    }
+                }
+            }
+            return
         }
         val headers = JSONObject().apply {
             put("Content-Type", "application/json")

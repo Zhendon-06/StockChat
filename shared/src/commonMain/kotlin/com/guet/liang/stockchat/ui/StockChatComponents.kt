@@ -15,6 +15,8 @@ import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.base.attr.ImageUri
 import com.tencent.kuikly.core.views.Canvas
 import com.tencent.kuikly.core.views.Image
+import com.tencent.kuikly.core.views.RichText
+import com.tencent.kuikly.core.views.Span
 import com.tencent.kuikly.core.views.Text
 import com.tencent.kuikly.core.views.View
 import com.tencent.kuiklybase.KuiklyMarkdown
@@ -186,6 +188,8 @@ internal fun ViewContainer<*, *>.ChatMessageItem(
     isFirst: Boolean = false,
     // 读取跳点动画相位的函数：在 attr 内调用才能建立对页面 observable 的依赖
     typingPhase: () -> Int = { 0 },
+    // 朗读声纹动画相位：>=0 表示该消息正在生成/播放语音，<0 表示空闲
+    readAloudPhase: () -> Int = { -1 },
     onQuoteClick: (StockQuote) -> Unit,
     onRetry: (ChatMessage) -> Unit,
     onCopy: (ChatMessage) -> Unit = {},
@@ -224,15 +228,11 @@ internal fun ViewContainer<*, *>.ChatMessageItem(
                                     backgroundColor(Color(0xFFE2E4E5))
                                     marginBottom(8f * scale)
                                 }
-                                Text {
+                                RichText {
                                     attr {
                                         val fontSize = 17f * scale
                                         // 气泡最大宽 290 - 左右内边距 16*2 = 258
                                         val maxTextWidth = 258f * scale
-                                        text(block.fallbackText)
-                                        fontSize(fontSize)
-                                        lineHeight(24f * scale)
-                                        color(StockChatTheme.textPrimary)
                                         // 超宽时给定确定宽度触发折行；短文本保持内容撑宽
                                         if (estimateWrappedLineCount(
                                                 block.fallbackText,
@@ -242,6 +242,12 @@ internal fun ViewContainer<*, *>.ChatMessageItem(
                                         ) {
                                             width(maxTextWidth)
                                         }
+                                    }
+                                    Span {
+                                        text(block.fallbackText)
+                                        fontSize(17f * scale)
+                                        lineHeight(24f * scale)
+                                        color(StockChatTheme.textPrimary)
                                     }
                                 }
                             }
@@ -276,6 +282,7 @@ internal fun ViewContainer<*, *>.ChatMessageItem(
                         }
                         MessageActionRow(
                             scale = scale,
+                            readAloudPhase = readAloudPhase,
                             onCopy = { onCopy(message) },
                             onRegenerate = { onRegenerate(message) },
                             onReadAloud = { onReadAloud(message) },
@@ -311,8 +318,8 @@ private fun ViewContainer<*, *>.MarkdownContent(block: AnswerBlock.Markdown, sca
             marginBottom(9f * scale)
         }
         if (block.source.isBlank()) {
-            Text {
-                attr {
+            RichText {
+                Span {
                     text(block.fallbackText)
                     fontSize(17f * scale)
                     lineHeight(25f * scale)
@@ -330,6 +337,7 @@ private fun ViewContainer<*, *>.MarkdownContent(block: AnswerBlock.Markdown, sca
 
 private fun ViewContainer<*, *>.MessageActionRow(
     scale: Float,
+    readAloudPhase: () -> Int = { -1 },
     onCopy: () -> Unit,
     onRegenerate: () -> Unit,
     onReadAloud: () -> Unit,
@@ -344,7 +352,7 @@ private fun ViewContainer<*, *>.MessageActionRow(
         }
         MessageActionButton(MessageActionIcon.COPY, scale, onCopy)
         MessageActionButton(MessageActionIcon.REGENERATE, scale, onRegenerate)
-        MessageActionButton(MessageActionIcon.READ_ALOUD, scale, onReadAloud)
+        MessageActionButton(MessageActionIcon.READ_ALOUD, scale, onReadAloud, readAloudPhase)
         MessageActionButton(MessageActionIcon.MORE, scale, onMore)
     }
 }
@@ -353,6 +361,7 @@ private fun ViewContainer<*, *>.MessageActionButton(
     icon: MessageActionIcon,
     scale: Float,
     onClick: () -> Unit,
+    wavePhase: (() -> Int)? = null,
 ) {
     View {
         attr {
@@ -363,13 +372,20 @@ private fun ViewContainer<*, *>.MessageActionButton(
         event {
             click { onClick() }
         }
-        MessageActionMark(icon, scale)
+        if (wavePhase == null) {
+            MessageActionMark(icon, scale)
+        } else {
+            // 静态图标与声纹共存，用 visibility 切换：结构只建一次，状态变化走 attr 重渲染
+            MessageActionMark(icon, scale, hidden = { wavePhase() >= 0 })
+            ReadAloudWaveMark(scale, visible = { wavePhase() >= 0 }, phase = wavePhase)
+        }
     }
 }
 
 private fun ViewContainer<*, *>.MessageActionMark(
     icon: MessageActionIcon,
     scale: Float,
+    hidden: () -> Boolean = { false },
 ) {
     val asset = when (icon) {
         MessageActionIcon.COPY -> "copy_all.png"
@@ -382,6 +398,43 @@ private fun ViewContainer<*, *>.MessageActionMark(
             size(22f * scale, 22f * scale)
             resizeContain()
             src(ImageUri.commonAssets(asset))
+            visibility(!hidden())
+        }
+    }
+}
+
+// 朗读进行时的声音按钮声纹：4 根竖条以错相正弦流动，节奏与语音输入声纹一致
+private fun ViewContainer<*, *>.ReadAloudWaveMark(
+    scale: Float,
+    visible: () -> Boolean,
+    phase: () -> Int,
+) {
+    View {
+        attr {
+            absolutePositionAllZero()
+            flexDirectionRow()
+            alignItemsCenter()
+            justifyContentCenter()
+            visibility(visible())
+        }
+        repeat(4) { barIndex ->
+            View {
+                attr {
+                    val p = phase().toFloat()
+                    val primary = kotlin.math.abs(
+                        kotlin.math.sin((barIndex * 1.05f + p * 0.55f).toDouble())
+                    ).toFloat()
+                    val secondary = kotlin.math.abs(
+                        kotlin.math.sin((barIndex * 0.47f - p * 0.36f).toDouble())
+                    ).toFloat()
+                    width(3f * scale)
+                    height((4f + primary * 11f + secondary * 4f) * scale)
+                    borderRadius(1.5f * scale)
+                    margin(left = 1.5f * scale, right = 1.5f * scale)
+                    backgroundColor(StockChatTheme.accent)
+                    animation(Animation.easeInOut(0.12f), phase())
+                }
+            }
         }
     }
 }
