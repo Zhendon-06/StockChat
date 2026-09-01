@@ -38,6 +38,30 @@ class TencentMarketResponseParserTest {
     }
 
     @Test
+    fun parsesHongKongQuoteAndTimestamp() {
+        val response = marketResponse(
+            providerSymbol = "hk00700",
+            name = "腾讯控股",
+            code = "00700",
+            price = "455.200",
+            change = "7.400",
+            changePercent = "1.65",
+            trendKey = "day",
+            trendPoints = listOf("447.800", "455.200"),
+            timestamp = "2026/08/28 16:08:37",
+        )
+
+        val snapshot = assertNotNull(
+            TencentMarketResponseParser.parseSnapshot(response, "hk00700")
+        )
+
+        assertEquals("港股 · 腾讯行情", snapshot.quote.marketLabel)
+        assertEquals("腾讯行情 · 2026-08-28 16:08:37", snapshot.quote.updatedAt)
+        assertEquals("股", snapshot.volumeUnit)
+        assertEquals("港元", snapshot.amountUnit)
+    }
+
+    @Test
     fun parsesAndSamplesMinutePoints() {
         val minuteRows = JSONArray().apply {
             repeat(100) { index -> put("${930 + index} ${100 + index}.00 1 100.00") }
@@ -72,6 +96,16 @@ class TencentMarketResponseParserTest {
 
         assertEquals("sh600519", match.providerSymbol)
         assertEquals("贵州茅台", match.name)
+    }
+
+    @Test
+    fun decodesHongKongSearchResponse() {
+        val response = "v_hint=\"hk~00700~\\u817e\\u8baf\\u63a7\\u80a1~txkg~GP\";"
+
+        val match = TencentMarketResponseParser.parseSearch(response).single()
+
+        assertEquals("hk00700", match.providerSymbol)
+        assertEquals("腾讯控股", match.name)
     }
 
     @Test
@@ -119,6 +153,7 @@ class TencentMarketResponseParserTest {
         changePercent: String,
         trendKey: String,
         trendPoints: List<String>,
+        timestamp: String = "20260828161500",
     ): JSONObject {
         val quoteValues = MutableList<Any?>(44) { "" }.apply {
             this[1] = name
@@ -127,7 +162,7 @@ class TencentMarketResponseParserTest {
             this[4] = "1292.30"
             this[5] = "1289.00"
             this[6] = "16126"
-            this[30] = "20260828161500"
+            this[30] = timestamp
             this[31] = change
             this[32] = changePercent
             this[33] = "1297.89"

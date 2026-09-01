@@ -2,7 +2,7 @@ package com.guet.liang.stockchat.ui
 
 import com.guet.liang.stockchat.base.BasePager
 import com.guet.liang.stockchat.data.ChatHistoryDatabase
-import com.guet.liang.stockchat.model.ConversationTableArtifactSummary
+import com.guet.liang.stockchat.model.ConversationMindMapArtifactSummary
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.base.Border
 import com.tencent.kuikly.core.base.BorderStyle
@@ -20,20 +20,20 @@ import com.tencent.kuikly.core.views.Scroller
 import com.tencent.kuikly.core.views.Text
 import com.tencent.kuikly.core.views.View
 
-internal const val CONVERSATION_TABLE_ARTIFACTS_PAGE_NAME = "conversation_table_artifacts"
-internal const val CONVERSATION_TABLE_ARTIFACT_PAGE_NAME = "conversation_table_artifact"
-internal const val CONVERSATION_TABLE_ARTIFACT_ID_PARAM = "artifactId"
+internal const val CONVERSATION_MIND_MAP_ARTIFACTS_PAGE_NAME = "conversation_mind_map_artifacts"
+internal const val CONVERSATION_MIND_MAP_ARTIFACT_PAGE_NAME = "conversation_mind_map_artifact"
+internal const val CONVERSATION_MIND_MAP_ARTIFACT_ID_PARAM = "artifactId"
 
-private sealed class ArtifactListUiState {
-    data object Loading : ArtifactListUiState()
-    data object Empty : ArtifactListUiState()
-    data class Content(val artifacts: List<ConversationTableArtifactSummary>) : ArtifactListUiState()
-    data class Error(val message: String) : ArtifactListUiState()
+private sealed class MindMapArtifactListUiState {
+    data object Loading : MindMapArtifactListUiState()
+    data object Empty : MindMapArtifactListUiState()
+    data class Content(val artifacts: List<ConversationMindMapArtifactSummary>) : MindMapArtifactListUiState()
+    data class Error(val message: String) : MindMapArtifactListUiState()
 }
 
-@Page(CONVERSATION_TABLE_ARTIFACTS_PAGE_NAME, supportInLocal = true)
-internal class ConversationTableArtifactsPage : BasePager() {
-    private var uiState by observable<ArtifactListUiState>(ArtifactListUiState.Loading)
+@Page(CONVERSATION_MIND_MAP_ARTIFACTS_PAGE_NAME, supportInLocal = true)
+internal class ConversationMindMapArtifactsPage : BasePager() {
+    private var uiState by observable<MindMapArtifactListUiState>(MindMapArtifactListUiState.Loading)
 
     override fun created() {
         super.created()
@@ -56,19 +56,19 @@ internal class ConversationTableArtifactsPage : BasePager() {
                         bottom = pagerData.safeAreaInsets.bottom,
                     )
                 }
-                vif({ ctx.uiState is ArtifactListUiState.Loading }) {
+                vif({ ctx.uiState is MindMapArtifactListUiState.Loading }) {
                     ctx.LoadingState(this)
                 }
-                vif({ ctx.uiState is ArtifactListUiState.Empty }) {
+                vif({ ctx.uiState is MindMapArtifactListUiState.Empty }) {
                     ctx.EmptyState(this)
                 }
-                vif({ ctx.uiState is ArtifactListUiState.Error }) {
-                    ctx.ErrorState(this, (ctx.uiState as ArtifactListUiState.Error).message)
+                vif({ ctx.uiState is MindMapArtifactListUiState.Error }) {
+                    ctx.ErrorState(this, (ctx.uiState as MindMapArtifactListUiState.Error).message)
                 }
-                vif({ ctx.uiState is ArtifactListUiState.Content }) {
+                vif({ ctx.uiState is MindMapArtifactListUiState.Content }) {
                     ctx.ArtifactList(
                         this,
-                        (ctx.uiState as ArtifactListUiState.Content).artifacts,
+                        (ctx.uiState as MindMapArtifactListUiState.Content).artifacts,
                     )
                 }
             }
@@ -112,7 +112,7 @@ internal class ConversationTableArtifactsPage : BasePager() {
                 }
                 Text {
                     attr {
-                        text("标的对比")
+                        text("思维导图")
                         fontSize(20f)
                         fontWeightBold()
                         color(StockChatTheme.textPrimary)
@@ -149,7 +149,7 @@ internal class ConversationTableArtifactsPage : BasePager() {
                 }
                 Text {
                     attr {
-                        text("正在读取标的对比")
+                        text("正在读取思维导图")
                         fontSize(14f)
                         color(StockChatTheme.textSecondary)
                         marginTop(14f)
@@ -178,13 +178,13 @@ internal class ConversationTableArtifactsPage : BasePager() {
                         attr {
                             size(34f, 34f)
                             resizeContain()
-                            src(ImageUri.commonAssets("table_icon.png"))
+                            src(ImageUri.commonAssets("ranking_icon.png"))
                         }
                     }
                 }
                 Text {
                     attr {
-                        text("暂无标的对比")
+                        text("暂无思维导图")
                         fontSize(20f)
                         fontWeightBold()
                         color(StockChatTheme.textPrimary)
@@ -193,7 +193,7 @@ internal class ConversationTableArtifactsPage : BasePager() {
                 }
                 Text {
                     attr {
-                        text("在聊天页右上角选择“会话标的对比”，即可汇总本次会话提及的全部股票和指数。")
+                        text("在聊天页右上角选择“思维导图”，即可把当前会话整理为可浏览的分支摘要。")
                         fontSize(14f)
                         lineHeight(21f)
                         textAlignCenter()
@@ -216,7 +216,7 @@ internal class ConversationTableArtifactsPage : BasePager() {
                 }
                 Text {
                     attr {
-                        text("标的对比读取失败")
+                        text("思维导图读取失败")
                         fontSize(20f)
                         fontWeightBold()
                         color(StockChatTheme.textPrimary)
@@ -259,7 +259,7 @@ internal class ConversationTableArtifactsPage : BasePager() {
 
     private fun ArtifactList(
         container: ViewContainer<*, *>,
-        artifacts: List<ConversationTableArtifactSummary>,
+        artifacts: List<ConversationMindMapArtifactSummary>,
     ) {
         val ctx = this
         with(container) {
@@ -280,7 +280,7 @@ internal class ConversationTableArtifactsPage : BasePager() {
                     }
                     Text {
                         attr {
-                            text("会话股票与指数对比")
+                            text("会话思维导图")
                             fontSize(16f)
                             fontWeightBold()
                             color(StockChatTheme.textPrimary)
@@ -288,7 +288,7 @@ internal class ConversationTableArtifactsPage : BasePager() {
                     }
                     Text {
                         attr {
-                            text("汇总用户提及和 AI 生成的全部标的，进入详情可横向比较关键行情数据。")
+                            text("按最近更新时间排列，进入详情后可浏览每个问答分支。")
                             fontSize(13f)
                             lineHeight(19f)
                             color(StockChatTheme.textSecondary)
@@ -323,7 +323,7 @@ internal class ConversationTableArtifactsPage : BasePager() {
 
     private fun ArtifactSummaryCard(
         container: ViewContainer<*, *>,
-        summary: ConversationTableArtifactSummary,
+        summary: ConversationMindMapArtifactSummary,
     ) {
         val ctx = this
         with(container) {
@@ -355,7 +355,7 @@ internal class ConversationTableArtifactsPage : BasePager() {
                         attr {
                             size(24f, 24f)
                             resizeContain()
-                            src(ImageUri.commonAssets("table_icon.png"))
+                            src(ImageUri.commonAssets("ranking_icon.png"))
                         }
                     }
                 }
@@ -366,7 +366,7 @@ internal class ConversationTableArtifactsPage : BasePager() {
                     }
                     Text {
                         attr {
-                            text(summary.title.ifBlank { "当前会话 · 标的对比" })
+                            text(summary.title.ifBlank { "当前会话 · 思维导图" })
                             fontSize(16f)
                             fontWeightBold()
                             lineHeight(22f)
@@ -376,7 +376,7 @@ internal class ConversationTableArtifactsPage : BasePager() {
                     }
                     Text {
                         attr {
-                            text("共 ${summary.rowCount} 个标的 · 本地对比 #${summary.id}")
+                            text("共 ${summary.branchCount} 个分支 · 本地产物 #${summary.id}")
                             fontSize(12f)
                             color(StockChatTheme.textTertiary)
                             marginTop(7f)
@@ -396,24 +396,24 @@ internal class ConversationTableArtifactsPage : BasePager() {
     }
 
     private fun loadArtifacts() {
-        uiState = ArtifactListUiState.Loading
+        uiState = MindMapArtifactListUiState.Loading
         uiState = try {
-            val artifacts = ChatHistoryDatabase.artifactRepository().listAll()
+            val artifacts = ChatHistoryDatabase.mindMapArtifactRepository().listAll()
             if (artifacts.isEmpty()) {
-                ArtifactListUiState.Empty
+                MindMapArtifactListUiState.Empty
             } else {
-                ArtifactListUiState.Content(artifacts)
+                MindMapArtifactListUiState.Content(artifacts)
             }
         } catch (_: Throwable) {
-            ArtifactListUiState.Error("本地标的对比暂时无法读取，请稍后重试。")
+            MindMapArtifactListUiState.Error("本地思维导图暂时无法读取，请稍后重试。")
         }
     }
 
     private fun openArtifact(artifactId: Long) {
         val params = JSONObject()
-        params.put(CONVERSATION_TABLE_ARTIFACT_ID_PARAM, artifactId.toString())
+        params.put(CONVERSATION_MIND_MAP_ARTIFACT_ID_PARAM, artifactId.toString())
         acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
-            CONVERSATION_TABLE_ARTIFACT_PAGE_NAME,
+            CONVERSATION_MIND_MAP_ARTIFACT_PAGE_NAME,
             params,
         )
     }

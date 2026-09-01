@@ -27,6 +27,21 @@ class SecuritiesQueryRouterTest {
     }
 
     @Test
+    fun normalizesHongKongSuffixCode() {
+        val plan = assertNotNull(SecuritiesQueryRouter.route("0700.HK"))
+
+        assertEquals(SecuritiesIntent.QUOTE, plan.intent)
+        assertEquals("hk00700", plan.targets.single().providerSymbol)
+    }
+
+    @Test
+    fun routesTencentAliasToHongKongQuote() {
+        val plan = assertNotNull(SecuritiesQueryRouter.route("看一下腾讯控股"))
+
+        assertEquals("hk00700", plan.targets.single().providerSymbol)
+    }
+
+    @Test
     fun routesTrendAndProviderSymbol() {
         val plan = assertNotNull(SecuritiesQueryRouter.route("sh600519 今天分时走势"))
 
@@ -62,6 +77,19 @@ class SecuritiesQueryRouterTest {
         val plan = assertNotNull(SecuritiesQueryRouter.route("帮我查一下格力电器的股价"))
 
         assertEquals(emptyList(), plan.targets)
+        assertEquals(listOf("格力电器"), plan.unresolvedTerms)
+    }
+
+    @Test
+    fun semanticMarketIntentCanResolveAnUnknownName() {
+        val plan = assertNotNull(
+            SecuritiesQueryRouter.route(
+                question = "格力电器最近怎么样",
+                assumeMarketIntent = true,
+            )
+        )
+
+        assertEquals(SecuritiesIntent.QUOTE, plan.intent)
         assertEquals(listOf("格力电器"), plan.unresolvedTerms)
     }
 

@@ -1,8 +1,12 @@
 package com.guet.liang.stockchat.ui
 
 import com.guet.liang.stockchat.base.BasePager
+import com.guet.liang.stockchat.base.ShareModule
+import com.guet.liang.stockchat.base.bridgeModule
 import com.guet.liang.stockchat.data.MarketDataResult
+import com.guet.liang.stockchat.data.StockChatShareContentBuilder
 import com.guet.liang.stockchat.data.TencentMarketDataService
+import com.guet.liang.stockchat.model.ShareResult
 import com.guet.liang.stockchat.model.StockQuote
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.base.Border
@@ -127,6 +131,27 @@ internal class StockDetailPage : BasePager() {
                     color(StockChatTheme.textPrimary)
                     marginLeft(14f)
                     flex(1f)
+                }
+            }
+            View {
+                attr {
+                    height(38f)
+                    borderRadius(19f)
+                    padding(left = 15f, right = 15f)
+                    backgroundColor(StockChatTheme.surface)
+                    border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
+                    allCenter()
+                }
+                event {
+                    click { ctx.shareQuote() }
+                }
+                Text {
+                    attr {
+                        text("分享")
+                        fontSize(14f)
+                        fontWeightMedium()
+                        color(StockChatTheme.textPrimary)
+                    }
                 }
             }
         }
@@ -436,7 +461,7 @@ internal class StockDetailPage : BasePager() {
                 }
                 Text {
                     attr {
-                        text("以上信息仅供参考，不构成投资建议。")
+                        text("StockChat Demo 信息，仅供参考，不构成投资建议。")
                         fontSize(12f)
                         lineHeight(18f)
                         color(StockChatTheme.warning)
@@ -565,6 +590,24 @@ internal class StockDetailPage : BasePager() {
                     ?: DetailUiState.Empty
                 MarketDataResult.Empty -> DetailUiState.Empty
                 is MarketDataResult.Failure -> DetailUiState.Error(result.message)
+            }
+        }
+    }
+
+    private fun shareQuote() {
+        val quote = (detailState as? DetailUiState.Content)?.quote
+        if (quote == null) {
+            bridgeModule.toast(
+                if (detailState is DetailUiState.Loading) "行情加载中，请稍后" else "暂无可分享的行情"
+            )
+            return
+        }
+        val content = StockChatShareContentBuilder.fromQuote(quote)
+        acquireModule<ShareModule>(ShareModule.MODULE_NAME).share(content) { result ->
+            when (result) {
+                ShareResult.Success -> Unit
+                ShareResult.Cancelled -> Unit
+                is ShareResult.Failure -> bridgeModule.toast(result.errorMessage)
             }
         }
     }

@@ -1,0 +1,25 @@
+CREATE TABLE conversation_mind_map_artifact (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    source_message_count INTEGER NOT NULL,
+    branch_count INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES chat_session(id) ON DELETE CASCADE
+);
+
+CREATE INDEX conversation_mind_map_artifact_updated_at
+ON conversation_mind_map_artifact(updated_at DESC);
+
+CREATE TABLE conversation_mind_map_artifact_branch (
+    artifact_id INTEGER NOT NULL,
+    branch_index INTEGER NOT NULL,
+    sequence_number INTEGER NOT NULL,
+    topic TEXT NOT NULL,
+    insight TEXT NOT NULL,
+    related_instrument TEXT NOT NULL,
+    status TEXT NOT NULL,
+    PRIMARY KEY (artifact_id, branch_index),
+    FOREIGN KEY (artifact_id) REFERENCES conversation_mind_map_artifact(id) ON DELETE CASCADE
+);
