@@ -10,8 +10,10 @@ internal class StockChatLayoutMetrics(pageWidth: Float) {
     val welcomeHeroSize = (availableWidth * 0.36f).coerceIn(130f, 162f)
     val composerCollapsedHeight = dp(68f)
     val composerExpandedHeight = dp(112f)
-    val composerFooterHeight = dp(26f)
-    val composerBottomGap = dp(7f)
+    // footer + gap 共同决定面板离屏幕底的距离；面板底 = max(键盘, 安全区) + gap + footer，
+    // 安全区兜底保证不压小白条，这里只留少量呼吸空隙
+    val composerFooterHeight = dp(10f)
+    val composerBottomGap = dp(4f)
     // 输入框上缘的内容渐隐过渡高度：消息延伸到面板顶边，最后这段淡出到页面背景
     val composerContentFadeHeight = dp(36f)
     val composerAttachmentStripHeight = dp(82f)
@@ -43,6 +45,16 @@ internal class StockChatLayoutMetrics(pageWidth: Float) {
         extraInputLines: Int = 0,
     ): Float = composerPanelHeight(focused, voiceMode, hasAttachments, extraInputLines) +
         composerFooterHeight
+
+    // 安卓的键盘高度回调不含底部安全区，键盘态需额外余量，否则面板底部会压进键盘
+    private val composerKeyboardClearance = dp(20f)
+
+    fun composerBottomInset(keyboardHeight: Float, safeAreaBottom: Float): Float =
+        if (keyboardHeight > 0f) {
+            keyboardHeight + composerKeyboardClearance
+        } else {
+            safeAreaBottom
+        }
 
     fun composerContentBottom(
         bottomInset: Float,

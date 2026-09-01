@@ -84,6 +84,32 @@ CREATE TABLE conversation_table_artifact_row (
     FOREIGN KEY (artifact_id) REFERENCES conversation_table_artifact(id) ON DELETE CASCADE
 );
 
+CREATE TABLE conversation_mind_map_artifact (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    source_message_count INTEGER NOT NULL,
+    branch_count INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (session_id) REFERENCES chat_session(id) ON DELETE CASCADE
+);
+
+CREATE INDEX conversation_mind_map_artifact_updated_at
+ON conversation_mind_map_artifact(updated_at DESC);
+
+CREATE TABLE conversation_mind_map_artifact_branch (
+    artifact_id INTEGER NOT NULL,
+    branch_index INTEGER NOT NULL,
+    sequence_number INTEGER NOT NULL,
+    topic TEXT NOT NULL,
+    insight TEXT NOT NULL,
+    related_instrument TEXT NOT NULL,
+    status TEXT NOT NULL,
+    PRIMARY KEY (artifact_id, branch_index),
+    FOREIGN KEY (artifact_id) REFERENCES conversation_mind_map_artifact(id) ON DELETE CASCADE
+);
+
 selectSession:
 SELECT * FROM chat_session WHERE id = ?;
 
@@ -125,6 +151,23 @@ selectConversationTableArtifactRows:
 SELECT * FROM conversation_table_artifact_row
 WHERE artifact_id = ?
 ORDER BY row_index ASC;
+
+selectConversationMindMapArtifact:
+SELECT * FROM conversation_mind_map_artifact
+WHERE id = ?;
+
+selectConversationMindMapArtifactIdBySession:
+SELECT id FROM conversation_mind_map_artifact
+WHERE session_id = ?;
+
+selectConversationMindMapArtifacts:
+SELECT * FROM conversation_mind_map_artifact
+ORDER BY updated_at DESC, id DESC;
+
+selectConversationMindMapArtifactBranches:
+SELECT * FROM conversation_mind_map_artifact_branch
+WHERE artifact_id = ?
+ORDER BY branch_index ASC;
 
 insertSession:
 INSERT OR IGNORE INTO chat_session(id, title, created_at, updated_at)
@@ -236,6 +279,47 @@ VALUES (?, ?, ?, ?, ?, ?, ?);
 
 deleteConversationTableArtifactRows:
 DELETE FROM conversation_table_artifact_row
+WHERE artifact_id = ?;
+
+insertConversationMindMapArtifact:
+INSERT OR IGNORE INTO conversation_mind_map_artifact(
+    session_id,
+    title,
+    source_message_count,
+    branch_count,
+    created_at,
+    updated_at
+)
+VALUES (
+    ?, ?, ?, ?,
+    CAST(strftime('%s', 'now') AS INTEGER) * 1000 + CAST(substr(strftime('%f', 'now'), 4, 3) AS INTEGER),
+    CAST(strftime('%s', 'now') AS INTEGER) * 1000 + CAST(substr(strftime('%f', 'now'), 4, 3) AS INTEGER)
+);
+
+updateConversationMindMapArtifact:
+UPDATE conversation_mind_map_artifact
+SET
+    title = ?,
+    source_message_count = ?,
+    branch_count = ?,
+    updated_at =
+        CAST(strftime('%s', 'now') AS INTEGER) * 1000 + CAST(substr(strftime('%f', 'now'), 4, 3) AS INTEGER)
+WHERE session_id = ?;
+
+insertConversationMindMapArtifactBranch:
+INSERT INTO conversation_mind_map_artifact_branch(
+    artifact_id,
+    branch_index,
+    sequence_number,
+    topic,
+    insight,
+    related_instrument,
+    status
+)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+deleteConversationMindMapArtifactBranches:
+DELETE FROM conversation_mind_map_artifact_branch
 WHERE artifact_id = ?;
 
 deleteTrendPointsForSession:

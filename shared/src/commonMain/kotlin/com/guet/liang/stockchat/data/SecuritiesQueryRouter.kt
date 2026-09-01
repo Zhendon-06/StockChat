@@ -27,9 +27,13 @@ internal object SecuritiesQueryRouter {
     fun route(
         question: String,
         history: List<ChatHistoryItem> = emptyList(),
+        assumeMarketIntent: Boolean = false,
     ): SecuritiesQueryPlan? {
         val normalizedQuestion = question.trim()
-        if (normalizedQuestion.isEmpty() || isGeneralKnowledgeQuestion(normalizedQuestion)) {
+        if (
+            normalizedQuestion.isEmpty() ||
+            (!assumeMarketIntent && isGeneralKnowledgeQuestion(normalizedQuestion))
+        ) {
             return null
         }
         val compactQuestion = normalizedQuestion.replace(Regex("\\s+"), "")
@@ -46,12 +50,16 @@ internal object SecuritiesQueryRouter {
         providerSymbolRegex.findAll(normalizedQuestion).forEach { match ->
             val market = match.groupValues[1].lowercase()
             val code = match.groupValues[2]
-            targets[market + code] = SecurityTarget(market + code)
+            normalizeMarketCode(market, code)?.let { providerSymbol ->
+                targets[providerSymbol] = SecurityTarget(providerSymbol)
+            }
         }
         suffixSymbolRegex.findAll(normalizedQuestion).forEach { match ->
             val code = match.groupValues[1]
             val market = match.groupValues[2].lowercase()
-            targets[market + code] = SecurityTarget(market + code)
+            normalizeMarketCode(market, code)?.let { providerSymbol ->
+                targets[providerSymbol] = SecurityTarget(providerSymbol)
+            }
         }
         plainCodeRegex.findAll(normalizedQuestion).forEach { match ->
             val hasDigitBefore = match.range.first > 0 &&
@@ -76,7 +84,7 @@ internal object SecuritiesQueryRouter {
 
         val hasMarketKeyword = marketKeywords.any(normalizedQuestion::contains)
         val hasTarget = targets.isNotEmpty()
-        if (!hasTarget && !hasMarketKeyword) {
+        if (!hasTarget && !hasMarketKeyword && !assumeMarketIntent) {
             return null
         }
 
@@ -173,6 +181,14 @@ internal object SecuritiesQueryRouter {
         }
     }
 
+    private fun normalizeMarketCode(market: String, code: String): String? {
+        return when {
+            market == "hk" && code.length in 1..5 -> market + code.padStart(5, '0')
+            market in setOf("sh", "sz", "bj") && code.length == 6 -> market + code
+            else -> null
+        }
+    }
+
     private data class KnownSecurity(
         val providerSymbol: String,
         val displayName: String,
@@ -188,12 +204,13 @@ internal object SecuritiesQueryRouter {
         KnownSecurity("sh000001", "上证指数", listOf("上证指数", "上证综指", "大盘")),
         KnownSecurity("sz399001", "深证成指", listOf("深证成指", "深成指")),
         KnownSecurity("sz399006", "创业板指", listOf("创业板指", "创业板指数")),
+        KnownSecurity("hk00700", "腾讯控股", listOf("腾讯控股", "腾讯")),
     )
-    private val providerSymbolRegex = Regex("(?i)(sh|sz|bj)\\s*(\\d{6})")
-    private val suffixSymbolRegex = Regex("(?i)(\\d{6})\\s*[.]?(sh|sz|bj)")
+    private val providerSymbolRegex = Regex("(?i)(sh|sz|bj|hk)\\s*(\\d{1,6})")
+    private val suffixSymbolRegex = Regex("(?i)(\\d{1,6})\\s*[.]?(sh|sz|bj|hk)")
     private val plainCodeRegex = Regex("\\d{6}")
     private val historyTargetRegex = Regex(
-        "\\[行情标的:((?:sh|sz|bj)\\d{6})\\|([^]]+)]",
+        "\\[行情标的:((?:(?:sh|sz|bj)\\d{6}|hk\\d{5}))\\|([^]]+)]",
         RegexOption.IGNORE_CASE,
     )
     private val punctuationRegex = Regex("[\\s，,。！？?：:；;（）()【】\\[\\]《》]")
@@ -227,6 +244,6 @@ internal object SecuritiesQueryRouter {
         "今日走势", "实时行情", "当前行情", "最新行情", "行情", "现价", "价格", "股价", "涨跌幅",
         "涨跌", "走势", "趋势", "分时", "K线", "k线", "日线", "周线", "月线", "股票", "证券",
         "指数", "分析一下", "分析", "解读一下", "解读", "怎么样", "如何", "为什么", "原因", "值得买",
-        "能买吗", "风险", "预测", "对比", "比较", "相比", "谁更好", "哪个好", "的",
+        "能买吗", "风险", "预测", "对比", "比较", "相比", "谁更好", "哪个好", "最近", "的",
     ).sortedByDescending(String::length)
 }

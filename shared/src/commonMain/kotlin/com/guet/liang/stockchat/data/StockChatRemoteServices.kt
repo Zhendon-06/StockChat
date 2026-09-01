@@ -16,6 +16,7 @@ internal data class AliyunApiConfig(
     val baseUrl: String = "https://dashscope.aliyuncs.com/compatible-mode/v1",
     val chatModel: String = "qwen-plus",
     val visionModel: String = "qwen-vl-plus",
+    val embeddingModel: String = "text-embedding-v4",
 )
 
 internal data class MimoVoiceApiConfig(
@@ -33,6 +34,7 @@ internal class AliyunStockChatDataSource(
     private val useNativeStreaming: Boolean = false,
 ) : StockChatDataSource {
     private val marketDataService = TencentMarketDataService(networkModule)
+    private val intentRecognitionService = DashScopeIntentRecognitionService(networkModule, config)
 
     override fun answer(
         question: String,
@@ -42,31 +44,51 @@ internal class AliyunStockChatDataSource(
         attempt: Int,
         callback: (ChatAnswer) -> Unit,
     ) {
-        val marketPlan = if (images.isEmpty()) {
-            SecuritiesQueryRouter.route(question, history)
-        } else {
-            null
-        }
-        if (marketPlan != null) {
-            answerMarketQuery(
+        if (images.isNotEmpty()) {
+            answerWithAi(
                 question = question,
                 history = history,
+                images = images,
                 model = model,
-                plan = marketPlan,
+                snapshots = emptyList(),
+                plan = null,
+                attempt = attempt,
                 callback = callback,
             )
             return
         }
-        answerWithAi(
-            question = question,
-            history = history,
-            images = images,
-            model = model,
-            snapshots = emptyList(),
-            plan = null,
-            attempt = attempt,
-            callback = callback,
-        )
+        intentRecognitionService.classify(question, history) { classification ->
+            val marketPlan = if (classification.kind == IntentKind.MARKET_DATA) {
+                SecuritiesQueryRouter.route(question, history)
+                    ?: SecuritiesQueryRouter.route(
+                        question = question,
+                        history = history,
+                        assumeMarketIntent = true,
+                    )
+            } else {
+                null
+            }
+            if (marketPlan != null) {
+                answerMarketQuery(
+                    question = question,
+                    history = history,
+                    model = model,
+                    plan = marketPlan,
+                    callback = callback,
+                )
+            } else {
+                answerWithAi(
+                    question = question,
+                    history = history,
+                    images = emptyList(),
+                    model = model,
+                    snapshots = emptyList(),
+                    plan = null,
+                    attempt = attempt,
+                    callback = callback,
+                )
+            }
+        }
     }
 
     private fun answerMarketQuery(
@@ -102,9 +124,26 @@ internal class AliyunStockChatDataSource(
                         )
                     }
                 }
-                MarketDataResult.Empty -> callback(
-                    ChatAnswer.Failure("未找到对应证券，请尝试输入完整名称、六位代码或带交易所的代码。")
-                )
+                MarketDataResult.Empty -> {
+                    if (plan.targets.isEmpty()) {
+                        answerWithAi(
+                            question = question,
+                            history = history,
+                            images = emptyList(),
+                            model = model,
+                            snapshots = emptyList(),
+                            plan = null,
+                            attempt = 0,
+                            callback = callback,
+                        )
+                    } else {
+                        callback(
+                            ChatAnswer.Failure(
+                                "未找到对应证券，请尝试输入完整名称、六位代码或带交易所的代码。"
+                            )
+                        )
+                    }
+                }
                 is MarketDataResult.Failure -> callback(ChatAnswer.Failure(result.message))
             }
         }
@@ -370,7 +409,7 @@ internal class AliyunStockChatDataSource(
         } else {
             ""
         }
-        val markdown = "$headline$aiNotice\n\n数据来源：腾讯证券公开行情接口；" +
+        val markdown = "StockChat Demo 信息。$headline$aiNotice\n\n数据来源：腾讯证券公开行情接口；" +
             "行情时间以卡片标注为准。仅供参考，不构成投资建议。"
         return buildList {
             add(AnswerBlock.Markdown(markdown, markdown))
@@ -387,7 +426,8 @@ internal class AliyunStockChatDataSource(
             "- ${quote.name}（${quote.symbol}，${snapshot.providerSymbol}）：" +
                 "现价 ${quote.price}，涨跌 ${quote.change}（${quote.changePercent}），" +
                 "昨收 ${snapshot.previousClose}，今开 ${snapshot.open}，最高 ${snapshot.high}，" +
-                "最低 ${snapshot.low}，成交量 ${snapshot.volume} 手，成交额 ${snapshot.amount} 万元，" +
+                "最低 ${snapshot.low}，成交量 ${snapshot.volume} ${snapshot.volumeUnit}，" +
+                "成交额 ${snapshot.amount} ${snapshot.amountUnit}，" +
                 "换手率 ${snapshot.turnoverRate}%，市盈率 ${snapshot.priceEarningsRatio}，" +
                 "振幅 ${snapshot.amplitude}%，最近走势点（从旧到新）[$trend]，${quote.updatedAt}"
         }
@@ -411,11 +451,16 @@ internal class AliyunStockChatDataSource(
             "尚未配置千问 API Key，请在项目 local.properties 的 QWEN_API_KEY= 后填写。"
 
         private const val SYSTEM_PROMPT =
-            "你是 StockMate，一名中文股票研究助手。请用简洁 Markdown 回答股票、指数和市场问题。" +
+            "你是 StockMate，一名以股票研究和投资教育为特色的中文 AI 助手。" +
+                "请用简洁 Markdown 回答行情、投资入门、金融知识，也可以正常回答其他通用问题；" +
+                "不要因为问题没有公司名称或证券代码而拒绝回答。" +
+                "回答中新增具体股票或指数时，必须同时给出可核验的交易所代码（如 sh600519）；" +
+                "无法确认代码时应明确说明，不得把它当作确定标的推荐。" +
                 "当用户消息附带腾讯证券行情工具数据时，实时数字只能引用该数据并注明数据时间；" +
                 "未提供新闻、公告或基本面证据时，不得臆测涨跌原因。" +
                 "不得声称掌握未提供的实时行情，不得编造价格或确定性收益；不确定时要明确说明。" +
-                "回答应给出观察依据、主要风险，并以‘仅供参考，不构成投资建议’结尾。"
+                "涉及行情或投资判断时应注明是 StockChat Demo 信息，给出观察依据、主要风险，" +
+                "并以‘仅供参考，不构成投资建议’结尾。"
     }
 }
 

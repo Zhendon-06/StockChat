@@ -13,7 +13,9 @@ internal data class TencentMarketSnapshot(
     val high: String,
     val low: String,
     val volume: String,
+    val volumeUnit: String,
     val amount: String,
+    val amountUnit: String,
     val turnoverRate: String,
     val priceEarningsRatio: String,
     val amplitude: String,
@@ -298,8 +300,11 @@ internal object TencentMarketResponseParser {
         val turnoverRate = quoteData.optString(38).orEmpty().trim()
         val priceEarningsRatio = quoteData.optString(39).orEmpty().trim()
         val amplitude = quoteData.optString(43).orEmpty().trim()
-        val isIndex = securityData.optJSONArray("qfqday") == null &&
+        val isHongKong = providerSymbol.startsWith("hk")
+        val isIndex = !isHongKong && securityData.optJSONArray("qfqday") == null &&
             securityData.optJSONArray("day") != null
+        val volumeUnit = if (isHongKong) "股" else "手"
+        val amountUnit = if (isHongKong) "港元" else "万元"
         val trendPoints = parseKlinePoints(securityData)
         val numericChange = rawChange.toDoubleOrNull() ?: 0.0
         val change = signedValue(rawChange, numericChange)
@@ -321,7 +326,16 @@ internal object TencentMarketResponseParser {
             trendPoints = trendPoints.ifEmpty {
                 listOfNotNull(price.toFloatOrNull())
             },
-            summary = buildSummary(previousClose, open, high, low, volume, amount),
+            summary = buildSummary(
+                previousClose,
+                open,
+                high,
+                low,
+                volume,
+                volumeUnit,
+                amount,
+                amountUnit,
+            ),
             aiInsight = "最新行情快照显示该标的当前${movement}${changePercent}。请结合基本面、估值和风险承受能力综合判断。",
         )
         return TencentMarketSnapshot(
@@ -332,7 +346,9 @@ internal object TencentMarketResponseParser {
             high = high,
             low = low,
             volume = volume,
+            volumeUnit = volumeUnit,
             amount = amount,
+            amountUnit = amountUnit,
             turnoverRate = turnoverRate,
             priceEarningsRatio = priceEarningsRatio,
             amplitude = amplitude,
@@ -375,7 +391,12 @@ internal object TencentMarketResponseParser {
             val market = fields.getOrNull(0)?.lowercase().orEmpty()
             val code = fields.getOrNull(1).orEmpty()
             val name = decodeUnicodeEscapes(fields.getOrNull(2).orEmpty())
-            if (market !in supportedMarkets || code.length != 6 || name.isBlank()) {
+            val validCode = when (market) {
+                "hk" -> code.length == 5
+                "sh", "sz", "bj" -> code.length == 6
+                else -> false
+            }
+            if (!validCode || name.isBlank()) {
                 null
             } else {
                 TencentSearchMatch(
@@ -418,6 +439,7 @@ internal object TencentMarketResponseParser {
             providerSymbol.startsWith("sh") -> "沪市"
             providerSymbol.startsWith("sz") -> "深市"
             providerSymbol.startsWith("bj") -> "北交所"
+            providerSymbol.startsWith("hk") -> "港股"
             else -> "证券"
         }
         return if (isIndex) {
@@ -433,19 +455,27 @@ internal object TencentMarketResponseParser {
         high: String,
         low: String,
         volume: String,
+        volumeUnit: String,
         amount: String,
+        amountUnit: String,
     ): String {
         return buildList {
             previousClose.takeIf(String::isNotEmpty)?.let { add("昨收 $it") }
             open.takeIf(String::isNotEmpty)?.let { add("今开 $it") }
             high.takeIf(String::isNotEmpty)?.let { add("最高 $it") }
             low.takeIf(String::isNotEmpty)?.let { add("最低 $it") }
-            volume.takeIf(String::isNotEmpty)?.let { add("成交量 $it 手") }
-            amount.takeIf(String::isNotEmpty)?.let { add("成交额 $it 万元") }
+            volume.takeIf(String::isNotEmpty)?.let { add("成交量 $it $volumeUnit") }
+            amount.takeIf(String::isNotEmpty)?.let { add("成交额 $it $amountUnit") }
         }.joinToString("，")
     }
 
     private fun formatTimestamp(timestamp: String): String {
+        if (
+            timestamp.length >= 19 && timestamp[4] in setOf('/', '-') &&
+            timestamp[7] in setOf('/', '-')
+        ) {
+            return timestamp.take(19).replace('/', '-')
+        }
         if (timestamp.length < 14) {
             return timestamp.ifBlank { "时间未知" }
         }
@@ -483,7 +513,6 @@ internal object TencentMarketResponseParser {
     }
 
     private const val MAX_CHART_POINTS = 80
-    private val supportedMarkets = setOf("sh", "sz", "bj")
 }
 
 internal data class TencentSearchMatch(
@@ -498,8 +527,14 @@ internal fun normalizeProviderSymbol(symbol: String): String? {
     Regex("^(sh|sz|bj)\\d{6}$").matchEntire(normalized)?.let {
         return normalized
     }
+    Regex("^hk(\\d{1,5})$").matchEntire(normalized)?.let { match ->
+        return "hk${match.groupValues[1].padStart(5, '0')}"
+    }
     Regex("^(\\d{6})[.]?(sh|sz|bj)$").matchEntire(normalized)?.let { match ->
         return match.groupValues[2] + match.groupValues[1]
+    }
+    Regex("^(\\d{1,5})[.]?hk$").matchEntire(normalized)?.let { match ->
+        return "hk${match.groupValues[1].padStart(5, '0')}"
     }
     if (!Regex("^\\d{6}$").matches(normalized)) {
         return null
@@ -516,6 +551,7 @@ internal fun providerSymbolForQuote(quote: StockQuote): String? {
         quote.marketLabel.startsWith("沪市") -> "sh"
         quote.marketLabel.startsWith("深市") -> "sz"
         quote.marketLabel.startsWith("北交所") -> "bj"
+        quote.marketLabel.startsWith("港股") -> "hk"
         else -> null
     }
     return market?.let { "$it${quote.symbol}" } ?: normalizeProviderSymbol(quote.symbol)

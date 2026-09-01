@@ -1,5 +1,6 @@
 import { common } from '@kit.AbilityKit';
-import { BusinessError } from '@kit.BasicServicesKit';
+import { promptAction } from '@kit.ArkUI';
+import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
 import { KRAny } from '@kuikly-open/render';
 import { KuiklyRenderBaseModule } from '@kuikly-open/render';
 import { KuiklyRenderCallback } from '@kuikly-open/render';
@@ -47,11 +48,11 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         break;
       }
       case KRBridgeModule.COPY_TO_PASTE_BOARD: {
-        this.copyToPasteboard();
+        this.copyToPasteboard(params);
         break;
       }
       case KRBridgeModule.TOAST: {
-        this.toast();
+        this.toast(params);
         break;
       }
       case KRBridgeModule.LOG: {
@@ -121,12 +122,34 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   private openPage() {
   }
 
-  // TODO copy to paste board
-  private copyToPasteboard() {
+  private copyToPasteboard(params: KRAny) {
+    if (params == null) {
+      return;
+    }
+    let records = JSON.parse(params as string) as Record<string, string>;
+    let content = records["content"];
+    if (content == null || content.length === 0) {
+      return;
+    }
+    let pasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, content);
+    pasteboard.getSystemPasteboard().setData(pasteData).catch((error: BusinessError) => {
+      console.error(`KuiklyRender copyToPasteboard failed: ${error.code} ${error.message}`);
+    });
   }
 
-  // TODO open toast
-  private toast() {
+  private toast(params: KRAny) {
+    if (params == null || typeof params !== 'string') {
+      return;
+    }
+    try {
+      const records = JSON.parse(params as string) as Record<string, string>;
+      const content = records['content'];
+      if (typeof content === 'string' && content.length > 0) {
+        promptAction.showToast({ message: content });
+      }
+    } catch (error) {
+      console.error(`KuiklyRender toast failed: ${JSON.stringify(error)}`);
+    }
   }
 
   private log(params: KRAny) {

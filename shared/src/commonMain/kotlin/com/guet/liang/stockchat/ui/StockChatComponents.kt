@@ -19,8 +19,6 @@ import com.tencent.kuikly.core.views.RichText
 import com.tencent.kuikly.core.views.Span
 import com.tencent.kuikly.core.views.Text
 import com.tencent.kuikly.core.views.View
-import com.tencent.kuiklybase.KuiklyMarkdown
-import com.tencent.kuiklybase.config.MarkdownConfig
 
 internal object StockChatTheme {
     val background = Color(0xFFF6F7F4)
@@ -193,6 +191,7 @@ internal fun ViewContainer<*, *>.ChatMessageItem(
     onQuoteClick: (StockQuote) -> Unit,
     onRetry: (ChatMessage) -> Unit,
     onCopy: (ChatMessage) -> Unit = {},
+    onCopySelection: (String) -> Unit = {},
     onRegenerate: (ChatMessage) -> Unit = {},
     onReadAloud: (ChatMessage) -> Unit = {},
     onMore: (ChatMessage) -> Unit = {},
@@ -267,14 +266,14 @@ internal fun ViewContainer<*, *>.ChatMessageItem(
                     MessageState.GENERATING -> if (message.blocks.isEmpty()) {
                         TypingIndicator(scale, typingPhase)
                     } else {
-                        AssistantBlocks(message, scale, onQuoteClick, onImageClick)
+                        AssistantBlocks(message, scale, onQuoteClick, onImageClick, onCopySelection)
                     }
                     MessageState.FAILED -> FailedMessage(message.errorMessage, scale) { onRetry(message) }
                     MessageState.DELIVERED -> {
-                        AssistantBlocks(message, scale, onQuoteClick, onImageClick)
+                        AssistantBlocks(message, scale, onQuoteClick, onImageClick, onCopySelection)
                         Text {
                             attr {
-                                text("仅供参考，不构成投资建议")
+                                text("StockChat Demo · 内容仅供参考，投资相关内容不构成投资建议")
                                 fontSize(11f * scale)
                                 color(StockChatTheme.textTertiary)
                                 marginTop(8f * scale)
@@ -300,10 +299,16 @@ private fun ViewContainer<*, *>.AssistantBlocks(
     scale: Float,
     onQuoteClick: (StockQuote) -> Unit,
     onImageClick: (String) -> Unit,
+    onCopySelection: (String) -> Unit,
 ) {
     message.blocks.forEach { block ->
         when (block) {
-            is AnswerBlock.Markdown -> MarkdownContent(block, scale)
+            is AnswerBlock.Markdown -> MarkdownContent(
+                block = block,
+                scale = scale,
+                selectionEnabled = message.state == MessageState.DELIVERED,
+                onCopySelection = onCopySelection,
+            )
             is AnswerBlock.MarketQuote -> MarketQuoteCard(block.quote, scale) {
                 onQuoteClick(block.quote)
             }
@@ -312,27 +317,19 @@ private fun ViewContainer<*, *>.AssistantBlocks(
     }
 }
 
-private fun ViewContainer<*, *>.MarkdownContent(block: AnswerBlock.Markdown, scale: Float) {
-    View {
-        attr {
-            marginBottom(9f * scale)
-        }
-        if (block.source.isBlank()) {
-            RichText {
-                Span {
-                    text(block.fallbackText)
-                    fontSize(17f * scale)
-                    lineHeight(25f * scale)
-                    color(StockChatTheme.textPrimary)
-                }
-            }
-        } else {
-            KuiklyMarkdown(
-                content = block.source,
-                config = MarkdownConfig.Default,
-            )
-        }
-    }
+private fun ViewContainer<*, *>.MarkdownContent(
+    block: AnswerBlock.Markdown,
+    scale: Float,
+    selectionEnabled: Boolean,
+    onCopySelection: (String) -> Unit,
+) {
+    SelectableMarkdownContent(
+        source = block.source,
+        fallbackText = block.fallbackText,
+        scale = scale,
+        selectionEnabled = selectionEnabled,
+        onCopySelection = onCopySelection,
+    )
 }
 
 private fun ViewContainer<*, *>.MessageActionRow(

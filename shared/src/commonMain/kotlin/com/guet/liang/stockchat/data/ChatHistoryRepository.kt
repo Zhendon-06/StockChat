@@ -203,10 +203,12 @@ internal class ChatHistoryRepository(
 internal object ChatHistoryDatabase {
     private var repository: ChatHistoryRepository? = null
     private var artifactRepository: ConversationTableArtifactRepository? = null
+    private var mindMapArtifactRepository: ConversationMindMapArtifactRepository? = null
 
     fun initialize(database: StockChatDatabase) {
         repository = ChatHistoryRepository(database)
         artifactRepository = ConversationTableArtifactRepository(database)
+        mindMapArtifactRepository = ConversationMindMapArtifactRepository(database)
     }
 
     fun repository(): ChatHistoryRepository {
@@ -215,5 +217,9 @@ internal object ChatHistoryDatabase {
 
     fun artifactRepository(): ConversationTableArtifactRepository {
         return checkNotNull(artifactRepository) { "SQLDelight database has not been initialized." }
+    }
+
+    fun mindMapArtifactRepository(): ConversationMindMapArtifactRepository {
+        return checkNotNull(mindMapArtifactRepository) { "SQLDelight database has not been initialized." }
     }
 }

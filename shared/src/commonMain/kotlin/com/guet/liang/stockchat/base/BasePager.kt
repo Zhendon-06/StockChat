@@ -11,6 +11,7 @@ internal abstract class BasePager : Pager() {
     override fun createExternalModules(): Map<String, Module>? {
         val externalModules = hashMapOf<String, Module>()
         externalModules[BridgeModule.MODULE_NAME] = BridgeModule()
+        externalModules[ShareModule.MODULE_NAME] = ShareModule()
         return externalModules
     }
 
