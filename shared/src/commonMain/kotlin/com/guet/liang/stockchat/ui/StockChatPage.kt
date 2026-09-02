@@ -78,11 +78,6 @@ private const val DEFAULT_CHAT_MODEL_ID = "qwen-plus"
 private const val DEFAULT_CHAT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 private const val HOME_TAB_CHAT = 0
 private const val HOME_TAB_TODAY_MARKET = 1
-private const val HOME_SCENE_EXIT_DURATION = 0.16f
-private const val HOME_SCENE_ENTER_DURATION = 0.32f
-private const val HOME_SCENE_ENTER_DAMPING = 0.92f
-private const val HOME_SCENE_ENTER_VELOCITY = 0.12f
-private const val HOME_COMPOSER_ENTER_DURATION = 0.38f
 private const val HOME_CAPSULE_TRAVEL_DURATION = 0.46f
 // 键盘回调未给出动画时长时的兜底值（秒）
 private const val DEFAULT_KEYBOARD_ANIM_DURATION = 0.25f
@@ -154,11 +149,6 @@ internal class StockChatPage : BasePager() {
     private var keyboardAnimDuration by observable(DEFAULT_KEYBOARD_ANIM_DURATION)
     private val homeFlow = StockChatHomeFlow()
     private var homeState by observable(homeFlow.state.value)
-    private var homeSceneInteractive by observable(true)
-    private var homeSceneEnterReady by observable(true)
-    private var homeSceneOutgoingTab by observable(-1)
-    private var homeSceneAnimationPhase by observable(0)
-    private var homeSceneTransitionGeneration = 0
     private val selectedHomeTab: Int
         get() = when (homeState.destination) {
             StockChatHomeDestination.AI_CHAT -> HOME_TAB_CHAT
@@ -288,52 +278,12 @@ internal class StockChatPage : BasePager() {
     }
 
     private fun dispatchHome(event: StockChatHomeEvent) {
-        val previousDestination = homeState.destination
         val effects = homeFlow.dispatch(event)
         val nextState = homeFlow.state.value
-        if (nextState.destination != previousDestination) {
-            stageHomeSceneTransition(previousDestination, nextState.destination)
-        }
         if (nextState != homeState) {
             homeState = nextState
         }
         effects.forEach(::handleHomeEffect)
-    }
-
-    private fun stageHomeSceneTransition(
-        previousDestination: StockChatHomeDestination,
-        destination: StockChatHomeDestination,
-    ) {
-        val generation = ++homeSceneTransitionGeneration
-        homeSceneOutgoingTab = when (previousDestination) {
-            StockChatHomeDestination.AI_CHAT -> HOME_TAB_CHAT
-            StockChatHomeDestination.TODAY_MARKET -> HOME_TAB_TODAY_MARKET
-        }
-        homeSceneEnterReady = false
-        homeSceneInteractive = false
-        homeSceneAnimationPhase += 1
-        setTimeout((HOME_SCENE_EXIT_DURATION * 1000f).toInt()) {
-            if (
-                generation == homeSceneTransitionGeneration &&
-                homeState.destination == destination
-            ) {
-                homeSceneEnterReady = true
-                homeSceneOutgoingTab = -1
-                homeSceneAnimationPhase += 1
-                val enterDuration = when (destination) {
-                    StockChatHomeDestination.AI_CHAT -> HOME_COMPOSER_ENTER_DURATION
-                    StockChatHomeDestination.TODAY_MARKET -> HOME_SCENE_ENTER_DURATION
-                }
-                setTimeout((enterDuration * 1000f).toInt()) {
-                    if (
-                        generation == homeSceneTransitionGeneration &&
-                        homeState.destination == destination
-                    ) {
-                        homeSceneInteractive = true
-                    }
-                }
-            }
-        }
     }
 
     private fun handleHomeEffect(effect: StockChatHomeEffect) {
@@ -374,7 +324,6 @@ internal class StockChatPage : BasePager() {
         }
         bridgeModule.stopObservingDrawerGestures()
         requestToken += 1
-        homeSceneTransitionGeneration += 1
         dispatchHome(StockChatHomeEvent.Stopped)
         super.pageWillDestroy()
     }
@@ -808,39 +757,30 @@ internal class StockChatPage : BasePager() {
             View {
                 attr {
                     val active = ctx.selectedHomeTab == HOME_TAB_TODAY_MARKET
-                    val entering = active && ctx.homeSceneEnterReady
-                    val exiting =
-                        ctx.homeSceneOutgoingTab == HOME_TAB_TODAY_MARKET &&
-                            !ctx.homeSceneEnterReady
                     absolutePosition(
                         top = pagerData.statusBarHeight + metrics.dp(66f),
                         left = 0f,
                         right = 0f,
                         bottom = 0f,
                     )
-                    visibility(active || exiting)
-                    opacity(if (entering) 1f else 0f)
+                    opacity(if (active) 1f else 0f)
                     transform(
                         Translate(
                             0f,
                             0f,
                             0f,
-                            if (entering) 0f else metrics.dp(12f),
+                            if (active) 0f else metrics.dp(12f),
                         )
                     )
-                    touchEnable(entering && ctx.homeSceneInteractive)
-                    zIndex(if (entering || exiting) 2 else 0)
+                    touchEnable(active)
+                    zIndex(if (active) 2 else 0)
                     animate(
-                        if (entering) {
-                            Animation.springEaseOut(
-                                HOME_SCENE_ENTER_DURATION,
-                                HOME_SCENE_ENTER_DAMPING,
-                                HOME_SCENE_ENTER_VELOCITY,
-                            )
+                        if (active) {
+                            Animation.easeIn(0.14f)
                         } else {
-                            Animation.easeOut(HOME_SCENE_EXIT_DURATION)
+                            Animation.easeOut(0.24f).delay(0.16f)
                         },
-                        ctx.homeSceneAnimationPhase,
+                        ctx.selectedHomeTab,
                     )
                 }
                 event {
@@ -851,10 +791,7 @@ internal class StockChatPage : BasePager() {
                     pageWidth = ctx.pagerData.pageViewWidth,
                     scale = ctx.layoutMetrics.scale,
                     safeAreaBottom = ctx.pagerData.safeAreaInsets.bottom,
-                    touchEnabled = {
-                        ctx.selectedHomeTab == HOME_TAB_TODAY_MARKET &&
-                            ctx.homeSceneInteractive
-                    },
+                    touchEnabled = { ctx.selectedHomeTab == HOME_TAB_TODAY_MARKET },
                     onQuoteClick = { quote ->
                         if (ctx.selectedHomeTab == HOME_TAB_TODAY_MARKET) {
                             ctx.openStockDetail(
@@ -880,38 +817,30 @@ internal class StockChatPage : BasePager() {
             View {
                 attr {
                     val active = ctx.selectedHomeTab == HOME_TAB_CHAT
-                    val entering = active && ctx.homeSceneEnterReady
-                    val exiting = ctx.homeSceneOutgoingTab == HOME_TAB_CHAT &&
-                        !ctx.homeSceneEnterReady
                     absolutePositionAllZero()
-                    visibility(active || exiting)
-                    opacity(if (entering) 1f else 0f)
+                    opacity(if (active) 1f else 0f)
                     transform(
                         Translate(
                             0f,
                             0f,
                             0f,
-                            if (entering) 0f else -metrics.dp(12f),
+                            if (active) 0f else -metrics.dp(12f),
                         )
                     )
-                    touchEnable(entering && ctx.homeSceneInteractive)
-                    zIndex(if (entering || exiting) 2 else 0)
+                    touchEnable(active)
+                    zIndex(if (active) 2 else 0)
                     backgroundLinearGradient(
                         Direction.TO_BOTTOM_RIGHT,
                         ColorStop(StockChatTheme.chatBackgroundStart, 0f),
                         ColorStop(StockChatTheme.chatBackgroundEnd, 1f),
                     )
                     animate(
-                        if (entering) {
-                            Animation.springEaseOut(
-                                HOME_SCENE_ENTER_DURATION,
-                                HOME_SCENE_ENTER_DAMPING,
-                                HOME_SCENE_ENTER_VELOCITY,
-                            )
+                        if (active) {
+                            Animation.easeIn(0.16f)
                         } else {
-                            Animation.easeOut(HOME_SCENE_EXIT_DURATION)
+                            Animation.easeOut(0.24f).delay(0.14f)
                         },
-                        ctx.homeSceneAnimationPhase,
+                        ctx.selectedHomeTab,
                     )
                 }
                 event {
@@ -1042,7 +971,7 @@ internal class StockChatPage : BasePager() {
                     )
                     width(switcherWidth)
                     height(switcherHeight)
-                    touchEnable(visible && ctx.homeSceneInteractive)
+                    touchEnable(visible)
                     zIndex(8)
                     animate(
                         Animation.springEaseOut(
@@ -1080,8 +1009,7 @@ internal class StockChatPage : BasePager() {
                         elevated = true,
                         enabled = {
                             ctx.homeState.capsulePresentation !=
-                                StockChatHomeCapsulePresentation.HIDDEN &&
-                                ctx.homeSceneInteractive
+                                StockChatHomeCapsulePresentation.HIDDEN
                         },
                     )
                 }
@@ -1743,9 +1671,6 @@ internal class StockChatPage : BasePager() {
         View {
             attr {
                 val active = ctx.selectedHomeTab == HOME_TAB_CHAT
-                val entering = active && ctx.homeSceneEnterReady
-                val exiting = ctx.homeSceneOutgoingTab == HOME_TAB_CHAT &&
-                    !ctx.homeSceneEnterReady
                 val effectiveInset = metrics.composerBottomInset(
                     ctx.keyboardHeight,
                     pagerData.safeAreaInsets.bottom,
@@ -1765,33 +1690,28 @@ internal class StockChatPage : BasePager() {
                         extraInputLines = ctx.composerExtraInputLines(),
                     )
                 )
-                visibility(active || exiting)
-                opacity(if (entering) 1f else 0f)
+                opacity(if (active) 1f else 0f)
                 transform(
                     Translate(
                         0f,
                         0f,
                         0f,
-                        if (entering) 0f else metrics.dp(30f),
+                        if (active) 0f else metrics.dp(30f),
                     )
                 )
-                touchEnable(entering && ctx.homeSceneInteractive)
-                zIndex(if (entering || exiting) 6 else 0)
+                touchEnable(active)
+                zIndex(if (active) 6 else 0)
                 // 展开态与键盘态解耦：键盘回落期间展开态不变，回落动画不会被
                 // 无动画的几何更新打断；收缩只发生在键盘静止时，两条动画不并发
                 animate(Animation.easeOut(ctx.keyboardAnimDuration), ctx.keyboardHeight)
                 animate(Animation.easeOut(0.2f), ctx.composerExpanded)
                 animate(
-                    if (entering) {
-                        Animation.springEaseOut(
-                            HOME_COMPOSER_ENTER_DURATION,
-                            0.88f,
-                            0.18f,
-                        )
+                    if (active) {
+                        Animation.easeIn(0.16f)
                     } else {
-                        Animation.easeOut(HOME_SCENE_EXIT_DURATION)
+                        Animation.springEaseOut(0.36f, 0.9f, 0.18f).delay(0.2f)
                     },
-                    ctx.homeSceneAnimationPhase,
+                    ctx.selectedHomeTab,
                 )
             }
             event {

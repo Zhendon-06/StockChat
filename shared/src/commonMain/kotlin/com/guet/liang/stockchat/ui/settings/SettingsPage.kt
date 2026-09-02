@@ -96,13 +96,6 @@ internal class SettingsPage : BasePager() {
                     palette = { ctx.palette() },
                     onClick = { ctx.openPage(TABLE_STYLE_SETTINGS_PAGE_NAME) },
                 )
-                SettingsDivider(palette = { ctx.palette() })
-                SettingsNavigationRow(
-                    title = "背景设置",
-                    value = { ctx.backgroundLabel() },
-                    palette = { ctx.palette() },
-                    onClick = { ctx.openPage(BACKGROUND_SETTINGS_PAGE_NAME) },
-                )
             }
         }
     }
@@ -174,15 +167,6 @@ internal class SettingsPage : BasePager() {
             "标准"
         } else {
             "${(fontSize.scale * 100f).roundToInt()}%"
-        }
-    }
-
-    private fun backgroundLabel(): String {
-        val background = settingsSnapshot.appearance.chatBackground
-        return if (!background.customImageUri.isNullOrBlank()) {
-            "自定义图片"
-        } else {
-            background.preset.displayName
         }
     }
 

@@ -65,6 +65,9 @@ internal object StockChatTheme {
 
     val backgroundMask: Color
         get() {
+            if (usesLegacyDefaultBackground) {
+                return Color(0x00000000)
+            }
             val contrast = backgroundContrast()
             return Color(contrast.maskColorArgb, contrast.maskAlpha)
         }
@@ -99,6 +102,9 @@ internal object StockChatTheme {
 
     val backgroundSofteningMask: Color
         get() {
+            if (usesLegacyDefaultBackground) {
+                return Color(0x00000000)
+            }
             val alpha = (
                 backgroundBlurRadius / ChatBackgroundSettings.MAX_BLUR_RADIUS * 0.12f
             ).coerceIn(0f, 0.12f)
@@ -187,8 +193,17 @@ internal object StockChatTheme {
 
     private fun backgroundContrast(): ChatBackgroundContrast {
         val colors = backgroundColorValues()
+        val settings = if (usesLegacyDefaultBackground) {
+            appearanceState.chatBackground.copy(
+                blurRadius = ChatBackgroundSettings.MIN_BLUR_RADIUS,
+                maskOpacity = ChatBackgroundSettings.MIN_MASK_OPACITY,
+                maskBrightness = ChatBackgroundSettings.DEFAULT_MASK_BRIGHTNESS,
+            )
+        } else {
+            appearanceState.chatBackground
+        }
         return resolveChatBackgroundContrast(
-            settings = appearanceState.chatBackground,
+            settings = settings,
             backgroundStartArgb = colors.first,
             backgroundEndArgb = colors.second,
             darkSofteningMask = isDark || backgroundPreset == BackgroundPreset.GRAPHITE,
@@ -200,7 +215,10 @@ internal object StockChatTheme {
         return Color(colors.first) to Color(colors.second)
     }
 
-    private fun backgroundColorValues(): Pair<Long, Long> = when (backgroundPreset) {
+    private fun backgroundColorValues(): Pair<Long, Long> = if (usesLegacyDefaultBackground) {
+        val color = if (isDark) DARK_APP_BACKGROUND else LIGHT_APP_BACKGROUND
+        color to color
+    } else when (backgroundPreset) {
         BackgroundPreset.DEFAULT -> if (isDark) {
             0xFF111510 to 0xFF171D19
         } else {
@@ -227,6 +245,9 @@ internal object StockChatTheme {
             0xFFFFEAD6 to 0xFFF8C9B5
         }
     }
+
+    private val usesLegacyDefaultBackground: Boolean
+        get() = backgroundPreset == BackgroundPreset.DEFAULT && backgroundImageUri.isNullOrBlank()
 
     private data class StockChatPalette(
         val surface: Color,
