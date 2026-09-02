@@ -223,13 +223,16 @@ internal fun <T> ViewContainer<*, *>.SettingsSegmentedRow(
                 fontWeightMedium()
                 color(palette().textPrimary)
                 lines(1)
-                marginRight(14f.settingsDp())
             }
         }
         View {
             attr {
                 flex(1f)
-                maxWidth(244f.settingsDp())
+            }
+        }
+        View {
+            attr {
+                width(244f.settingsDp())
                 height(44f.settingsDp())
                 padding(all = 3f.settingsDp())
                 borderRadius(13f.settingsDp())

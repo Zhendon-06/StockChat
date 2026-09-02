@@ -18,10 +18,10 @@ import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.directives.vif
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.reactive.handler.observable
+import com.tencent.kuikly.core.views.Input
 import com.tencent.kuikly.core.views.Scroller
 import com.tencent.kuikly.core.views.Switch
 import com.tencent.kuikly.core.views.Text
-import com.tencent.kuikly.core.views.TextArea
 import com.tencent.kuikly.core.views.View
 
 @Page(MODEL_CONFIGURATION_PAGE_NAME, supportInLocal = true)
@@ -124,9 +124,9 @@ internal class ModelConfigurationPage : BasePager() {
                     bouncesEnable(true)
                 }
                 ctx.configuration.providers.forEach { provider ->
-                    val selected = ctx.selectedProviderId == provider.id
                     View {
                         attr {
+                            val selected = ctx.selectedProviderId == provider.id
                             width(118f.settingsDp())
                             height(88f.settingsDp())
                             borderRadius(18f.settingsDp())
@@ -302,7 +302,7 @@ internal class ModelConfigurationPage : BasePager() {
                                 alignItemsCenter()
                                 overflow(true)
                             }
-                            TextArea {
+                            Input {
                                 attr {
                                     flex(1f)
                                     height(48f.settingsDp())
@@ -453,7 +453,7 @@ internal class ModelConfigurationPage : BasePager() {
                         marginLeft(4f.settingsDp())
                     }
                 }
-                TextArea {
+                Input {
                     attr {
                         height(48f.settingsDp())
                         marginTop(6f.settingsDp())
@@ -524,7 +524,7 @@ internal class ModelConfigurationPage : BasePager() {
                         flexDirectionRow()
                         alignItemsCenter()
                     }
-                    TextArea {
+                    Input {
                         attr {
                             flex(1f)
                             height(44f.settingsDp())

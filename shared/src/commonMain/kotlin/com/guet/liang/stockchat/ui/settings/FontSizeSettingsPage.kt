@@ -5,6 +5,7 @@ import com.guet.liang.stockchat.data.StockChatSettingsStore
 import com.guet.liang.stockchat.model.FontSizeSettings
 import com.guet.liang.stockchat.model.ThemeMode
 import com.tencent.kuikly.core.annotations.Page
+import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.core.base.Size
 import com.tencent.kuikly.core.base.ViewBuilder
 import com.tencent.kuikly.core.base.ViewContainer
@@ -35,13 +36,13 @@ internal class FontSizeSettingsPage : BasePager() {
         val ctx = this
         return {
             attr {
-                backgroundColor(ctx.palette().background)
+                backgroundColor(ctx.pagePalette().background)
             }
             SettingsPageHeader(
                 statusBarHeight = ctx.pagerData.statusBarHeight,
-                title = "文字大小",
+                title = "字体大小",
                 actionText = "确认",
-                palette = { ctx.palette() },
+                palette = { ctx.pagePalette() },
                 onBack = { ctx.closePage() },
                 onAction = { ctx.saveAndClose() },
             )
@@ -71,18 +72,18 @@ internal class FontSizeSettingsPage : BasePager() {
         val ctx = this
         with(container) {
             SettingsCard(
-                width = settingsContentWidth(ctx.pagerData.pageViewWidth, PAGE_HORIZONTAL_MARGIN),
-                palette = { ctx.palette() },
-                marginTop = 14f.settingsDp(),
+                width = ctx.fontPageContentWidth(),
+                palette = { ctx.pagePalette() },
+                marginTop = 9f,
             ) {
                 View {
                     attr {
-                        minHeight(330f.settingsDp())
+                        height(492f)
                         padding(
-                            top = 24f.settingsDp(),
-                            left = 22f.settingsDp(),
-                            right = 22f.settingsDp(),
-                            bottom = 28f.settingsDp(),
+                            top = 20f,
+                            left = 21f,
+                            right = 21f,
+                            bottom = 28f,
                         )
                     }
                     View {
@@ -92,22 +93,22 @@ internal class FontSizeSettingsPage : BasePager() {
                         }
                         View {
                             attr {
-                                maxWidth(ctx.pagerData.pageViewWidth - 94f.settingsDp())
-                                borderRadius(20f.settingsDp())
-                                backgroundColor(ctx.palette().surfaceMuted)
+                                maxWidth(ctx.pagerData.pageViewWidth - 94f)
+                                borderRadius(20f)
+                                backgroundColor(ctx.pagePalette().surfaceMuted)
                                 padding(
-                                    top = 12f.settingsDp(),
-                                    left = 17f.settingsDp(),
-                                    right = 17f.settingsDp(),
-                                    bottom = 12f.settingsDp(),
+                                    top = 10f,
+                                    left = 13f,
+                                    right = 13f,
+                                    bottom = 10f,
                                 )
                             }
                             Text {
                                 attr {
                                     text("帮我预览一下字号大小")
-                                    fontSize(16f.settingsDp() * ctx.previewScale())
-                                    lineHeight(24f.settingsDp() * ctx.previewScale())
-                                    color(ctx.palette().textPrimary)
+                                    fontSize(16f * ctx.previewScale())
+                                    lineHeight(23f * ctx.previewScale())
+                                    color(ctx.pagePalette().textPrimary)
                                 }
                             }
                         }
@@ -115,44 +116,13 @@ internal class FontSizeSettingsPage : BasePager() {
                     Text {
                         attr {
                             text(
-                                "你可以通过拖动下面的滑块来设置字号大小。设置后会改变全局的文字大小，" +
+                                "你可以通过拖动下面的滑块来设置字号大小。设置后会改变全局的字号大小，" +
                                     "如果在使用过程中遇到问题，可以向我们反馈。",
                             )
-                            fontSize(17f.settingsDp() * ctx.previewScale())
-                            lineHeight(28f.settingsDp() * ctx.previewScale())
-                            color(ctx.palette().textPrimary)
-                            marginTop(30f.settingsDp())
-                        }
-                    }
-                    View {
-                        attr {
-                            marginTop(24f.settingsDp())
-                            borderRadius(12f.settingsDp())
-                            backgroundColor(ctx.palette().accentSoft)
-                            padding(
-                                top = 10f.settingsDp(),
-                                left = 12f.settingsDp(),
-                                right = 12f.settingsDp(),
-                                bottom = 10f.settingsDp(),
-                            )
-                            flexDirectionRow()
-                            alignItemsCenter()
-                        }
-                        Text {
-                            attr {
-                                text("Aa")
-                                fontSize(14f.settingsDp() * ctx.previewScale())
-                                fontWeightBold()
-                                color(ctx.palette().accent)
-                            }
-                        }
-                        Text {
-                            attr {
-                                text(ctx.currentScaleLabel())
-                                fontSize(13f.settingsDp() * ctx.previewScale())
-                                color(ctx.palette().textSecondary)
-                                marginLeft(8f.settingsDp())
-                            }
+                            fontSize(16f * ctx.previewScale())
+                            lineHeight(26f * ctx.previewScale())
+                            color(ctx.pagePalette().textPrimary)
+                            marginTop(19f)
                         }
                     }
                 }
@@ -164,51 +134,52 @@ internal class FontSizeSettingsPage : BasePager() {
         val ctx = this
         with(container) {
             SettingsCard(
-                width = settingsContentWidth(ctx.pagerData.pageViewWidth, PAGE_HORIZONTAL_MARGIN),
-                palette = { ctx.palette() },
+                width = ctx.fontPageContentWidth(),
+                palette = { ctx.pagePalette() },
+                marginTop = 16f,
             ) {
                 View {
                     attr {
-                        minHeight(88f.settingsDp())
+                        height(74f)
                         padding(
-                            top = 16f.settingsDp(),
-                            left = 20f.settingsDp(),
-                            right = 18f.settingsDp(),
-                            bottom = 16f.settingsDp(),
+                            top = 16f,
+                            left = 18f,
+                            right = 16f,
+                            bottom = 14f,
                         )
                         flexDirectionRow()
                         alignItemsCenter()
                     }
-                    View {
-                        attr {
-                            flex(1f)
-                            marginRight(16f.settingsDp())
-                        }
-                        Text {
+                        View {
                             attr {
-                                text("跟随系统")
-                                fontSize(17f.settingsDp())
-                                fontWeightBold()
-                                color(ctx.palette().textPrimary)
+                                flex(1f)
+                                marginRight(16f)
+                            }
+                            Text {
+                                attr {
+                                    text("跟随系统")
+                                    fontSize(17f)
+                                    fontWeightBold()
+                                    color(ctx.pagePalette().textPrimary)
+                                }
+                            }
+                            Text {
+                                attr {
+                                    text("开启后字体大小将跟随系统设置")
+                                    fontSize(14f)
+                                    lineHeight(20f)
+                                    color(ctx.pagePalette().textSecondary)
+                                    marginTop(4f)
+                                }
                             }
                         }
-                        Text {
-                            attr {
-                                text("开启后字体大小将跟随系统设置")
-                                fontSize(13f.settingsDp())
-                                lineHeight(19f.settingsDp())
-                                color(ctx.palette().textSecondary)
-                                marginTop(4f.settingsDp())
-                            }
-                        }
-                    }
                     Switch {
                         attr {
-                            size(52f.settingsDp(), 32f.settingsDp())
+                            size(52f, 32f)
                             isOn(ctx.followsSystem)
-                            onColor(ctx.palette().accent)
-                            unOnColor(ctx.palette().surfaceMuted)
-                            thumbColor(ctx.palette().surface)
+                            onColor(ctx.pagePalette().accent)
+                            unOnColor(ctx.pagePalette().surfaceMuted)
+                            thumbColor(ctx.pagePalette().surface)
                         }
                         event {
                             switchOnChanged { isOn ->
@@ -217,71 +188,36 @@ internal class FontSizeSettingsPage : BasePager() {
                         }
                     }
                 }
-                SettingsDivider(palette = { ctx.palette() })
                 View {
                     attr {
-                        padding(
-                            top = 18f.settingsDp(),
-                            left = 20f.settingsDp(),
-                            right = 20f.settingsDp(),
-                            bottom = 22f.settingsDp(),
-                        )
+                        width((ctx.fontPageContentWidth() - 32f).coerceAtLeast(1f))
+                        height(1f)
+                        alignSelfCenter()
+                        backgroundColor(ctx.pagePalette().divider)
+                    }
+                }
+                View {
+                    attr {
+                        height(93f)
+                        padding(top = 15f, left = 18f, right = 18f, bottom = 8f)
                     }
                     View {
                         attr {
-                            flexDirectionRow()
-                            alignItemsCenter()
-                            justifyContentSpaceBetween()
-                        }
-                        Text {
-                            attr {
-                                text("手动调整")
-                                fontSize(15f.settingsDp())
-                                fontWeightBold()
-                                color(ctx.palette().textPrimary)
-                            }
-                        }
-                        Text {
-                            attr {
-                                text(ctx.manualScaleLabel())
-                                fontSize(14f.settingsDp())
-                                fontWeightMedium()
-                                color(
-                                    if (ctx.followsSystem) {
-                                        ctx.palette().textTertiary
-                                    } else {
-                                        ctx.palette().accent
-                                    },
-                                )
-                            }
-                        }
-                    }
-                    View {
-                        attr {
-                            height(48f.settingsDp())
-                            marginTop(10f.settingsDp())
-                            flexDirectionRow()
-                            alignItemsCenter()
+                            width(264f)
+                            height(40f)
+                            alignSelfCenter()
                             opacity(if (ctx.followsSystem) 0.45f else 1f)
-                        }
-                        Text {
-                            attr {
-                                width(24f.settingsDp())
-                                text("A")
-                                fontSize(15f.settingsDp())
-                                color(ctx.palette().textSecondary)
-                            }
                         }
                         Slider {
                             attr {
-                                size(ctx.pagerData.pageViewWidth - 128f.settingsDp(), 40f.settingsDp())
+                                size(264f, 40f)
                                 currentProgress(ctx.sliderProgress())
-                                progressColor(ctx.palette().accent)
-                                trackColor(ctx.palette().surfaceMuted)
-                                thumbColor(ctx.palette().surface)
-                                trackThickness(5f.settingsDp())
-                                thumbSize(Size(28f.settingsDp(), 28f.settingsDp()))
-                                padding(left = 14f.settingsDp(), right = 14f.settingsDp())
+                                progressColor(ctx.pagePalette().accent)
+                                trackColor(ctx.pagePalette().surfaceMuted)
+                                thumbColor(ctx.pagePalette().surface)
+                                trackThickness(5f)
+                                thumbSize(Size(28f, 28f))
+                                padding(left = 0f, right = 0f)
                             }
                             event {
                                 progressDidChanged { progress ->
@@ -291,23 +227,46 @@ internal class FontSizeSettingsPage : BasePager() {
                                 }
                             }
                         }
+                    }
+                    View {
+                        attr {
+                            width(264f)
+                            height(28f)
+                            alignSelfCenter()
+                            marginTop(5f)
+                            opacity(if (ctx.followsSystem) 0.45f else 1f)
+                        }
                         Text {
                             attr {
-                                width(24f.settingsDp())
+                                absolutePosition(left = 0f, top = 0f)
+                                width(24f)
                                 text("A")
-                                fontSize(25f.settingsDp())
-                                textAlignRight()
-                                color(ctx.palette().textSecondary)
+                                fontSize(15f)
+                                color(ctx.pagePalette().textSecondary)
                             }
                         }
-                    }
-                    Text {
-                        attr {
-                            text("拖动滑块可实时预览，点击右上角“确认”后应用。")
-                            fontSize(12f.settingsDp())
-                            lineHeight(18f.settingsDp())
-                            color(ctx.palette().textTertiary)
-                            marginTop(2f.settingsDp())
+                        Text {
+                            attr {
+                                absolutePosition(
+                                    left = (264f * ctx.sliderProgress() - 32f).coerceAtLeast(0f),
+                                    top = 0f,
+                                )
+                                width(64f)
+                                text(ctx.manualScaleLabel())
+                                fontSize(16f)
+                                textAlignCenter()
+                                color(ctx.pagePalette().textSecondary)
+                            }
+                        }
+                        Text {
+                            attr {
+                                absolutePosition(right = 0f, top = 0f)
+                                width(24f)
+                                text("A")
+                                fontSize(30f)
+                                textAlignRight()
+                                color(ctx.pagePalette().textSecondary)
+                            }
                         }
                     }
                 }
@@ -328,14 +287,6 @@ internal class FontSizeSettingsPage : BasePager() {
         val scaleRange = FontSizeSettings.MAX_SCALE - FontSizeSettings.MIN_SCALE
         return (FontSizeSettings.MIN_SCALE + progress.coerceIn(0f, 1f) * scaleRange)
             .coerceIn(FontSizeSettings.MIN_SCALE, FontSizeSettings.MAX_SCALE)
-    }
-
-    private fun currentScaleLabel(): String {
-        return if (followsSystem) {
-            "跟随系统 · 标准预览"
-        } else {
-            "当前预览 · ${manualScaleLabel()}"
-        }
     }
 
     private fun manualScaleLabel(): String {
@@ -366,6 +317,22 @@ internal class FontSizeSettingsPage : BasePager() {
             ThemeMode.DARK -> true
         }
         return if (isDark) SettingsPalettes.Dark else SettingsPalettes.Light
+    }
+
+    private fun pagePalette(): SettingsPalette {
+        val basePalette = palette()
+        return if (basePalette === SettingsPalettes.Dark) {
+            basePalette
+        } else {
+            basePalette.copy(
+                background = Color(0xFFF3F7FA),
+                surfaceMuted = Color(0xFFF1F1F1),
+            )
+        }
+    }
+
+    private fun fontPageContentWidth(): Float {
+        return (pagerData.pageViewWidth - PAGE_HORIZONTAL_MARGIN * 2f).coerceAtLeast(1f)
     }
 
     private fun closePage() {
