@@ -68,7 +68,7 @@ internal object SettingsSnapshotJsonCodec {
             val sharedChats = if (root.has("sharedChats")) {
                 root.optJSONArray("sharedChats").toSharedChatRecords()
             } else {
-                MockSettingsData.sharedChats
+                emptyList()
             }
             val modelConfiguration = root.optJSONObject("modelConfiguration")
                 ?.toModelConfiguration()
@@ -98,6 +98,7 @@ internal object SettingsSnapshotJsonCodec {
                     put("preset", tableStyle.preset.name)
                     put("showGridLines", tableStyle.showGridLines)
                     put("highlightHeader", tableStyle.highlightHeader)
+                    put("customColorArgb", tableStyle.customColorArgb)
                 },
             )
             put(
@@ -144,6 +145,10 @@ internal object SettingsSnapshotJsonCodec {
                     "highlightHeader",
                     defaults.tableStyle.highlightHeader,
                 ) ?: defaults.tableStyle.highlightHeader,
+                customColorArgb = tableJson?.optLong(
+                    "customColorArgb",
+                    defaults.tableStyle.customColorArgb,
+                ) ?: defaults.tableStyle.customColorArgb,
             ),
             chatBackground = ChatBackgroundSettings(
                 preset = enumValueOrDefault(

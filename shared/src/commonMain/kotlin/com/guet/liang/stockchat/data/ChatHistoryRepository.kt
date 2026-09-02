@@ -11,6 +11,7 @@ internal data class ChatSessionSummary(
     val id: String,
     val title: String,
     val updatedAt: Long,
+    val isArchived: Boolean = false,
 )
 
 internal class ChatHistoryRepository(
@@ -24,6 +25,18 @@ internal class ChatHistoryRepository(
                 id = it.id,
                 title = it.title,
                 updatedAt = it.updated_at,
+                isArchived = it.is_archived != 0L,
+            )
+        }
+    }
+
+    fun loadArchivedSessions(): List<ChatSessionSummary> {
+        return queries.selectArchivedSessions().executeAsList().map {
+            ChatSessionSummary(
+                id = it.id,
+                title = it.title,
+                updatedAt = it.updated_at,
+                isArchived = it.is_archived != 0L,
             )
         }
     }
@@ -76,6 +89,20 @@ internal class ChatHistoryRepository(
 
     fun renameSession(sessionId: String, title: String) {
         queries.renameSession(title, sessionId)
+    }
+
+    fun archiveSession(sessionId: String): Boolean {
+        if (sessionId.isBlank()) {
+            return false
+        }
+        return queries.archiveSession(sessionId).value > 0L
+    }
+
+    fun restoreSession(sessionId: String): Boolean {
+        if (sessionId.isBlank()) {
+            return false
+        }
+        return queries.restoreSession(sessionId).value > 0L
     }
 
     private fun loadBlocks(messageId: String): List<AnswerBlock> {

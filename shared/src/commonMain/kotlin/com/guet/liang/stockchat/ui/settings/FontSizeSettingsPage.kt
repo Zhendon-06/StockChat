@@ -2,6 +2,7 @@ package com.guet.liang.stockchat.ui.settings
 
 import com.guet.liang.stockchat.base.BasePager
 import com.guet.liang.stockchat.data.StockChatSettingsStore
+import com.guet.liang.stockchat.model.ChatBackgroundSettings
 import com.guet.liang.stockchat.model.FontSizeSettings
 import com.guet.liang.stockchat.model.ThemeMode
 import com.tencent.kuikly.core.annotations.Page
@@ -23,6 +24,7 @@ internal class FontSizeSettingsPage : BasePager() {
     private var themeMode by observable(ThemeMode.SYSTEM)
     private var followsSystem by observable(true)
     private var fontScale by observable(FontSizeSettings.DEFAULT_SCALE)
+    private var chatTextSizeSp by observable(ChatBackgroundSettings.DEFAULT_CHAT_TEXT_SIZE_SP)
 
     override fun created() {
         super.created()
@@ -30,6 +32,7 @@ internal class FontSizeSettingsPage : BasePager() {
         themeMode = appearance.themeMode
         followsSystem = appearance.fontSize.followsSystem
         fontScale = appearance.fontSize.scale
+        chatTextSizeSp = appearance.chatBackground.chatTextSizeSp
     }
 
     override fun body(): ViewBuilder {
@@ -106,8 +109,8 @@ internal class FontSizeSettingsPage : BasePager() {
                             Text {
                                 attr {
                                     text("帮我预览一下字号大小")
-                                    fontSize(16f * ctx.previewScale())
-                                    lineHeight(23f * ctx.previewScale())
+                                    fontSize(ctx.previewTextSize())
+                                    lineHeight(ctx.previewTextSize() * 1.45f)
                                     color(ctx.pagePalette().textPrimary)
                                 }
                             }
@@ -119,8 +122,8 @@ internal class FontSizeSettingsPage : BasePager() {
                                 "你可以通过拖动下面的滑块来设置字号大小。设置后会改变全局的字号大小，" +
                                     "如果在使用过程中遇到问题，可以向我们反馈。",
                             )
-                            fontSize(16f * ctx.previewScale())
-                            lineHeight(26f * ctx.previewScale())
+                            fontSize(ctx.previewTextSize())
+                            lineHeight(ctx.previewTextSize() * 1.48f)
                             color(ctx.pagePalette().textPrimary)
                             marginTop(19f)
                         }
@@ -276,6 +279,12 @@ internal class FontSizeSettingsPage : BasePager() {
 
     private fun previewScale(): Float {
         return if (followsSystem) FontSizeSettings.DEFAULT_SCALE else fontScale
+    }
+
+    private fun previewTextSize(): Float {
+        val availableWidth = pagerData.pageViewWidth.takeIf { it > 0f } ?: 400f
+        val viewportScale = (availableWidth / 400f).coerceIn(0.88f, 1.12f)
+        return chatTextSizeSp * previewScale() * viewportScale
     }
 
     private fun sliderProgress(): Float {

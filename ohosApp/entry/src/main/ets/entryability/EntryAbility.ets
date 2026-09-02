@@ -19,7 +19,9 @@ export default class EntryAbility extends UIAbility {
   onWindowStageCreate(windowStage: window.WindowStage): void {
     // Main window is created, set main page for this ability
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onWindowStageCreate');
-    windowStage.getMainWindowSync().setWindowLayoutFullScreen(true);
+    const mainWindow = windowStage.getMainWindowSync();
+    mainWindow.setWindowLayoutFullScreen(true);
+    mainWindow.setPreferredOrientation(window.Orientation.PORTRAIT);
 
     KuiklyRenderAdapterManager.krLogAdapter = new LogAdapter();
     KuiklyRenderAdapterManager.krRouterAdapter = new RouterAdapter();

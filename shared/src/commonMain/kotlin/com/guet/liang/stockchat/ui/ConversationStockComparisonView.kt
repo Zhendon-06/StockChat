@@ -111,7 +111,7 @@ internal fun ViewContainer<*, *>.ConversationStockComparisonTable(
             height = STOCK_COMPARISON_TABLE_HEADER_HEIGHT
         }
         columns {
-            column("instrument", "标的 / 会话来源", width = 210f) {
+            column("instrument", "表格 / 会话来源", width = 210f) {
                 value { row -> row.displayName }
                 cell { cell -> ComparisonInstrumentCell(cell.row, contentColors, onRowClick) }
             }

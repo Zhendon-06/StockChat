@@ -112,7 +112,7 @@ internal class ConversationTableArtifactsPage : BasePager() {
                 }
                 Text {
                     attr {
-                        text("标的对比")
+                        text("表格对比")
                         fontSize(20f)
                         fontWeightBold()
                         color(StockChatTheme.textPrimary)
@@ -149,7 +149,7 @@ internal class ConversationTableArtifactsPage : BasePager() {
                 }
                 Text {
                     attr {
-                        text("正在读取标的对比")
+                        text("正在读取表格对比")
                         fontSize(14f)
                         color(StockChatTheme.textSecondary)
                         marginTop(14f)
@@ -184,7 +184,7 @@ internal class ConversationTableArtifactsPage : BasePager() {
                 }
                 Text {
                     attr {
-                        text("暂无标的对比")
+                        text("暂无表格对比")
                         fontSize(20f)
                         fontWeightBold()
                         color(StockChatTheme.textPrimary)
@@ -193,7 +193,7 @@ internal class ConversationTableArtifactsPage : BasePager() {
                 }
                 Text {
                     attr {
-                        text("在聊天页右上角选择“会话标的对比”，即可汇总本次会话提及的全部股票和指数。")
+                        text("在聊天页右上角选择“会话表格对比”，即可汇总本次会话提及的全部股票和指数。")
                         fontSize(14f)
                         lineHeight(21f)
                         textAlignCenter()
@@ -216,7 +216,7 @@ internal class ConversationTableArtifactsPage : BasePager() {
                 }
                 Text {
                     attr {
-                        text("标的对比读取失败")
+                        text("表格对比读取失败")
                         fontSize(20f)
                         fontWeightBold()
                         color(StockChatTheme.textPrimary)
@@ -366,7 +366,7 @@ internal class ConversationTableArtifactsPage : BasePager() {
                     }
                     Text {
                         attr {
-                            text(summary.title.ifBlank { "当前会话 · 标的对比" })
+                            text(summary.title.ifBlank { "当前会话 · 表格对比" })
                             fontSize(16f)
                             fontWeightBold()
                             lineHeight(22f)
@@ -405,7 +405,7 @@ internal class ConversationTableArtifactsPage : BasePager() {
                 ArtifactListUiState.Content(artifacts)
             }
         } catch (_: Throwable) {
-            ArtifactListUiState.Error("本地标的对比暂时无法读取，请稍后重试。")
+            ArtifactListUiState.Error("本地表格对比暂时无法读取，请稍后重试。")
         }
     }
 

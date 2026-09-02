@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -90,6 +91,16 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
     override fun onResume() {
         super.onResume()
         kuiklyRenderViewDelegator.onResume()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val isNightMode = isSystemNightMode(newConfig)
+        updateSystemBarAppearance(isNightMode)
+        kuiklyRenderViewDelegator.sendEvent(
+            THEME_DID_CHANGED_EVENT,
+            mapOf(IS_NIGHT_MODE_KEY to isNightMode),
+        )
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
@@ -191,6 +202,7 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
     private fun createPageData(): Map<String, Any> {
         val param = argsToMap()
         param["appId"] = 1
+        param[IS_NIGHT_MODE_KEY] = isSystemNightMode()
         param["qwenApiKey"] = BuildConfig.QWEN_API_KEY
         param["mimoVoiceApiKey"] = BuildConfig.MIMO_VOICE_API_KEY
         param["aliyunNativeStreaming"] = 1
@@ -315,8 +327,8 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
     }
 
     private fun setupEdgeToEdge() {
+        updateSystemBarAppearance(isSystemNightMode())
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        window.decorView.setBackgroundColor(Color.rgb(246, 247, 244))
         window.apply {
             addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
             statusBarColor = Color.TRANSPARENT
@@ -326,10 +338,21 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
                 isNavigationBarContrastEnforced = false
             }
         }
+    }
+
+    private fun updateSystemBarAppearance(isNightMode: Boolean) {
+        window.decorView.setBackgroundColor(
+            if (isNightMode) Color.rgb(17, 21, 16) else Color.rgb(246, 247, 244),
+        )
         WindowInsetsControllerCompat(window, window.decorView).apply {
-            isAppearanceLightStatusBars = true
-            isAppearanceLightNavigationBars = true
+            isAppearanceLightStatusBars = !isNightMode
+            isAppearanceLightNavigationBars = !isNightMode
         }
+    }
+
+    private fun isSystemNightMode(configuration: Configuration = resources.configuration): Boolean {
+        return (configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
     }
 
     private fun prepareImageAttachment(uri: Uri): PreparedImageAttachment? {
@@ -379,6 +402,8 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
 
         private const val KEY_PAGE_NAME = "pageName"
         private const val KEY_PAGE_DATA = "pageData"
+        private const val IS_NIGHT_MODE_KEY = "isNightMode"
+        private const val THEME_DID_CHANGED_EVENT = "themeDidChanged"
         private const val REQUEST_RECORD_AUDIO_PERMISSION = 2001
         private const val REQUEST_PICK_IMAGES = 2002
         private const val IMAGE_PREVIEW_DIRECTORY = "chat_images"

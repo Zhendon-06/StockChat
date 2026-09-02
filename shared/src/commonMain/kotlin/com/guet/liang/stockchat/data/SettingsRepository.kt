@@ -10,6 +10,7 @@ import com.guet.liang.stockchat.model.SettingsSnapshot
 import com.guet.liang.stockchat.model.ShareContent
 import com.guet.liang.stockchat.model.SharedChatRecord
 import com.guet.liang.stockchat.model.StockTablePreviewRow
+import com.guet.liang.stockchat.model.TableStylePreset
 import com.guet.liang.stockchat.model.TableStyleSettings
 import com.guet.liang.stockchat.model.ThemeMode
 import com.tencent.kuikly.core.datetime.DateTime
@@ -107,7 +108,7 @@ internal class InMemorySettingsRepository(
     }
 
     override fun setTableStyle(settings: TableStyleSettings) {
-        appearance = appearance.copy(tableStyle = settings)
+        appearance = appearance.copy(tableStyle = settings.normalized())
         publishAndPersist()
     }
 
@@ -217,6 +218,7 @@ internal class InMemorySettingsRepository(
             }
         appearance = storedState.appearance.normalized()
         sharedChats = storedState.sharedChats
+            .filterNot(SharedChatRecord::isDemo)
             .distinctBy(SharedChatRecord::id)
             .sortedByDescending(SharedChatRecord::sharedAtEpochMillis)
         val apiKeysByProviderId = modelConfiguration.providers.associate { provider ->
@@ -240,7 +242,22 @@ internal class InMemorySettingsRepository(
     private fun AppearanceSettings.normalized(): AppearanceSettings {
         return copy(
             fontSize = fontSize.normalized(),
+            tableStyle = tableStyle.normalized(),
             chatBackground = chatBackground.normalized(),
+        )
+    }
+
+    private fun TableStyleSettings.normalized(): TableStyleSettings {
+        return copy(
+            preset = when (preset) {
+                TableStylePreset.BLUE,
+                TableStylePreset.DARK,
+                -> TableStylePreset.DEFAULT
+                else -> preset
+            },
+            customColorArgb = customColorArgb
+                .coerceIn(0xFF000000L, 0xFFFFFFFFL)
+                .or(0xFF000000L),
         )
     }
 

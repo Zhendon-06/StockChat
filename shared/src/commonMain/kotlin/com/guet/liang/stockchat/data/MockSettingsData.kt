@@ -6,7 +6,6 @@ import com.guet.liang.stockchat.model.ModelConfiguration
 import com.guet.liang.stockchat.model.ModelOption
 import com.guet.liang.stockchat.model.ModelProviderConfig
 import com.guet.liang.stockchat.model.ModelProviderKind
-import com.guet.liang.stockchat.model.ShareContent
 import com.guet.liang.stockchat.model.SharedChatRecord
 import com.guet.liang.stockchat.model.StockTablePreviewRow
 
@@ -48,44 +47,7 @@ internal object MockSettingsData {
         ),
     )
 
-    val sharedChats = listOf(
-        SharedChatRecord(
-            id = "demo-share-moutai",
-            sessionId = "demo-session-moutai",
-            question = "贵州茅台最近的走势怎么样？",
-            content = ShareContent(
-                title = "StockChat｜贵州茅台行情解读",
-                text = "贵州茅台（600519）演示行情小幅上行，短线走势仍需结合成交量和基本面观察。\n\n$STOCK_CHAT_RISK_DISCLOSURE",
-            ),
-            sharedAtEpochMillis = 1_788_192_000_000L,
-            destinationLabel = "系统分享",
-            isDemo = true,
-        ),
-        SharedChatRecord(
-            id = "demo-share-catl",
-            sessionId = "demo-session-catl",
-            question = "帮我总结宁德时代的关键指标",
-            content = ShareContent(
-                title = "StockChat｜宁德时代指标摘要",
-                text = "宁德时代（300750）演示数据包含现价、涨跌幅和走势摘要，便于快速对比。\n\n$STOCK_CHAT_RISK_DISCLOSURE",
-            ),
-            sharedAtEpochMillis = 1_788_109_200_000L,
-            destinationLabel = "微信",
-            isDemo = true,
-        ),
-        SharedChatRecord(
-            id = "demo-share-index",
-            sessionId = "demo-session-index",
-            question = "今天沪深300表现如何？",
-            content = ShareContent(
-                title = "StockChat｜沪深300市场摘要",
-                text = "沪深300（000300）演示指数温和上行，内容仅用于展示分享记录与行情卡片。\n\n$STOCK_CHAT_RISK_DISCLOSURE",
-            ),
-            sharedAtEpochMillis = 1_787_846_400_000L,
-            destinationLabel = "复制链接",
-            isDemo = true,
-        ),
-    )
+    val sharedChats = emptyList<SharedChatRecord>()
 
     val modelConfiguration = ModelConfiguration(
         activeProviderId = ALIYUN_PROVIDER_ID,

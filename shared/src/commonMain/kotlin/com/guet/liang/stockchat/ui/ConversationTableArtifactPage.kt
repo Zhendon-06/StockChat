@@ -159,7 +159,7 @@ internal class ConversationTableArtifactPage : BasePager() {
                     }
                     Text {
                         attr {
-                            text("会话标的对比")
+                            text("会话表格对比")
                             fontSize(20f)
                             fontWeightBold()
                             color(StockChatTheme.textPrimary)
@@ -205,7 +205,7 @@ internal class ConversationTableArtifactPage : BasePager() {
                 }
                 Text {
                     attr {
-                        text("正在汇总会话中的全部标的")
+                        text("正在读取表格对比")
                         fontSize(14f)
                         color(StockChatTheme.textSecondary)
                         marginTop(14f)
@@ -316,7 +316,7 @@ internal class ConversationTableArtifactPage : BasePager() {
                 }
                 Text {
                     attr {
-                        text("标的汇总失败")
+                        text("表格对比读取失败")
                         fontSize(20f)
                         fontWeightBold()
                         color(StockChatTheme.textPrimary)
@@ -581,7 +581,7 @@ internal class ConversationTableArtifactPage : BasePager() {
             ComparisonRefreshPhase.FAILED ->
                 "实时行情暂不可用，当前展示会话中的最近数据"
             ComparisonRefreshPhase.SESSION_ONLY ->
-                "已完成会话标的汇总，暂无可刷新的证券代码"
+                "已完成会话表格汇总，暂无可刷新的证券代码"
         }
         with(container) {
             View {
