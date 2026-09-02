@@ -13,6 +13,11 @@ import kotlin.test.assertTrue
 
 class SettingsRepositoryTest {
     @Test
+    fun defaultRepositoryStartsWithNoSharedChats() {
+        assertTrue(InMemorySettingsRepository().loadSnapshot().sharedChats.isEmpty())
+    }
+
+    @Test
     fun builtInProvidersHaveNoHardcodedApiKeys() {
         val providers = InMemorySettingsRepository()
             .loadSnapshot()
@@ -123,17 +128,54 @@ class SettingsRepositoryTest {
     @Test
     fun persistedSnapshotRestoresSettingsAndShares() {
         val persistence = FakeSettingsPersistence()
-        val firstRepository = InMemorySettingsRepository(initialPersistence = persistence)
+        val sharedRecord = SharedChatRecord(
+            id = "real-share",
+            sessionId = "session-1",
+            question = "沪深300怎么样？",
+            content = ShareContent(
+                title = "StockChat｜沪深300",
+                text = "真实分享内容。仅供参考，不构成投资建议。",
+            ),
+            sharedAtEpochMillis = 1L,
+        )
+        val firstRepository = InMemorySettingsRepository(
+            initialSharedChats = listOf(sharedRecord),
+            initialPersistence = persistence,
+        )
         firstRepository.setThemeMode(ThemeMode.DARK)
-        firstRepository.deleteSharedChat("demo-share-moutai")
 
         val restoredRepository = InMemorySettingsRepository(initialPersistence = persistence)
         val restoredSnapshot = restoredRepository.loadSnapshot()
 
         assertEquals(ThemeMode.DARK, restoredSnapshot.appearance.themeMode)
-        assertTrue(restoredSnapshot.sharedChats.none { record ->
-            record.id == "demo-share-moutai"
-        })
+        assertEquals(listOf(sharedRecord), restoredSnapshot.sharedChats)
+    }
+
+    @Test
+    fun restoringLegacyDemoSharesDoesNotRepopulateShareHistory() {
+        val persistence = FakeSettingsPersistence()
+        val legacyDemoRecord = SharedChatRecord(
+            id = "legacy-demo-share",
+            sessionId = "legacy-demo-session",
+            question = "演示问题",
+            content = ShareContent(
+                title = "演示分享",
+                text = "演示内容",
+            ),
+            sharedAtEpochMillis = 1L,
+            isDemo = true,
+        )
+        val firstRepository = InMemorySettingsRepository(
+            initialSharedChats = listOf(legacyDemoRecord),
+            initialPersistence = persistence,
+        )
+
+        firstRepository.setThemeMode(ThemeMode.DARK)
+
+        val restoredSnapshot = InMemorySettingsRepository(initialPersistence = persistence)
+            .loadSnapshot()
+
+        assertTrue(restoredSnapshot.sharedChats.isEmpty())
     }
 
     @Test

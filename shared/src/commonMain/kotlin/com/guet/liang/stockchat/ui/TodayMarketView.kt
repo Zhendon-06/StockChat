@@ -8,6 +8,8 @@ import com.tencent.kuikly.core.base.BorderStyle
 import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.core.base.Direction
 import com.tencent.kuikly.core.base.ViewContainer
+import com.tencent.kuikly.core.base.attr.CaptureRule
+import com.tencent.kuikly.core.base.attr.CaptureRuleDirection
 import com.tencent.kuikly.core.directives.vif
 import com.tencent.kuikly.core.views.Scroller
 import com.tencent.kuikly.core.views.Text
@@ -206,9 +208,9 @@ private fun ViewContainer<*, *>.TodayMarketSnapshotContent(
             )
         }
     }
-    TodayMarketSectors(snapshot, scale)
-    TodayMarketSampleStocks(snapshot, scale, onQuoteClick)
-    TodayMarketSummary(snapshot, scale)
+    TodayMarketObservationStocks(snapshot, pageWidth, scale, onQuoteClick)
+    TodayMarketSampleStocks(snapshot, pageWidth, scale, onQuoteClick)
+    TodayMarketSummary(snapshot, pageWidth, scale)
     View {
         attr {
             marginTop(14f * scale)
@@ -300,9 +302,11 @@ private fun ViewContainer<*, *>.TodayMarketMoodCard(
     }
 }
 
-private fun ViewContainer<*, *>.TodayMarketSectors(
+private fun ViewContainer<*, *>.TodayMarketObservationStocks(
     snapshot: TodayMarketSnapshot,
+    pageWidth: Float,
     scale: Float,
+    onQuoteClick: (StockQuote) -> Unit,
 ) {
     View {
         attr {
@@ -322,71 +326,99 @@ private fun ViewContainer<*, *>.TodayMarketSectors(
         }
         Text {
             attr {
-                text("样本股当日均值")
+                text("10只样本企业 · 横向浏览")
                 fontSize(11f * scale)
                 color(StockChatTheme.textTertiary)
             }
         }
     }
-    // 每行两个板块卡，按涨跌降序排布
-    snapshot.sectors.chunked(2).forEachIndexed { rowIndex, row ->
-        View {
-            attr {
-                flexDirectionRow()
-                marginTop(if (rowIndex == 0) 0f else 8f * scale)
-            }
-            row.forEachIndexed { index, sector ->
-                View {
-                    attr {
-                        flex(1f)
-                        padding(
-                            top = 12f * scale,
-                            left = 12f * scale,
-                            bottom = 11f * scale,
-                            right = 12f * scale,
-                        )
-                        borderRadius(15f * scale)
-                        backgroundColor(StockChatTheme.surface)
-                        border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
-                        marginRight(if (index == row.lastIndex) 0f else 8f * scale)
-                    }
+    val columnWidth = 132f * scale
+    val cardHeight = 78f * scale
+    val rowGap = 8f * scale
+    val columns = snapshot.sampleStocks.chunked(2)
+    Scroller {
+        attr {
+            width((pageWidth - 36f * scale).coerceAtLeast(columnWidth))
+            height(cardHeight * 2f + rowGap)
+            flexDirectionRow()
+            showScrollerIndicator(false)
+            bouncesEnable(true)
+            scrollEnable(snapshot.sampleStocks.size > 5)
+            capture(CaptureRule.pan(CaptureRuleDirection.HORIZONTAL))
+        }
+        columns.forEachIndexed { columnIndex, column ->
+            View {
+                attr {
+                    width(columnWidth)
+                    marginRight(if (columnIndex == columns.lastIndex) 0f else rowGap)
+                }
+                column.forEachIndexed { rowIndex, quote ->
                     View {
                         attr {
-                            flexDirectionRow()
-                            alignItemsCenter()
+                            height(cardHeight)
+                            padding(
+                                top = 10f * scale,
+                                left = 11f * scale,
+                                bottom = 9f * scale,
+                                right = 11f * scale,
+                            )
+                            borderRadius(15f * scale)
+                            backgroundColor(StockChatTheme.surface)
+                            border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
+                            marginBottom(if (rowIndex == 0) rowGap else 0f)
+                        }
+                        event {
+                            click { onQuoteClick(quote) }
                         }
                         Text {
                             attr {
-                                text(sector.name)
-                                fontSize(14f * scale)
+                                text(quote.name)
+                                fontSize(13f * scale)
                                 fontWeightBold()
                                 color(StockChatTheme.textPrimary)
-                                flex(1f)
                                 lines(1)
                             }
                         }
                         Text {
                             attr {
-                                text(sector.changeLabel)
-                                fontSize(13f * scale)
-                                fontWeightBold()
-                                color(
-                                    if (sector.isPositive) {
-                                        StockChatTheme.positive
-                                    } else {
-                                        StockChatTheme.negative
-                                    }
-                                )
+                                text(quote.symbol)
+                                fontSize(10f * scale)
+                                color(StockChatTheme.textTertiary)
+                                marginTop(3f * scale)
+                                lines(1)
                             }
                         }
-                    }
-                    Text {
-                        attr {
-                            text(sector.members)
-                            fontSize(10f * scale)
-                            color(StockChatTheme.textTertiary)
-                            marginTop(6f * scale)
-                            lines(1)
+                        View {
+                            attr {
+                                flexDirectionRow()
+                                alignItemsCenter()
+                                marginTop(7f * scale)
+                            }
+                            Text {
+                                attr {
+                                    text(quote.price)
+                                    fontSize(12f * scale)
+                                    fontWeightMedium()
+                                    color(StockChatTheme.textPrimary)
+                                    flex(1f)
+                                    lines(1)
+                                }
+                            }
+                            Text {
+                                attr {
+                                    text(quote.changePercent)
+                                    fontSize(11f * scale)
+                                    fontWeightBold()
+                                    color(
+                                        if (quote.isPositive) {
+                                            StockChatTheme.positive
+                                        } else {
+                                            StockChatTheme.negative
+                                        }
+                                    )
+                                    lines(1)
+                                }
+                            }
                         }
                     }
                 }
@@ -397,6 +429,7 @@ private fun ViewContainer<*, *>.TodayMarketSectors(
 
 private fun ViewContainer<*, *>.TodayMarketSampleStocks(
     snapshot: TodayMarketSnapshot,
+    pageWidth: Float,
     scale: Float,
     onQuoteClick: (StockQuote) -> Unit,
 ) {
@@ -426,6 +459,8 @@ private fun ViewContainer<*, *>.TodayMarketSampleStocks(
     }
     View {
         attr {
+            width((pageWidth - 36f * scale).coerceAtLeast(1f))
+            alignSelfCenter()
             borderRadius(17f * scale)
             backgroundColor(StockChatTheme.surface)
             border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
@@ -516,10 +551,13 @@ private fun ViewContainer<*, *>.TodayMarketSampleStocks(
 
 private fun ViewContainer<*, *>.TodayMarketSummary(
     snapshot: TodayMarketSnapshot,
+    pageWidth: Float,
     scale: Float,
 ) {
     View {
         attr {
+            width((pageWidth - 36f * scale).coerceAtLeast(1f))
+            alignSelfCenter()
             marginTop(14f * scale)
             padding(top = 16f * scale, left = 16f * scale, bottom = 16f * scale, right = 16f * scale)
             borderRadius(19f * scale)

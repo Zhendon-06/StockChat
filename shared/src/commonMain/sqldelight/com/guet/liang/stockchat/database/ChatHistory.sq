@@ -2,7 +2,8 @@ CREATE TABLE chat_session (
     id TEXT NOT NULL PRIMARY KEY,
     title TEXT NOT NULL,
     created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
+    updated_at INTEGER NOT NULL,
+    is_archived INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE chat_message (
@@ -115,6 +116,12 @@ SELECT * FROM chat_session WHERE id = ?;
 
 selectSessions:
 SELECT * FROM chat_session
+WHERE is_archived = 0
+ORDER BY updated_at DESC;
+
+selectArchivedSessions:
+SELECT * FROM chat_session
+WHERE is_archived = 1
 ORDER BY updated_at DESC;
 
 selectMessages:
@@ -188,6 +195,20 @@ touchSession:
 UPDATE chat_session
 SET updated_at =
     CAST(strftime('%s', 'now') AS INTEGER) * 1000 + CAST(substr(strftime('%f', 'now'), 4, 3) AS INTEGER)
+WHERE id = ?;
+
+archiveSession:
+UPDATE chat_session
+SET is_archived = 1,
+    updated_at =
+        CAST(strftime('%s', 'now') AS INTEGER) * 1000 + CAST(substr(strftime('%f', 'now'), 4, 3) AS INTEGER)
+WHERE id = ?;
+
+restoreSession:
+UPDATE chat_session
+SET is_archived = 0,
+    updated_at =
+        CAST(strftime('%s', 'now') AS INTEGER) * 1000 + CAST(substr(strftime('%f', 'now'), 4, 3) AS INTEGER)
 WHERE id = ?;
 
 insertMessage:

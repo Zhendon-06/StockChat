@@ -2,9 +2,9 @@ package com.guet.liang.stockchat.ui.settings
 
 import com.guet.liang.stockchat.base.BasePager
 import com.guet.liang.stockchat.base.bridgeModule
+import com.guet.liang.stockchat.data.ModelCatalogResult
+import com.guet.liang.stockchat.data.ModelCatalogService
 import com.guet.liang.stockchat.data.StockChatSettingsStore
-import com.guet.liang.stockchat.model.ModelCapability
-import com.guet.liang.stockchat.model.ModelConfiguration
 import com.guet.liang.stockchat.model.ModelOption
 import com.guet.liang.stockchat.model.ModelProviderConfig
 import com.guet.liang.stockchat.model.ModelProviderKind
@@ -15,10 +15,13 @@ import com.tencent.kuikly.core.base.BorderStyle
 import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.core.base.ViewBuilder
 import com.tencent.kuikly.core.base.ViewContainer
+import com.tencent.kuikly.core.base.attr.ImageUri
 import com.tencent.kuikly.core.directives.vif
+import com.tencent.kuikly.core.module.NetworkModule
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.reactive.handler.observable
 import com.tencent.kuikly.core.views.Input
+import com.tencent.kuikly.core.views.Image
 import com.tencent.kuikly.core.views.Scroller
 import com.tencent.kuikly.core.views.Switch
 import com.tencent.kuikly.core.views.Text
@@ -35,15 +38,29 @@ internal class ModelConfigurationPage : BasePager() {
     private var selectedModelId by observable("")
     private var providerEnabled by observable(true)
     private var keyVisible by observable(false)
-    private var customModelId by observable("")
-    private var customHeadersExpanded by observable(false)
+    private var availableModels by observable<List<ModelOption>>(emptyList())
+    private var modelListVisible by observable(false)
+    private var modelListLoading by observable(false)
+    private var modelListError by observable("")
+    private var modelRequestToken = 0
+    private var lastAttemptedModelRequest = ""
+    private var lastLoadedModelRequest = ""
+    private lateinit var modelCatalogService: ModelCatalogService
 
     override fun created() {
         super.created()
+        modelCatalogService = ModelCatalogService(
+            acquireModule<NetworkModule>(NetworkModule.MODULE_NAME),
+        )
         val snapshot = StockChatSettingsStore.repository.loadSnapshot()
         configuration = snapshot.modelConfiguration
         themeMode = snapshot.appearance.themeMode
         selectProvider(configuration.activeProviderId)
+    }
+
+    override fun pageWillDestroy() {
+        modelRequestToken += 1
+        super.pageWillDestroy()
     }
 
     override fun body(): ViewBuilder {
@@ -100,7 +117,7 @@ internal class ModelConfigurationPage : BasePager() {
                 }
                 Text {
                     attr {
-                        text("切换并维护五个模型服务商的地址、密钥与默认模型，也可补充自定义 Model ID。")
+                        text("切换并维护五个模型服务商的地址、密钥与默认模型。")
                         fontSize(13f.settingsDp())
                         lineHeight(20f.settingsDp())
                         color(ctx.palette().textSecondary)
@@ -124,6 +141,7 @@ internal class ModelConfigurationPage : BasePager() {
                     bouncesEnable(true)
                 }
                 ctx.configuration.providers.forEach { provider ->
+                    val iconAsset = ctx.providerAsset(provider.kind)
                     View {
                         attr {
                             val selected = ctx.selectedProviderId == provider.id
@@ -155,15 +173,14 @@ internal class ModelConfigurationPage : BasePager() {
                             attr {
                                 size(32f.settingsDp(), 32f.settingsDp())
                                 borderRadius(10f.settingsDp())
-                                backgroundColor(ctx.providerColor(provider.kind))
+                                backgroundColor(Color.WHITE)
                                 allCenter()
                             }
-                            Text {
+                            Image {
                                 attr {
-                                    text(ctx.providerMark(provider.kind))
-                                    fontSize(14f.settingsDp())
-                                    fontWeightBold()
-                                    color(Color.WHITE)
+                                    size(27f.settingsDp(), 27f.settingsDp())
+                                    resizeContain()
+                                    src(ImageUri.commonAssets(iconAsset))
                                 }
                             }
                         }
@@ -219,6 +236,7 @@ internal class ModelConfigurationPage : BasePager() {
                             bottom = 18f.settingsDp(),
                         )
                     }
+                    val iconAsset = ctx.providerAsset(ctx.selectedProvider().kind)
                     View {
                         attr {
                             height(44f.settingsDp())
@@ -229,15 +247,14 @@ internal class ModelConfigurationPage : BasePager() {
                             attr {
                                 size(38f.settingsDp(), 38f.settingsDp())
                                 borderRadius(12f.settingsDp())
-                                backgroundColor(ctx.providerColor(ctx.selectedProvider().kind))
+                                backgroundColor(Color.WHITE)
                                 allCenter()
                             }
-                            Text {
+                            Image {
                                 attr {
-                                    text(ctx.providerMark(ctx.selectedProvider().kind))
-                                    fontSize(16f.settingsDp())
-                                    fontWeightBold()
-                                    color(Color.WHITE)
+                                    size(32f.settingsDp(), 32f.settingsDp())
+                                    resizeContain()
+                                    src(ImageUri.commonAssets(iconAsset))
                                 }
                             }
                         }
@@ -277,7 +294,7 @@ internal class ModelConfigurationPage : BasePager() {
                         label = "Base URL",
                         value = { ctx.baseUrl },
                         placeholder = "https://api.example.com/v1",
-                        onChanged = { ctx.baseUrl = it },
+                        onChanged = { ctx.updateBaseUrl(it) },
                     )
                     View {
                         attr {
@@ -302,25 +319,53 @@ internal class ModelConfigurationPage : BasePager() {
                                 alignItemsCenter()
                                 overflow(true)
                             }
-                            Input {
-                                attr {
-                                    flex(1f)
-                                    height(48f.settingsDp())
-                                    marginLeft(13f.settingsDp())
-                                    marginRight(8f.settingsDp())
-                                    text(ctx.apiKey)
-                                    fontSize(14f.settingsDp())
-                                    color(ctx.palette().textPrimary)
-                                    tintColor(ctx.palette().accent)
-                                    placeholder("未填写时使用本地 Mock 数据")
-                                    placeholderColor(ctx.palette().textTertiary)
-                                    if (!ctx.keyVisible) {
+                            vif({ !ctx.keyVisible }) {
+                                Input {
+                                    attr {
+                                        flex(1f)
+                                        height(48f.settingsDp())
+                                        marginLeft(13f.settingsDp())
+                                        marginRight(8f.settingsDp())
+                                        text(ctx.apiKey)
+                                        fontSize(14f.settingsDp())
+                                        color(ctx.palette().textPrimary)
+                                        tintColor(ctx.palette().accent)
+                                        placeholder("未填写时使用本地 Mock 数据")
+                                        placeholderColor(ctx.palette().textTertiary)
                                         keyboardTypePassword()
+                                        maxTextLength(256)
                                     }
-                                    maxTextLength(256)
+                                    event {
+                                        textDidChange(isSyncEdit = true) {
+                                            ctx.updateApiKey(it.text)
+                                        }
+                                        inputBlur { ctx.loadModelsIfNeeded() }
+                                        inputReturn { ctx.loadModels(force = true) }
+                                    }
                                 }
-                                event {
-                                    textDidChange(isSyncEdit = true) { ctx.apiKey = it.text }
+                            }
+                            vif({ ctx.keyVisible }) {
+                                Input {
+                                    attr {
+                                        flex(1f)
+                                        height(48f.settingsDp())
+                                        marginLeft(13f.settingsDp())
+                                        marginRight(8f.settingsDp())
+                                        text(ctx.apiKey)
+                                        fontSize(14f.settingsDp())
+                                        color(ctx.palette().textPrimary)
+                                        tintColor(ctx.palette().accent)
+                                        placeholder("未填写时使用本地 Mock 数据")
+                                        placeholderColor(ctx.palette().textTertiary)
+                                        maxTextLength(256)
+                                    }
+                                    event {
+                                        textDidChange(isSyncEdit = true) {
+                                            ctx.updateApiKey(it.text)
+                                        }
+                                        inputBlur { ctx.loadModelsIfNeeded() }
+                                        inputReturn { ctx.loadModels(force = true) }
+                                    }
                                 }
                             }
                             View {
@@ -352,60 +397,40 @@ internal class ModelConfigurationPage : BasePager() {
                         }
                     }
                     View {
+                        val canLoadModels = ctx.apiKey.trim().isNotBlank() && !ctx.modelListLoading
                         attr {
-                            height(48f.settingsDp())
-                            flexDirectionRow()
-                            alignItemsCenter()
-                            marginTop(10f.settingsDp())
+                            height(42f.settingsDp())
+                            borderRadius(21f.settingsDp())
+                            backgroundColor(
+                                if (!canLoadModels) {
+                                    ctx.palette().surfaceMuted
+                                } else {
+                                    ctx.palette().accent
+                                },
+                            )
+                            allCenter()
+                            marginTop(12f.settingsDp())
+                            touchEnable(canLoadModels)
                         }
                         event {
-                            click { ctx.customHeadersExpanded = !ctx.customHeadersExpanded }
-                        }
-                        Text {
-                            attr {
-                                text("自定义请求头")
-                                fontSize(15f.settingsDp())
-                                fontWeightBold()
-                                color(ctx.palette().textPrimary)
-                            }
-                        }
-                        Text {
-                            attr {
-                                text("点击展开配置")
-                                fontSize(12f.settingsDp())
-                                color(ctx.palette().textTertiary)
-                                marginLeft(10f.settingsDp())
-                                flex(1f)
-                            }
-                        }
-                        Text {
-                            attr {
-                                text(if (ctx.customHeadersExpanded) "⌃" else "⌄")
-                                fontSize(18f.settingsDp())
-                                color(ctx.palette().textSecondary)
-                            }
-                        }
-                    }
-                    vif({ ctx.customHeadersExpanded }) {
-                        View {
-                            attr {
-                                minHeight(54f.settingsDp())
-                                borderRadius(12f.settingsDp())
-                                backgroundColor(ctx.palette().surfaceMuted)
-                                padding(
-                                    top = 10f.settingsDp(),
-                                    left = 12f.settingsDp(),
-                                    right = 12f.settingsDp(),
-                                    bottom = 10f.settingsDp(),
-                                )
-                            }
-                            Text {
-                                attr {
-                                    text("当前五个预置 Provider 均使用 Authorization: Bearer <API Key>。自定义请求头将在接入安全存储后开放。")
-                                    fontSize(11f.settingsDp())
-                                    lineHeight(17f.settingsDp())
-                                    color(ctx.palette().textSecondary)
+                            click {
+                                if (ctx.apiKey.trim().isNotBlank() && !ctx.modelListLoading) {
+                                    ctx.loadModels(force = true)
                                 }
+                            }
+                        }
+                        Text {
+                            attr {
+                                text(if (ctx.modelListLoading) "正在获取模型…" else "获取可用模型")
+                                fontSize(13f.settingsDp())
+                                fontWeightBold()
+                                color(
+                                    if (!canLoadModels) {
+                                        ctx.palette().textTertiary
+                                    } else {
+                                        Color.WHITE
+                                    },
+                                )
                             }
                         }
                     }
@@ -480,38 +505,72 @@ internal class ModelConfigurationPage : BasePager() {
     private fun ModelList(container: ViewContainer<*, *>) {
         val ctx = this
         with(container) {
-            View {
-                attr {
-                    width((ctx.pagerData.pageViewWidth - 40f.settingsDp()).coerceAtLeast(1f))
-                    alignSelfCenter()
-                    marginTop(20f.settingsDp())
-                    flexDirectionRow()
-                    alignItemsCenter()
-                }
-                Text {
+            vif({
+                ctx.modelListLoading ||
+                    ctx.modelListVisible ||
+                    ctx.modelListError.isNotBlank()
+            }) {
+                View {
                     attr {
-                        text("模型列表")
-                        fontSize(14f.settingsDp())
-                        fontWeightBold()
-                        color(ctx.palette().textTertiary)
-                        flex(1f)
+                        width((ctx.pagerData.pageViewWidth - 40f.settingsDp()).coerceAtLeast(1f))
+                        alignSelfCenter()
+                        marginTop(20f.settingsDp())
+                        flexDirectionRow()
+                        alignItemsCenter()
+                    }
+                    Text {
+                        attr {
+                            text("模型列表")
+                            fontSize(14f.settingsDp())
+                            fontWeightBold()
+                            color(ctx.palette().textTertiary)
+                            flex(1f)
+                        }
+                    }
+                    Text {
+                        attr {
+                            text(
+                                when {
+                                    ctx.modelListLoading -> "获取中"
+                                    ctx.modelListVisible -> "${ctx.availableModels.size} 个模型"
+                                    ctx.modelListError.isNotBlank() -> "获取失败"
+                                    else -> "待获取"
+                                },
+                            )
+                            fontSize(12f.settingsDp())
+                            color(ctx.palette().textSecondary)
+                        }
                     }
                 }
-                Text {
-                    attr {
-                        text("${ctx.selectedProvider().models.size} 个模型")
-                        fontSize(12f.settingsDp())
-                        color(ctx.palette().textSecondary)
-                    }
+                vif({ ctx.modelListLoading }) {
+                    ctx.ModelCatalogStatus(this, "正在从 Provider 获取可用模型…", false)
                 }
-            }
-            ctx.configuration.providers.forEach { provider ->
-                vif({ ctx.selectedProviderId == provider.id }) {
-                    provider.models.forEach { model ->
+                vif({ !ctx.modelListLoading && ctx.modelListError.isNotBlank() }) {
+                    ctx.ModelCatalogStatus(this, ctx.modelListError, true)
+                }
+                vif({
+                    ctx.modelListVisible && ctx.availableModels.isEmpty()
+                }) {
+                    ctx.ModelCatalogStatus(this, "该 Provider 暂未返回可用模型。", true)
+                }
+                vif({
+                    ctx.modelListVisible && ctx.availableModels.isNotEmpty()
+                }) {
+                    ctx.availableModels.forEach { model ->
                         ctx.ModelCard(this, model)
                     }
                 }
             }
+        }
+    }
+
+    private fun ModelCatalogStatus(
+        container: ViewContainer<*, *>,
+        message: String,
+        isError: Boolean,
+    ) {
+        val ctx = this
+        with(container) {
             SettingsCard(
                 width = (ctx.pagerData.pageViewWidth - 32f.settingsDp()).coerceAtLeast(1f),
                 palette = ctx::palette,
@@ -519,48 +578,49 @@ internal class ModelConfigurationPage : BasePager() {
             ) {
                 View {
                     attr {
-                        height(76f.settingsDp())
-                        padding(left = 14f.settingsDp(), right = 12f.settingsDp())
-                        flexDirectionRow()
-                        alignItemsCenter()
+                        minHeight(58f.settingsDp())
+                        padding(
+                            top = 14f.settingsDp(),
+                            left = 16f.settingsDp(),
+                            right = 16f.settingsDp(),
+                            bottom = 14f.settingsDp(),
+                        )
                     }
-                    Input {
+                    Text {
                         attr {
-                            flex(1f)
-                            height(44f.settingsDp())
-                            borderRadius(12f.settingsDp())
-                            backgroundColor(ctx.palette().surfaceMuted)
-                            textAlignLeft()
-                            text(ctx.customModelId)
-                            fontSize(13f.settingsDp())
-                            color(ctx.palette().textPrimary)
-                            tintColor(ctx.palette().accent)
-                            placeholder("输入自定义 Model ID")
-                            placeholderColor(ctx.palette().textTertiary)
-                            maxTextLength(120)
-                        }
-                        event {
-                            textDidChange(isSyncEdit = true) { ctx.customModelId = it.text }
+                            text(message)
+                            fontSize(12f.settingsDp())
+                            lineHeight(18f.settingsDp())
+                            color(
+                                if (isError) {
+                                    ctx.palette().warning
+                                } else {
+                                    ctx.palette().textSecondary
+                                },
+                            )
                         }
                     }
-                    View {
-                        attr {
-                            width(66f.settingsDp())
-                            height(44f.settingsDp())
-                            borderRadius(20f.settingsDp())
-                            backgroundColor(ctx.palette().accent)
-                            marginLeft(9f.settingsDp())
-                            allCenter()
-                        }
-                        event {
-                            click { ctx.addCustomModel() }
-                        }
-                        Text {
+                    if (isError) {
+                        View {
                             attr {
-                                text("＋ 添加")
-                                fontSize(12f.settingsDp())
-                                fontWeightBold()
-                                color(Color.WHITE)
+                                height(30f.settingsDp())
+                                alignSelfFlexStart()
+                                padding(left = 10f.settingsDp(), right = 10f.settingsDp())
+                                borderRadius(15f.settingsDp())
+                                backgroundColor(ctx.palette().accentSoft)
+                                allCenter()
+                                marginTop(8f.settingsDp())
+                            }
+                            event {
+                                click { ctx.loadModels(force = true) }
+                            }
+                            Text {
+                                attr {
+                                    text("重试")
+                                    fontSize(11f.settingsDp())
+                                    fontWeightBold()
+                                    color(ctx.palette().accent)
+                                }
                             }
                         }
                     }
@@ -741,7 +801,7 @@ internal class ModelConfigurationPage : BasePager() {
         selectedModelId = provider.selectedModelId
         providerEnabled = provider.isEnabled
         keyVisible = false
-        customModelId = ""
+        resetModelCatalog()
     }
 
     private fun selectedProvider(): ModelProviderConfig {
@@ -765,34 +825,6 @@ internal class ModelConfigurationPage : BasePager() {
         reloadConfiguration(updated.id)
     }
 
-    private fun addCustomModel() {
-        val modelId = customModelId.trim()
-        if (modelId.isEmpty()) {
-            bridgeModule.toast("请输入 Model ID")
-            return
-        }
-        val provider = currentDraftProvider() ?: return
-        if (provider.models.any { it.id == modelId }) {
-            chooseModel(modelId)
-            customModelId = ""
-            return
-        }
-        val updated = provider.copy(
-            models = provider.models + ModelOption(
-                id = modelId,
-                displayName = modelId,
-                contextWindowLabel = "自定义",
-                capabilities = setOf(ModelCapability.CHAT),
-            ),
-            selectedModelId = modelId,
-        )
-        StockChatSettingsStore.repository.saveModelProvider(updated)
-        StockChatSettingsStore.repository.selectModel(updated.id, modelId)
-        customModelId = ""
-        reloadConfiguration(updated.id)
-        bridgeModule.toast("已添加自定义模型")
-    }
-
     private fun switchProvider(providerId: String) {
         if (providerId == selectedProviderId) {
             return
@@ -801,6 +833,123 @@ internal class ModelConfigurationPage : BasePager() {
         StockChatSettingsStore.repository.saveModelProvider(currentDraft)
         configuration = StockChatSettingsStore.repository.loadSnapshot().modelConfiguration
         selectProvider(providerId)
+    }
+
+    private fun updateApiKey(value: String) {
+        if (apiKey == value) {
+            return
+        }
+        apiKey = value
+        resetModelCatalog()
+    }
+
+    private fun updateBaseUrl(value: String) {
+        if (baseUrl == value) {
+            return
+        }
+        baseUrl = value
+        resetModelCatalog()
+    }
+
+    private fun resetModelCatalog() {
+        modelRequestToken += 1
+        availableModels = emptyList()
+        modelListVisible = false
+        modelListLoading = false
+        modelListError = ""
+        lastAttemptedModelRequest = ""
+        lastLoadedModelRequest = ""
+    }
+
+    private fun modelRequestFingerprint(): String {
+        return "${selectedProviderId}|${baseUrl.trim().trimEnd('/')}|${apiKey.trim()}"
+    }
+
+    private fun loadModelsIfNeeded() {
+        if (apiKey.trim().isBlank()) {
+            return
+        }
+        val fingerprint = modelRequestFingerprint()
+        if (
+            modelListLoading ||
+            fingerprint == lastAttemptedModelRequest ||
+            fingerprint == lastLoadedModelRequest
+        ) {
+            return
+        }
+        loadModels()
+    }
+
+    private fun loadModels(force: Boolean = false) {
+        val normalizedBaseUrl = baseUrl.trim().trimEnd('/')
+        val normalizedApiKey = apiKey.trim()
+        if (normalizedBaseUrl.isBlank()) {
+            modelListVisible = false
+            modelListError = "请先填写 Base URL。"
+            bridgeModule.toast("请先填写 Base URL")
+            return
+        }
+        if (normalizedApiKey.isBlank()) {
+            modelListVisible = false
+            modelListError = "请先填写 API Key。"
+            bridgeModule.toast("请先填写 API Key")
+            return
+        }
+        if (!::modelCatalogService.isInitialized) {
+            return
+        }
+        val fingerprint = modelRequestFingerprint()
+        if (modelListLoading || (!force && fingerprint == lastAttemptedModelRequest)) {
+            return
+        }
+        val providerId = selectedProviderId
+        val requestToken = modelRequestToken + 1
+        modelRequestToken = requestToken
+        lastAttemptedModelRequest = fingerprint
+        modelListLoading = true
+        modelListVisible = false
+        modelListError = ""
+        modelCatalogService.load(normalizedBaseUrl, normalizedApiKey) { result ->
+            if (requestToken != modelRequestToken || providerId != selectedProviderId) {
+                return@load
+            }
+            modelListLoading = false
+            when (result) {
+                is ModelCatalogResult.Failure -> {
+                    modelListVisible = false
+                    modelListError = result.message
+                }
+                is ModelCatalogResult.Success -> {
+                    val models = result.models
+                    availableModels = models
+                    modelListVisible = true
+                    modelListError = ""
+                    lastLoadedModelRequest = fingerprint
+                    if (models.isNotEmpty()) {
+                        val nextSelectedModelId = selectedModelId.takeIf { id ->
+                            models.any { model -> model.id == id }
+                        } ?: models.first().id
+                        selectedModelId = nextSelectedModelId
+                        val provider = selectedProvider()
+                        val updated = provider.copy(
+                            displayName = providerName.trim().ifBlank { provider.kind.displayName },
+                            baseUrl = normalizedBaseUrl,
+                            apiKey = normalizedApiKey,
+                            models = models,
+                            selectedModelId = nextSelectedModelId,
+                            isEnabled = providerEnabled,
+                        )
+                        StockChatSettingsStore.repository.saveModelProvider(updated)
+                        configuration = StockChatSettingsStore.repository.loadSnapshot().modelConfiguration
+                        providerName = updated.displayName
+                        baseUrl = updated.baseUrl
+                        apiKey = updated.apiKey
+                        providerEnabled = updated.isEnabled
+                        bridgeModule.toast("已获取 ${models.size} 个可用模型")
+                    }
+                }
+            }
+        }
     }
 
     private fun currentDraftProvider(): ModelProviderConfig? {
@@ -825,7 +974,18 @@ internal class ModelConfigurationPage : BasePager() {
 
     private fun reloadConfiguration(providerId: String) {
         configuration = StockChatSettingsStore.repository.loadSnapshot().modelConfiguration
-        selectProvider(providerId)
+        val provider = configuration.providers.firstOrNull { it.id == providerId }
+        if (provider == null) {
+            selectProvider(providerId)
+            return
+        }
+        selectedProviderId = provider.id
+        providerName = provider.displayName
+        baseUrl = provider.baseUrl
+        apiKey = provider.apiKey
+        selectedModelId = provider.selectedModelId
+        providerEnabled = provider.isEnabled
+        keyVisible = false
     }
 
     private fun closePage() {
@@ -841,21 +1001,12 @@ internal class ModelConfigurationPage : BasePager() {
         return if (isDark) SettingsPalettes.Dark else SettingsPalettes.Light
     }
 
-    private fun providerMark(kind: ModelProviderKind): String = when (kind) {
-        ModelProviderKind.ALIYUN -> "千"
-        ModelProviderKind.DEEPSEEK -> "D"
-        ModelProviderKind.GLM -> "G"
-        ModelProviderKind.KIMI -> "K"
-        ModelProviderKind.MIMO -> "M"
-        ModelProviderKind.CUSTOM -> "+"
-    }
-
-    private fun providerColor(kind: ModelProviderKind): Color = when (kind) {
-        ModelProviderKind.ALIYUN -> Color(0xFF6557E8)
-        ModelProviderKind.DEEPSEEK -> Color(0xFF4D6BFE)
-        ModelProviderKind.GLM -> Color(0xFF2457D6)
-        ModelProviderKind.KIMI -> Color(0xFF111827)
-        ModelProviderKind.MIMO -> Color(0xFFFF6A2A)
-        ModelProviderKind.CUSTOM -> palette().accent
+    private fun providerAsset(kind: ModelProviderKind): String = when (kind) {
+        ModelProviderKind.ALIYUN -> "tongyi-qianwen.png"
+        ModelProviderKind.DEEPSEEK -> "deepseek.png"
+        ModelProviderKind.GLM -> "glm.png"
+        ModelProviderKind.KIMI -> "kimi.png"
+        ModelProviderKind.MIMO -> "mimo.png"
+        ModelProviderKind.CUSTOM -> "stockchat_app_icon.png"
     }
 }

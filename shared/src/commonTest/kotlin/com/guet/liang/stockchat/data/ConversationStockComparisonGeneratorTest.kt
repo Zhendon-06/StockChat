@@ -42,7 +42,7 @@ class ConversationStockComparisonGeneratorTest {
             ),
         )
 
-        assertEquals("持仓讨论 · 标的对比", snapshot.title)
+        assertEquals("持仓讨论 · 表格对比", snapshot.title)
         assertEquals(6, snapshot.rows.size)
         assertEquals(
             setOf("sh600519", "sz300750", "sz002594", "hk00700", "sh601318", "hk03690"),

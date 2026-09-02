@@ -46,6 +46,7 @@ import com.tencent.kuikly.core.base.BorderStyle
 import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.core.base.ColorStop
 import com.tencent.kuikly.core.base.Direction
+import com.tencent.kuikly.core.base.Scale
 import com.tencent.kuikly.core.base.Translate
 import com.tencent.kuikly.core.base.ViewBuilder
 import com.tencent.kuikly.core.base.ViewContainer
@@ -55,6 +56,7 @@ import com.tencent.kuikly.core.base.attr.CaptureRule
 import com.tencent.kuikly.core.base.attr.CaptureRuleDirection
 import com.tencent.kuikly.core.base.event.LongPressParams
 import com.tencent.kuikly.core.base.event.PanGestureParams
+import com.tencent.kuikly.core.directives.velse
 import com.tencent.kuikly.core.directives.vfor
 import com.tencent.kuikly.core.directives.vif
 import com.tencent.kuikly.core.module.NetworkModule
@@ -79,6 +81,19 @@ private const val DEFAULT_CHAT_BASE_URL = "https://dashscope.aliyuncs.com/compat
 private const val HOME_TAB_CHAT = 0
 private const val HOME_TAB_TODAY_MARKET = 1
 private const val HOME_CAPSULE_TRAVEL_DURATION = 0.46f
+private const val WELCOME_MOTION_DELAY = 0.16f
+private const val WELCOME_HERO_SETTLE_DELAY = 0.14f
+private const val WELCOME_TEXT_DELAY = 0.04f
+private const val WELCOME_TEXT_SETTLE_DELAY = 0.18f
+private const val WELCOME_FADE_DURATION = 0.26f
+private const val WELCOME_SPRING_DURATION = 0.24f
+private const val WELCOME_SETTLE_DURATION = 0.18f
+private const val WELCOME_MOTION_OFFSET_DP = 8f
+private const val WELCOME_HERO_START_SCALE = 0.94f
+private const val WELCOME_HERO_OVERSHOOT_SCALE = 1.035f
+private const val WELCOME_HERO_OVERSHOOT_OFFSET_DP = 2f
+private const val WELCOME_TEXT_MOTION_OFFSET_DP = 5f
+private const val WELCOME_SUGGESTION_DELAY = 0.06f
 // 键盘回调未给出动画时长时的兜底值（秒）
 private const val DEFAULT_KEYBOARD_ANIM_DURATION = 0.25f
 
@@ -102,6 +117,7 @@ private data class ChatModelOption(
     val badge: String,
     val multiplier: String,
     val capabilities: Set<ModelCapability> = setOf(ModelCapability.CHAT),
+    val iconAsset: String = "tongyi-qianwen.png",
 )
 
 private val CHAT_MODEL_OPTIONS = listOf(
@@ -149,6 +165,10 @@ internal class StockChatPage : BasePager() {
     private var keyboardAnimDuration by observable(DEFAULT_KEYBOARD_ANIM_DURATION)
     private val homeFlow = StockChatHomeFlow()
     private var homeState by observable(homeFlow.state.value)
+    private var welcomeMotionPhase by observable(1f)
+    private var welcomeHeroMotionStage by observable(2)
+    private var welcomeTextMotionStage by observable(2)
+    private var welcomeMotionGeneration = 0
     private val selectedHomeTab: Int
         get() = when (homeState.destination) {
             StockChatHomeDestination.AI_CHAT -> HOME_TAB_CHAT
@@ -270,6 +290,7 @@ internal class StockChatPage : BasePager() {
         super.pageDidAppear()
         applySavedAppearance()
         configureChatProvider()
+        refreshRecentSessions()
     }
 
     override fun themeDidChanged(data: JSONObject) {
@@ -278,12 +299,80 @@ internal class StockChatPage : BasePager() {
     }
 
     private fun dispatchHome(event: StockChatHomeEvent) {
+        val previousState = homeState
         val effects = homeFlow.dispatch(event)
         val nextState = homeFlow.state.value
+        val enteredWelcome =
+            nextState.destination == StockChatHomeDestination.AI_CHAT &&
+                nextState.chatStage == StockChatHomeChatStage.WELCOME &&
+                (
+                    previousState.destination != StockChatHomeDestination.AI_CHAT ||
+                        previousState.chatStage != StockChatHomeChatStage.WELCOME
+                    )
+        val leftWelcome =
+            previousState.destination == StockChatHomeDestination.AI_CHAT &&
+                previousState.chatStage == StockChatHomeChatStage.WELCOME &&
+                (
+                    nextState.destination != StockChatHomeDestination.AI_CHAT ||
+                        nextState.chatStage != StockChatHomeChatStage.WELCOME
+                    )
+        if (enteredWelcome || leftWelcome) {
+            stageWelcomeMotion(nextState)
+        }
         if (nextState != homeState) {
             homeState = nextState
         }
         effects.forEach(::handleHomeEffect)
+    }
+
+    private fun stageWelcomeMotion(nextState: StockChatHomeState) {
+        val generation = ++welcomeMotionGeneration
+        welcomeMotionPhase = 0f
+        welcomeHeroMotionStage = 0
+        welcomeTextMotionStage = 0
+        if (
+            nextState.destination != StockChatHomeDestination.AI_CHAT ||
+                nextState.chatStage != StockChatHomeChatStage.WELCOME
+        ) {
+            return
+        }
+        setTimeout((WELCOME_MOTION_DELAY * 1000f).toInt()) {
+            if (
+                generation == welcomeMotionGeneration &&
+                homeState.destination == StockChatHomeDestination.AI_CHAT &&
+                    homeState.chatStage == StockChatHomeChatStage.WELCOME
+            ) {
+                welcomeMotionPhase = 1f
+                welcomeHeroMotionStage = 1
+                setTimeout((WELCOME_TEXT_DELAY * 1000f).toInt()) {
+                    if (
+                        generation == welcomeMotionGeneration &&
+                            homeState.destination == StockChatHomeDestination.AI_CHAT &&
+                            homeState.chatStage == StockChatHomeChatStage.WELCOME
+                    ) {
+                        welcomeTextMotionStage = 1
+                    }
+                }
+                setTimeout((WELCOME_HERO_SETTLE_DELAY * 1000f).toInt()) {
+                    if (
+                        generation == welcomeMotionGeneration &&
+                            homeState.destination == StockChatHomeDestination.AI_CHAT &&
+                            homeState.chatStage == StockChatHomeChatStage.WELCOME
+                    ) {
+                        welcomeHeroMotionStage = 2
+                    }
+                }
+                setTimeout((WELCOME_TEXT_SETTLE_DELAY * 1000f).toInt()) {
+                    if (
+                        generation == welcomeMotionGeneration &&
+                            homeState.destination == StockChatHomeDestination.AI_CHAT &&
+                            homeState.chatStage == StockChatHomeChatStage.WELCOME
+                    ) {
+                        welcomeTextMotionStage = 2
+                    }
+                }
+            }
+        }
     }
 
     private fun handleHomeEffect(effect: StockChatHomeEffect) {
@@ -324,6 +413,7 @@ internal class StockChatPage : BasePager() {
         }
         bridgeModule.stopObservingDrawerGestures()
         requestToken += 1
+        welcomeMotionGeneration += 1
         dispatchHome(StockChatHomeEvent.Stopped)
         super.pageWillDestroy()
     }
@@ -339,6 +429,18 @@ internal class StockChatPage : BasePager() {
             event {
                 pan { params -> ctx.handleDrawerPan(params) }
             }
+            vif({ StockChatTheme.renderRevision % 2 == 0 }) {
+                ctx.ContentLayers(this)
+            }
+            velse {
+                ctx.ContentLayers(this)
+            }
+        }
+    }
+
+    private fun ContentLayers(container: ViewContainer<*, *>) {
+        val ctx = this
+        with(container) {
             ctx.DrawerLayer(this)
             ctx.MainLayer(this)
             ctx.SessionRenameOverlay(this)
@@ -894,9 +996,7 @@ internal class StockChatPage : BasePager() {
                         animate(Animation.easeOut(ctx.keyboardAnimDuration), ctx.keyboardHeight)
                         animate(Animation.easeOut(0.2f), ctx.composerExpanded)
                     }
-                    vif({ ctx.homeState.chatStage == StockChatHomeChatStage.WELCOME }) {
-                        ctx.HomeContentLayer(this)
-                    }
+                    ctx.HomeContentLayer(this)
                     vif({ ctx.homeState.chatStage == StockChatHomeChatStage.CONVERSATION }) {
                         ctx.MessageList(this)
                     }
@@ -1036,9 +1136,13 @@ internal class StockChatPage : BasePager() {
                 attr {
                     absolutePositionAllZero()
                     overflow(true)
-                    val visible = !ctx.homeState.welcomeObscured
+                    val visible =
+                        ctx.homeState.chatStage == StockChatHomeChatStage.WELCOME &&
+                            !ctx.homeState.welcomeObscured
                     visibility(visible)
+                    opacity(if (visible) 1f else 0f)
                     touchEnable(visible)
+                    animate(Animation.easeOut(0.2f), visible)
                 }
                 ctx.WelcomeContent(this)
             }
@@ -1160,6 +1264,23 @@ internal class StockChatPage : BasePager() {
                         Text {
                             attr {
                                 text("编辑")
+                                fontSize(12f * scale)
+                                color(StockChatTheme.accent)
+                            }
+                        }
+                    }
+                    View {
+                        attr {
+                            width(44f * scale)
+                            height(36f * scale)
+                            allCenter()
+                        }
+                        event {
+                            click { ctx.archiveSession(session.id) }
+                        }
+                        Text {
+                            attr {
+                                text("归档")
                                 fontSize(12f * scale)
                                 color(StockChatTheme.accent)
                             }
@@ -1440,46 +1561,112 @@ internal class StockChatPage : BasePager() {
                             justifyContentCenter()
                             padding(left = metrics.dp(24f), right = metrics.dp(24f))
                         }
-                        // 主视觉只放图形 logo，品牌名交给标题说一次，避免与横排 wordmark 重复
-                        Image {
+                        View {
                             attr {
-                                size(metrics.welcomeHeroSize, metrics.welcomeHeroSize)
-                                resizeContain()
-                                src(ImageUri.commonAssets("stockchat_app_icon.png"))
-                                opacity(if (ctx.homeState.welcomeObscured) 0f else 1f)
-                                animate(
-                                    Animation.easeOut(0.2f),
-                                    ctx.homeState.welcomeObscured,
+                                val phase = ctx.welcomeMotionPhase
+                                opacity(phase)
+                                animate(Animation.easeOut(WELCOME_FADE_DURATION), phase)
+                                touchEnable(
+                                    ctx.selectedHomeTab == HOME_TAB_CHAT &&
+                                        phase >= 1f,
                                 )
+                                alignItemsCenter()
                             }
-                        }
-                        Text {
-                            attr {
-                                text("StockChat，我帮你看行情")
-                                fontSize(metrics.dp(26f))
-                                fontWeightBold()
-                                color(StockChatTheme.textPrimary)
-                                textAlignCenter()
-                                marginTop(metrics.dp(26f))
-                                opacity(if (ctx.homeState.welcomeObscured) 0f else 1f)
-                                animate(
-                                    Animation.easeOut(0.2f),
-                                    ctx.homeState.welcomeObscured,
-                                )
+                            View {
+                                attr {
+                                    val stage = ctx.welcomeHeroMotionStage
+                                    val scale = when (stage) {
+                                        0 -> WELCOME_HERO_START_SCALE
+                                        1 -> WELCOME_HERO_OVERSHOOT_SCALE
+                                        else -> 1f
+                                    }
+                                    val offsetY = when (stage) {
+                                        0 -> -metrics.dp(WELCOME_MOTION_OFFSET_DP)
+                                        1 -> metrics.dp(WELCOME_HERO_OVERSHOOT_OFFSET_DP)
+                                        else -> 0f
+                                    }
+                                    transform(
+                                        scale = Scale(scale, scale),
+                                        translate = Translate(0f, 0f, 0f, offsetY),
+                                    )
+                                    animate(
+                                        if (stage == 2) {
+                                            Animation.springEaseOut(
+                                                WELCOME_SETTLE_DURATION,
+                                                0.82f,
+                                                0.08f,
+                                            )
+                                        } else {
+                                            Animation.springEaseOut(
+                                                WELCOME_SPRING_DURATION,
+                                                0.76f,
+                                                0.22f,
+                                            )
+                                        },
+                                        stage,
+                                    )
+                                    alignItemsCenter()
+                                }
+                                Image {
+                                    attr {
+                                        size(metrics.welcomeHeroSize, metrics.welcomeHeroSize)
+                                        resizeContain()
+                                        src(ImageUri.commonAssets("stockchat_app_icon.png"))
+                                    }
+                                }
                             }
-                        }
-                        Text {
-                            attr {
-                                text("支持查行情、学炒股，也可以直接问其他问题")
-                                fontSize(metrics.dp(12f))
-                                color(StockChatTheme.textTertiary)
-                                textAlignCenter()
-                                marginTop(metrics.dp(12f))
-                                opacity(if (ctx.homeState.welcomeObscured) 0f else 1f)
-                                animate(
-                                    Animation.easeOut(0.2f),
-                                    ctx.homeState.welcomeObscured,
-                                )
+                            View {
+                                attr {
+                                    val stage = ctx.welcomeTextMotionStage
+                                    val textOpacity = when (stage) {
+                                        0 -> 0f
+                                        1 -> 0.82f
+                                        else -> 1f
+                                    }
+                                    val offsetY = when (stage) {
+                                        0 -> -metrics.dp(WELCOME_TEXT_MOTION_OFFSET_DP)
+                                        1 -> metrics.dp(1f)
+                                        else -> 0f
+                                    }
+                                    opacity(textOpacity)
+                                    transform(Translate(0f, 0f, 0f, offsetY))
+                                    animate(
+                                        if (stage == 2) {
+                                            Animation.springEaseOut(
+                                                WELCOME_SETTLE_DURATION,
+                                                0.84f,
+                                                0.06f,
+                                            )
+                                        } else {
+                                            Animation.springEaseOut(
+                                                WELCOME_SPRING_DURATION,
+                                                0.8f,
+                                                0.16f,
+                                            )
+                                        },
+                                        stage,
+                                    )
+                                    alignItemsCenter()
+                                }
+                                Text {
+                                    attr {
+                                        text("StockChat，我帮你看行情")
+                                        fontSize(metrics.dp(26f))
+                                        fontWeightBold()
+                                        color(StockChatTheme.textPrimary)
+                                        textAlignCenter()
+                                        marginTop(metrics.dp(26f))
+                                    }
+                                }
+                                Text {
+                                    attr {
+                                        text("支持查行情、学炒股，也可以直接问其他问题")
+                                        fontSize(metrics.dp(12f))
+                                        color(StockChatTheme.textTertiary)
+                                        textAlignCenter()
+                                        marginTop(metrics.dp(12f))
+                                    }
+                                }
                             }
                         }
                     }
@@ -1501,6 +1688,16 @@ internal class StockChatPage : BasePager() {
                         bottom = metrics.dp(6f),
                     )
                     height(metrics.dp(46f))
+                    val phase = ctx.welcomeMotionPhase
+                    opacity(phase)
+                    animate(
+                        if (phase >= 1f) {
+                            Animation.easeOut(0.22f).delay(WELCOME_SUGGESTION_DELAY)
+                        } else {
+                            Animation.easeOut(0.12f)
+                        },
+                        phase,
+                    )
                 }
                 Scroller {
                     attr {
@@ -1524,11 +1721,6 @@ internal class StockChatPage : BasePager() {
                                 alignItemsCenter()
                                 padding(left = metrics.dp(13f), right = metrics.dp(15f))
                                 marginRight(metrics.dp(9f))
-                                opacity(if (ctx.homeState.welcomeObscured) 0f else 1f)
-                                animate(
-                                    Animation.easeOut(0.2f),
-                                    ctx.homeState.welcomeObscured,
-                                )
                             }
                             event {
                                 click {
@@ -2064,12 +2256,20 @@ internal class StockChatPage : BasePager() {
                                 }
                             }
                         }
-                        Image {
+                        View {
                             attr {
-                                size(metrics.dp(18f), metrics.dp(18f))
-                                resizeContain()
-                                src(ImageUri.commonAssets("tongyi-qianwen.png"))
+                                size(metrics.dp(22f), metrics.dp(22f))
+                                borderRadius(metrics.dp(6f))
+                                backgroundColor(Color.WHITE)
                                 marginRight(metrics.dp(6f))
+                                allCenter()
+                            }
+                            Image {
+                                attr {
+                                    size(metrics.dp(18f), metrics.dp(18f))
+                                    resizeContain()
+                                    src(ImageUri.commonAssets(ctx.selectedModel().iconAsset))
+                                }
                             }
                         }
                         Text {
@@ -2508,7 +2708,7 @@ internal class StockChatPage : BasePager() {
                             }
                             Text {
                                 attr {
-                                    text("会话标的对比")
+                                    text("会话表格对比")
                                     fontSize(metrics.dp(17f))
                                     fontWeightMedium()
                                     color(StockChatTheme.textPrimary)
@@ -2628,15 +2828,14 @@ internal class StockChatPage : BasePager() {
                     attr {
                         size(metrics.dp(40f), metrics.dp(40f))
                         borderRadius(metrics.dp(13f))
-                        backgroundColor(Color(0xFF171A18))
+                        backgroundColor(Color.WHITE)
                         allCenter()
                     }
-                    Text {
+                    Image {
                         attr {
-                            text("Q")
-                            fontSize(metrics.dp(20f))
-                            fontWeightBold()
-                            color(Color.WHITE)
+                            size(metrics.dp(30f), metrics.dp(30f))
+                            resizeContain()
+                            src(ImageUri.commonAssets(option.iconAsset))
                         }
                     }
                 }
@@ -2752,7 +2951,7 @@ internal class StockChatPage : BasePager() {
             val artifactId = tableArtifactRepository.upsert(activeSessionId, snapshot)
             openTableArtifact(artifactId)
         } catch (_: Throwable) {
-            bridgeModule.toast("会话标的对比生成失败，请重试")
+            bridgeModule.toast("会话表格对比生成失败，请重试")
         }
     }
 
@@ -2910,8 +3109,18 @@ internal class StockChatPage : BasePager() {
                 },
                 multiplier = model.contextWindowLabel,
                 capabilities = model.capabilities,
+                iconAsset = providerIconAsset(kind),
             )
         }
+    }
+
+    private fun providerIconAsset(kind: ModelProviderKind): String = when (kind) {
+        ModelProviderKind.ALIYUN -> "tongyi-qianwen.png"
+        ModelProviderKind.DEEPSEEK -> "deepseek.png"
+        ModelProviderKind.GLM -> "glm.png"
+        ModelProviderKind.KIMI -> "kimi.png"
+        ModelProviderKind.MIMO -> "mimo.png"
+        ModelProviderKind.CUSTOM -> "stockchat_app_icon.png"
     }
 
     private fun openSettings() {
@@ -3999,6 +4208,18 @@ internal class StockChatPage : BasePager() {
         bridgeModule.toast("已删除对话")
     }
 
+    private fun archiveSession(sessionId: String) {
+        if (sessionId.isBlank()) {
+            return
+        }
+        persistChatHistory()
+        if (!chatHistoryRepository.archiveSession(sessionId)) {
+            return
+        }
+        refreshRecentSessions()
+        bridgeModule.toast("已归档，可在设置中查看")
+    }
+
     private fun selectSession(sessionId: String) {
         if (sessionId == activeSessionId) {
             dispatchHome(
@@ -4026,30 +4247,24 @@ internal class StockChatPage : BasePager() {
         requestToken += 1
         activeSessionId = nextSessionId()
         messages.clear()
-        dispatchHome(StockChatHomeEvent.NewConversationStarted)
         inputText = ""
         inputLineCount = 1
         selectedImagePreviews.clear()
         selectedImages.clear()
         selectedImagePayloads.clear()
         selectedImageCount = 0
-        voiceMode = false
         isSending = false
-        // 收缩要先于键盘归零：展开动画先触发、键盘动画后接管是验证过的安全
-        // 顺序（反过来会打断键盘回落，消息区冻住）
-        composerExpanded = false
-        resetKeyboardState()
         stickMessageListToBottom = true
         messageListNearBottom = true
         drawerOpen = false
         messageMenuTargetId = ""
         conversationMenuOpen = false
         modelMenuOpen = false
-        updateTypingIndicatorTimer()
         if (::inputRef.isInitialized) {
             inputRef.view?.setText("")
-            inputRef.view?.blur()
         }
+        dispatchHome(StockChatHomeEvent.NewConversationStarted)
+        updateTypingIndicatorTimer()
     }
 
     private fun nextMessageId(): String {
@@ -4243,9 +4458,12 @@ internal class StockChatPage : BasePager() {
 
     private fun initializeChatSessions() {
         val sessions = chatHistoryRepository.loadSessions()
+        val allSessions = sessions + chatHistoryRepository.loadArchivedSessions()
         recentSessions.clear()
         sessions.forEach { session ->
             recentSessions.add(session)
+        }
+        allSessions.forEach { session ->
             session.id.substringAfterLast('_').toIntOrNull()?.let {
                 sessionSequence = maxOf(sessionSequence, it)
             }
@@ -4265,9 +4483,16 @@ internal class StockChatPage : BasePager() {
     }
 
     private fun refreshRecentSessions() {
+        val sessions = chatHistoryRepository.loadSessions()
+        val allSessions = sessions + chatHistoryRepository.loadArchivedSessions()
         recentSessions.clear()
-        chatHistoryRepository.loadSessions().forEach { session ->
+        sessions.forEach { session ->
             recentSessions.add(session)
+        }
+        allSessions.forEach { session ->
+            session.id.substringAfterLast('_').toIntOrNull()?.let {
+                sessionSequence = maxOf(sessionSequence, it)
+            }
         }
     }
 

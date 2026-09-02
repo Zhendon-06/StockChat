@@ -35,7 +35,12 @@ internal data class TableStyleSettings(
     val preset: TableStylePreset = TableStylePreset.DEFAULT,
     val showGridLines: Boolean = true,
     val highlightHeader: Boolean = true,
-)
+    val customColorArgb: Long = DEFAULT_CUSTOM_COLOR_ARGB,
+) {
+    companion object {
+        const val DEFAULT_CUSTOM_COLOR_ARGB: Long = 0xFF0EAA7B
+    }
+}
 
 internal data class StockTablePreviewRow(
     val name: String,

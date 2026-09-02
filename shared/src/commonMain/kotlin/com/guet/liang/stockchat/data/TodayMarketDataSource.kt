@@ -243,7 +243,7 @@ internal class TencentTodayMarketDataSource(
             SecurityTarget("sh000300", "沪深300"),
         )
 
-        // 固定样本股：覆盖四个常看方向，每方向两只代表性权重股
+        // 固定样本股：覆盖常看方向的十只代表性权重股
         internal val TODAY_MARKET_STOCK_TARGETS = listOf(
             SecurityTarget("sh600519", "贵州茅台"),
             SecurityTarget("sz000858", "五粮液"),
@@ -253,6 +253,8 @@ internal class TencentTodayMarketDataSource(
             SecurityTarget("sh601318", "中国平安"),
             SecurityTarget("sh688981", "中芯国际"),
             SecurityTarget("sz002475", "立讯精密"),
+            SecurityTarget("sh600690", "海尔智家"),
+            SecurityTarget("sz300059", "东方财富"),
         )
 
         private val TODAY_MARKET_SECTORS = listOf(
@@ -260,6 +262,7 @@ internal class TencentTodayMarketDataSource(
             SectorSpec("新能源车", listOf("sz300750", "sz002594")),
             SectorSpec("大金融", listOf("sh600036", "sh601318")),
             SectorSpec("硬科技", listOf("sh688981", "sz002475")),
+            SectorSpec("智能制造", listOf("sh600690", "sz300059")),
         )
 
         private val DEMO_INDEX_QUOTES = mapOf(
@@ -379,6 +382,16 @@ internal class TencentTodayMarketDataSource(
                 "立讯精密", "002475", "深市主板",
                 "42.63", "-0.28", "-0.65%",
                 listOf(43f, 42.9f, 42.95f, 42.75f, 42.85f, 42.7f, 42.75f, 42.63f),
+            ),
+            "sh600690" to demoStockQuote(
+                "海尔智家", "600690", "沪市主板",
+                "27.58", "+0.34", "+1.25%",
+                listOf(27.1f, 27.2f, 27.15f, 27.35f, 27.3f, 27.45f, 27.4f, 27.58f),
+            ),
+            "sz300059" to demoStockQuote(
+                "东方财富", "300059", "创业板",
+                "24.86", "+0.18", "+0.73%",
+                listOf(24.5f, 24.6f, 24.55f, 24.7f, 24.65f, 24.78f, 24.72f, 24.86f),
             ),
         )
     }

@@ -15,19 +15,41 @@ import com.tencent.kuikly.core.base.BorderStyle
 import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.core.base.ViewBuilder
 import com.tencent.kuikly.core.base.ViewContainer
+import com.tencent.kuikly.core.base.attr.CaptureRule
+import com.tencent.kuikly.core.base.attr.CaptureRuleDirection
 import com.tencent.kuikly.core.directives.vif
+import com.tencent.kuikly.core.base.event.PanGestureParams
+import com.tencent.kuikly.core.base.event.PinchGestureParams
 import com.tencent.kuikly.core.module.NetworkModule
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.reactive.handler.observable
 import com.tencent.kuikly.core.views.Canvas
+import com.tencent.kuikly.core.views.TextAlign
 import com.tencent.kuikly.core.views.Scroller
 import com.tencent.kuikly.core.views.Text
 import com.tencent.kuikly.core.views.View
+import kotlin.math.abs
+import kotlin.math.round
 
 private const val DETAIL_PAGE_NAME = "stock_detail"
+private const val CHART_AXIS_WIDTH = 44f
+private const val CHART_RIGHT_INSET = 4f
+private const val CHART_PLOT_TOP = 10f
+private const val CHART_PLOT_BOTTOM = 16f
+private const val CHART_MIN_SCALE = 1f
+private const val CHART_MAX_SCALE = 4f
+private const val CHART_PREDICTION_HISTORY_SIZE = 12
+private const val CHART_PREDICTION_DELTA_SIZE = 5
+private const val CHART_PREDICTION_POINT_COUNT = 8
+private const val CHART_PREDICTION_DAMPING_STEP = 0.08f
 
 private fun scaledFontSize(baseSize: Float): Float = baseSize * StockChatTheme.fontScale
+
+private fun axisLabel(value: Float): String {
+    val rounded = round(value * 100f) / 100f
+    return rounded.toString()
+}
 
 private sealed class DetailUiState {
     data object Loading : DetailUiState()
@@ -39,8 +61,16 @@ private sealed class DetailUiState {
 @Page(DETAIL_PAGE_NAME, supportInLocal = true)
 internal class StockDetailPage : BasePager() {
     private var detailState by observable<DetailUiState>(DetailUiState.Loading)
+    private var chartShowingPrediction by observable(false)
+    private var chartScale by observable(1f)
+    private var chartOffset by observable(0f)
     private var symbol = ""
     private var loadToken = 0
+    private var chartPanStartX = 0f
+    private var chartPanStartY = 0f
+    private var chartPanStartOffset = 0f
+    private var chartPinchStartScale = 1f
+    private var chartViewportWidth = 0f
     private lateinit var marketDataService: TencentMarketDataService
 
     override fun created() {
@@ -396,7 +426,7 @@ internal class StockDetailPage : BasePager() {
                     }
                     Text {
                         attr {
-                            text("走势")
+                            text(if (ctx.chartShowingPrediction) "AI 预测走势" else "走势")
                             fontSize(scaledFontSize(17f))
                             fontWeightBold()
                             color(StockChatTheme.textPrimary)
@@ -420,6 +450,33 @@ internal class StockDetailPage : BasePager() {
                             }
                         }
                     }
+                    View {
+                        attr {
+                            height(28f)
+                            borderRadius(14f)
+                            padding(left = 10f, right = 10f)
+                            marginLeft(8f)
+                            backgroundColor(
+                                if (ctx.chartShowingPrediction) StockChatTheme.accent
+                                else StockChatTheme.accentSoft,
+                            )
+                            allCenter()
+                        }
+                        event {
+                            click { ctx.toggleChartPrediction() }
+                        }
+                        Text {
+                            attr {
+                                text(if (ctx.chartShowingPrediction) "返回走势" else "AI 预测")
+                                fontSize(scaledFontSize(12f))
+                                fontWeightMedium()
+                                color(
+                                    if (ctx.chartShowingPrediction) Color.WHITE
+                                    else StockChatTheme.accent,
+                                )
+                            }
+                        }
+                    }
                 }
                 ctx.LargeTrendChart(this, quote)
                 View {
@@ -430,24 +487,38 @@ internal class StockDetailPage : BasePager() {
                     }
                     Text {
                         attr {
-                            text("09:30")
+                            text(if (ctx.chartShowingPrediction) "预测起点" else "09:30")
                             fontSize(scaledFontSize(10f))
                             color(StockChatTheme.textTertiary)
                         }
                     }
                     Text {
                         attr {
-                            text("11:30")
+                            text(if (ctx.chartShowingPrediction) "下一期" else "11:30")
                             fontSize(scaledFontSize(10f))
                             color(StockChatTheme.textTertiary)
                         }
                     }
                     Text {
                         attr {
-                            text("15:00")
+                            text(if (ctx.chartShowingPrediction) "AI 模拟" else "15:00")
                             fontSize(scaledFontSize(10f))
                             color(StockChatTheme.textTertiary)
                         }
+                    }
+                }
+                Text {
+                    attr {
+                        text(
+                            if (ctx.chartShowingPrediction) {
+                                "双指缩放、左右滑动查看预测区间 · AI 预测仅为演示"
+                            } else {
+                                "双指缩放、左右滑动查看完整走势"
+                            },
+                        )
+                        fontSize(scaledFontSize(10f))
+                        color(StockChatTheme.textTertiary)
+                        marginTop(8f)
                     }
                 }
             }
@@ -489,36 +560,94 @@ internal class StockDetailPage : BasePager() {
     }
 
     private fun LargeTrendChart(container: ViewContainer<*, *>, quote: StockQuote) {
+        val ctx = this
         with(container) {
-        Canvas({
+        View {
             attr {
                 height(188f)
                 marginTop(18f)
                 alignSelfStretch()
+                capture(CaptureRule.pan(CaptureRuleDirection.HORIZONTAL))
             }
-        }) { context, width, height ->
+            event {
+                pan { params -> ctx.handleChartPan(params) }
+            }
+            Canvas({
+                attr {
+                    absolutePositionAllZero()
+                }
+                event {
+                    pinch { params -> ctx.handleChartPinch(params) }
+                }
+            }) { context, width, height ->
+            ctx.chartViewportWidth = width
+            val points = if (ctx.chartShowingPrediction) {
+                ctx.aiPredictionPoints(quote.trendPoints)
+            } else {
+                quote.trendPoints
+            }
+            val axisWidth = CHART_AXIS_WIDTH
+            val rightInset = CHART_RIGHT_INSET
+            val plotLeft = axisWidth
+            val plotRight = (width - rightInset).coerceAtLeast(plotLeft + 1f)
+            val plotTop = CHART_PLOT_TOP
+            val plotBottom = (height - CHART_PLOT_BOTTOM).coerceAtLeast(plotTop + 1f)
+            val plotHeight = plotBottom - plotTop
+            val plotWidth = plotRight - plotLeft
+            val contentWidth = plotWidth * ctx.chartScale
+            val minimumOffset = -(contentWidth - plotWidth).coerceAtLeast(0f)
+            val offset = ctx.chartOffset.coerceIn(minimumOffset, 0f)
+
+            val dataMin = points.minOrNull() ?: 0f
+            val dataMax = points.maxOrNull() ?: 1f
+            val dataRange = (dataMax - dataMin).takeIf { it > 0f } ?: 1f
+            val dataCenter = (dataMax + dataMin) / 2f
+            val visibleRange = (dataRange / ctx.chartScale).coerceAtLeast(0.0001f)
+            val visibleMin = dataCenter - visibleRange / 2f
+            val visibleMax = dataCenter + visibleRange / 2f
             val gridColor = Color(0xFFE9EDEB)
-            for (index in 1..3) {
-                val y = height * index / 4f
+            val axisColor = Color(0xFFB7C4BF)
+            val labelColor = Color(0xFF7A8A84)
+            for (index in 0..4) {
+                val fraction = index / 4f
+                val y = plotTop + plotHeight * fraction
                 context.beginPath()
-                context.moveTo(0f, y)
-                context.lineTo(width, y)
+                context.moveTo(plotLeft, y)
+                context.lineTo(plotRight, y)
                 context.lineWidth(1f)
                 context.strokeStyle(gridColor)
                 context.stroke()
+
+                context.font(10f)
+                context.fillStyle(labelColor)
+                context.textAlign(TextAlign.RIGHT)
+                context.fillText(axisLabel(visibleMax - visibleRange * fraction), plotLeft - 6f, y + 3f)
             }
-            val points = quote.trendPoints
+
+            context.beginPath()
+            context.moveTo(plotLeft, plotTop)
+            context.lineTo(plotLeft, plotBottom)
+            context.lineWidth(1f)
+            context.strokeStyle(axisColor)
+            context.stroke()
+
             if (points.size < 2) {
                 return@Canvas
             }
-            val min = points.minOrNull() ?: 0f
-            val max = points.maxOrNull() ?: 1f
-            val range = (max - min).takeIf { it > 0f } ?: 1f
+
+            context.save()
+            context.beginPath()
+            context.moveTo(plotLeft, plotTop)
+            context.lineTo(plotRight, plotTop)
+            context.lineTo(plotRight, plotBottom)
+            context.lineTo(plotLeft, plotBottom)
+            context.closePath()
+            context.clip()
             context.beginPath()
             points.forEachIndexed { index, value ->
-                val x = index.toFloat() / (points.size - 1).toFloat() * width
-                val normalized = (value - min) / range
-                val y = 12f + (1f - normalized) * (height - 24f)
+                val x = plotLeft + index.toFloat() / (points.size - 1).toFloat() * contentWidth + offset
+                val normalized = (value - visibleMin) / visibleRange
+                val y = plotTop + (1f - normalized) * plotHeight
                 if (index == 0) {
                     context.moveTo(x, y)
                 } else {
@@ -527,9 +656,93 @@ internal class StockDetailPage : BasePager() {
             }
             context.lineWidth(3f)
             context.lineCapRound()
-            context.strokeStyle(if (quote.isPositive) StockChatTheme.positive else StockChatTheme.negative)
+            context.strokeStyle(
+                if (ctx.chartShowingPrediction) StockChatTheme.accent
+                else if (quote.isPositive) StockChatTheme.positive else StockChatTheme.negative,
+            )
             context.stroke()
+            context.restore()
+            }
         }
+        }
+    }
+
+    private fun toggleChartPrediction() {
+        chartShowingPrediction = !chartShowingPrediction
+        chartOffset = 0f
+        chartScale = 1f
+    }
+
+    private fun handleChartPan(params: PanGestureParams) {
+        when (params.state) {
+            "start" -> {
+                chartPanStartX = params.pageX
+                chartPanStartY = params.pageY
+                chartPanStartOffset = chartOffset
+            }
+            "move" -> {
+                val deltaX = params.pageX - chartPanStartX
+                val deltaY = params.pageY - chartPanStartY
+                if (abs(deltaX) <= abs(deltaY)) {
+                    return
+                }
+                chartOffset = chartPanStartOffset + deltaX
+                clampChartOffset()
+            }
+            "end", "cancel" -> {
+                chartPanStartX = 0f
+                chartPanStartY = 0f
+                chartPanStartOffset = chartOffset
+            }
+        }
+    }
+
+    private fun handleChartPinch(params: PinchGestureParams) {
+        when (params.state) {
+            "start" -> chartPinchStartScale = chartScale
+            "move" -> {
+                val gestureScale = params.scale.takeIf { it > 0f } ?: 1f
+                chartScale = (chartPinchStartScale * gestureScale).coerceIn(
+                    CHART_MIN_SCALE,
+                    CHART_MAX_SCALE,
+                )
+                clampChartOffset()
+            }
+        }
+    }
+
+    private fun clampChartOffset() {
+        val viewport = chartViewportWidth
+        if (viewport <= 0f) {
+            chartOffset = 0f
+            return
+        }
+        val plotWidth = (viewport - CHART_AXIS_WIDTH - CHART_RIGHT_INSET).coerceAtLeast(1f)
+        val minimumOffset = -(plotWidth * chartScale - plotWidth).coerceAtLeast(0f)
+        chartOffset = chartOffset.coerceIn(minimumOffset, 0f)
+    }
+
+    private fun aiPredictionPoints(points: List<Float>): List<Float> {
+        if (points.isEmpty()) {
+            return points
+        }
+        if (points.size == 1) {
+            return buildList {
+                add(points.first())
+                repeat(CHART_PREDICTION_POINT_COUNT) { add(points.first()) }
+            }
+        }
+        val source = points.takeLast(CHART_PREDICTION_HISTORY_SIZE)
+        val recentDeltas = source.zipWithNext { previous, current -> current - previous }
+            .takeLast(CHART_PREDICTION_DELTA_SIZE)
+        val averageDelta = recentDeltas.average().toFloat()
+        val last = source.last()
+        return buildList {
+            add(last)
+            repeat(CHART_PREDICTION_POINT_COUNT) { index ->
+                val damping = 1f - index * CHART_PREDICTION_DAMPING_STEP
+                add(last + averageDelta * (index + 1) * damping.coerceAtLeast(0.45f))
+            }
         }
     }
 

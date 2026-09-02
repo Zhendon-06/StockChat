@@ -11,6 +11,7 @@ import com.guet.liang.kuiklytableview.table.tableSpec
 import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.directives.vif
+import com.tencent.kuikly.core.directives.velse
 import com.tencent.kuikly.core.views.Text
 
 internal enum class StockTableStyleChoice(
@@ -22,8 +23,6 @@ internal enum class StockTableStyleChoice(
     COMPACT("紧凑", "同屏展示更多行情", TableStylePreset.Compact),
     SPACIOUS("宽松", "更大的行距与留白", TableStylePreset.Spacious),
     MINIMAL("极简", "仅保留横向分隔线", TableStylePreset.Minimal),
-    BLUE("蓝色", "蓝色强调表头", TableStylePreset.Blue),
-    DARK("深色", "深色行情表格", TableStylePreset.Dark),
     ;
 
     fun styleOptions(): TableStyleOptions = TableStyleOptions.preset(preset)
@@ -52,16 +51,60 @@ internal fun ViewContainer<*, *>.StockTableStylePreview(
     selectedStyle: () -> StockTableStyleChoice,
     viewportHeight: Float = 238f,
     uiScale: Float = 1f,
+    customColor: (() -> Color)? = null,
+    refreshKey: (() -> Int)? = null,
 ) {
     StockTableStyleChoice.all.forEach { choice ->
         vif({ selectedStyle() == choice }) {
-            StockTableStylePreviewContent(
-                style = choice.styleOptions(),
-                viewportHeight = viewportHeight,
-                uiScale = uiScale,
-            )
+            vif({ (refreshKey?.invoke() ?: 0) % 2 == 0 }) {
+                renderStockTableStylePreview(
+                    choice = choice,
+                    viewportHeight = viewportHeight,
+                    uiScale = uiScale,
+                    customColor = customColor,
+                )
+            }
+            velse {
+                renderStockTableStylePreview(
+                    choice = choice,
+                    viewportHeight = viewportHeight,
+                    uiScale = uiScale,
+                    customColor = customColor,
+                )
+            }
         }
     }
+}
+
+private fun ViewContainer<*, *>.renderStockTableStylePreview(
+    choice: StockTableStyleChoice,
+    viewportHeight: Float,
+    uiScale: Float,
+    customColor: (() -> Color)?,
+) {
+    val presetStyle = choice.styleOptions()
+    val selectedColor = customColor?.invoke() ?: presetStyle.headerBackgroundColor
+    StockTableStylePreviewContent(
+        style = presetStyle.copy(
+            headerBackgroundColor = selectedColor,
+            headerTextColor = if (customColor != null && selectedColor.isLightColor()) {
+                Color(0xFF1D2027)
+            } else if (customColor != null) {
+                Color.WHITE
+            } else {
+                presetStyle.headerTextColor
+            },
+        ),
+        viewportHeight = viewportHeight,
+        uiScale = uiScale,
+    )
+}
+
+private fun Color.isLightColor(): Boolean {
+    val red = (hexColor shr 16 and 0xFF).toInt()
+    val green = (hexColor shr 8 and 0xFF).toInt()
+    val blue = (hexColor and 0xFF).toInt()
+    return red * 299 + green * 587 + blue * 114 >= 150_000
 }
 
 private fun ViewContainer<*, *>.StockTableStylePreviewContent(

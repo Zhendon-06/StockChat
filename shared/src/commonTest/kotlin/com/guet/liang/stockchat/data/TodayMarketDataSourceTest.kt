@@ -29,16 +29,16 @@ class TodayMarketDataSourceTest {
             "应包含指数批次，实际: $symbolBatches",
         )
         assertTrue(
-            symbolBatches.any { it.contains("sh600519") && it.size == 8 },
-            "应包含 8 只样本股批次，实际: $symbolBatches",
+            symbolBatches.any { it.contains("sh600519") && it.size == 10 },
+            "应包含 10 只样本股批次，实际: $symbolBatches",
         )
         assertTrue(requestedPlans.all { !it.needsIntraday })
 
         val snapshot = assertIs<TodayMarketResult.Success>(receivedResult).snapshot
         assertEquals(4, snapshot.indices.size)
         assertEquals(4, snapshot.advancingCount + snapshot.decliningCount + snapshot.unchangedCount)
-        assertEquals(8, snapshot.sampleStocks.size)
-        assertEquals(4, snapshot.sectors.size)
+        assertEquals(10, snapshot.sampleStocks.size)
+        assertEquals(5, snapshot.sectors.size)
         // 样本股按涨跌降序
         val percents = snapshot.sampleStocks.map {
             it.changePercent.replace("%", "").replace("+", "").toDouble()
@@ -95,7 +95,7 @@ class TodayMarketDataSourceTest {
         assertEquals(false, snapshot.isDemo)
         assertEquals("腾讯证券公开行情", snapshot.sourceLabel)
         assertEquals(4, snapshot.indices.size)
-        assertEquals(8, snapshot.sampleStocks.size)
+        assertEquals(10, snapshot.sampleStocks.size)
         assertTrue(snapshot.sectors.all { it.changeLabel == "+1.00%" })
     }
 }

@@ -492,7 +492,7 @@ internal object ConversationStockComparisonGenerator {
     private const val MAX_TITLE_LENGTH = 60
     private const val DEFAULT_TITLE = "当前会话"
     private const val TABLE_ARTIFACT_TITLE_SUFFIX = " · 产物表格"
-    private const val COMPARISON_TITLE_SUFFIX = " · 标的对比"
+    private const val COMPARISON_TITLE_SUFFIX = " · 表格对比"
     private const val MARKET_AFFIX_SCAN_LENGTH = 5
     private const val METRIC_PREFIX_SCAN_LENGTH = 48
     private val WHITESPACE_REGEX = Regex("\\s+")

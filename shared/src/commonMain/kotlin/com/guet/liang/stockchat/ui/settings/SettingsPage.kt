@@ -1,6 +1,7 @@
 package com.guet.liang.stockchat.ui.settings
 
 import com.guet.liang.stockchat.base.BasePager
+import com.guet.liang.stockchat.data.ChatHistoryDatabase
 import com.guet.liang.stockchat.data.StockChatSettingsStore
 import com.guet.liang.stockchat.model.FontSizeSettings
 import com.guet.liang.stockchat.model.ModelProviderConfig
@@ -21,6 +22,7 @@ internal class SettingsPage : BasePager() {
     private var settingsSnapshot by observable(
         StockChatSettingsStore.repository.loadSnapshot(),
     )
+    private var archivedSessionCount by observable(0)
 
     override fun created() {
         super.created()
@@ -57,6 +59,7 @@ internal class SettingsPage : BasePager() {
                 }
                 ctx.AppearanceCard(this)
                 ctx.SharedChatsCard(this)
+                ctx.ArchivedChatsCard(this)
                 ctx.ModelConfigurationCard(this)
                 View {
                     attr {
@@ -137,6 +140,24 @@ internal class SettingsPage : BasePager() {
         }
     }
 
+    private fun ArchivedChatsCard(container: ViewContainer<*, *>) {
+        val ctx = this
+        with(container) {
+            SettingsCard(
+                width = settingsContentWidth(ctx.pagerData.pageViewWidth, PAGE_HORIZONTAL_MARGIN),
+                palette = { ctx.palette() },
+            ) {
+                SettingsNavigationRow(
+                    title = "归档",
+                    value = { "${ctx.archivedSessionCount} 条" },
+                    subtitle = "查看已归档的聊天记录",
+                    palette = { ctx.palette() },
+                    onClick = { ctx.openPage(ARCHIVED_CHATS_PAGE_NAME) },
+                )
+            }
+        }
+    }
+
     private fun setThemeMode(themeMode: ThemeMode) {
         if (settingsSnapshot.appearance.themeMode == themeMode) {
             return
@@ -147,6 +168,7 @@ internal class SettingsPage : BasePager() {
 
     private fun reloadSettings() {
         settingsSnapshot = StockChatSettingsStore.repository.loadSnapshot()
+        archivedSessionCount = ChatHistoryDatabase.repository().loadArchivedSessions().size
     }
 
     private fun palette(): SettingsPalette {

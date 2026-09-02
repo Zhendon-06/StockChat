@@ -243,7 +243,7 @@ internal fun <T> ViewContainer<*, *>.SettingsSegmentedRow(
                 View {
                     attr {
                         flex(1f)
-                        height(44f.settingsDp())
+                        height(38f.settingsDp())
                         borderRadius(10f.settingsDp())
                         backgroundColor(
                             if (selectedValue() == option.value) {

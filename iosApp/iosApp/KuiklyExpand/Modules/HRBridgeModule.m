@@ -137,6 +137,25 @@
     });
 }
 
+- (void)observeDrawerGestures:(NSDictionary *)args {
+}
+
+- (void)stopObservingDrawerGestures:(NSDictionary *)args {
+}
+
+- (NSString *)dateFormatter:(NSDictionary *)args {
+    NSDictionary *params = [args[KR_PARAM_KEY] hr_stringToDictionary] ?: @{};
+    NSTimeInterval timeStamp = [params[@"timeStamp"] doubleValue] / 1000.0;
+    NSString *format = params[@"format"];
+    if (![format isKindOfClass:[NSString class]] || format.length == 0) {
+        return @"";
+    }
+    NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
+    dateFormatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+    dateFormatter.dateFormat = format;
+    return [dateFormatter stringFromDate:[NSDate dateWithTimeIntervalSince1970:timeStamp]] ?: @"";
+}
+
 - (void)audioPlayerDidFinishPlaying:(AVAudioPlayer *)player successfully:(BOOL)flag {
     if (self.audioPlayer == player) {
         self.audioPlayer = nil;
