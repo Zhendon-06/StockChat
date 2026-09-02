@@ -1,8 +1,10 @@
 package com.guet.liang.stockchat.base
 
-import com.tencent.kuikly.core.pager.Pager
+import com.guet.liang.stockchat.data.StockChatSettingsStore
 import com.tencent.kuikly.core.module.Module
+import com.tencent.kuikly.core.module.SharedPreferencesModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.core.reactive.handler.*
 
 internal abstract class BasePager : Pager() {
@@ -17,6 +19,9 @@ internal abstract class BasePager : Pager() {
 
     override fun created() {
         super.created()
+        StockChatSettingsStore.initialize(
+            acquireModule<SharedPreferencesModule>(SharedPreferencesModule.MODULE_NAME),
+        )
         isNightMode()
     }
 

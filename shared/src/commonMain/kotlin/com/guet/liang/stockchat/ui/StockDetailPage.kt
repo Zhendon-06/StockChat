@@ -5,6 +5,7 @@ import com.guet.liang.stockchat.base.ShareModule
 import com.guet.liang.stockchat.base.bridgeModule
 import com.guet.liang.stockchat.data.MarketDataResult
 import com.guet.liang.stockchat.data.StockChatShareContentBuilder
+import com.guet.liang.stockchat.data.StockChatSettingsStore
 import com.guet.liang.stockchat.data.TencentMarketDataService
 import com.guet.liang.stockchat.model.ShareResult
 import com.guet.liang.stockchat.model.StockQuote
@@ -17,6 +18,7 @@ import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.directives.vif
 import com.tencent.kuikly.core.module.NetworkModule
 import com.tencent.kuikly.core.module.RouterModule
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.reactive.handler.observable
 import com.tencent.kuikly.core.views.Canvas
 import com.tencent.kuikly.core.views.Scroller
@@ -24,6 +26,8 @@ import com.tencent.kuikly.core.views.Text
 import com.tencent.kuikly.core.views.View
 
 private const val DETAIL_PAGE_NAME = "stock_detail"
+
+private fun scaledFontSize(baseSize: Float): Float = baseSize * StockChatTheme.fontScale
 
 private sealed class DetailUiState {
     data object Loading : DetailUiState()
@@ -41,11 +45,22 @@ internal class StockDetailPage : BasePager() {
 
     override fun created() {
         super.created()
+        applySavedAppearance()
         symbol = pageData.params.optString("symbol").trim().uppercase()
         marketDataService = TencentMarketDataService(
             acquireModule<NetworkModule>(NetworkModule.MODULE_NAME)
         )
         loadDetail()
+    }
+
+    override fun pageDidAppear() {
+        super.pageDidAppear()
+        applySavedAppearance()
+    }
+
+    override fun themeDidChanged(data: JSONObject) {
+        super.themeDidChanged(data)
+        applySavedAppearance()
     }
 
     override fun pageWillDestroy() {
@@ -126,7 +141,7 @@ internal class StockDetailPage : BasePager() {
             Text {
                 attr {
                     text("行情详情")
-                    fontSize(18f)
+                    fontSize(scaledFontSize(18f))
                     fontWeightBold()
                     color(StockChatTheme.textPrimary)
                     marginLeft(14f)
@@ -148,7 +163,7 @@ internal class StockDetailPage : BasePager() {
                 Text {
                     attr {
                         text("分享")
-                        fontSize(14f)
+                        fontSize(scaledFontSize(14f))
                         fontWeightMedium()
                         color(StockChatTheme.textPrimary)
                     }
@@ -184,7 +199,7 @@ internal class StockDetailPage : BasePager() {
             Text {
                 attr {
                     text("正在加载行情")
-                    fontSize(14f)
+                    fontSize(scaledFontSize(14f))
                     color(StockChatTheme.textSecondary)
                     marginTop(14f)
                 }
@@ -204,7 +219,7 @@ internal class StockDetailPage : BasePager() {
             Text {
                 attr {
                     text("暂无该标的行情")
-                    fontSize(19f)
+                    fontSize(scaledFontSize(19f))
                     fontWeightBold()
                     color(StockChatTheme.textPrimary)
                 }
@@ -212,7 +227,7 @@ internal class StockDetailPage : BasePager() {
             Text {
                 attr {
                     text("暂未收录该股票或指数的行情信息。")
-                    fontSize(14f)
+                    fontSize(scaledFontSize(14f))
                     color(StockChatTheme.textSecondary)
                     marginTop(8f)
                     textAlignCenter()
@@ -234,7 +249,7 @@ internal class StockDetailPage : BasePager() {
             Text {
                 attr {
                     text("行情加载失败")
-                    fontSize(19f)
+                    fontSize(scaledFontSize(19f))
                     fontWeightBold()
                     color(StockChatTheme.textPrimary)
                 }
@@ -242,8 +257,8 @@ internal class StockDetailPage : BasePager() {
             Text {
                 attr {
                     text((ctx.detailState as? DetailUiState.Error)?.message ?: "请稍后重试")
-                    fontSize(14f)
-                    lineHeight(21f)
+                    fontSize(scaledFontSize(14f))
+                    lineHeight(scaledFontSize(21f))
                     color(StockChatTheme.textSecondary)
                     marginTop(8f)
                     textAlignCenter()
@@ -264,7 +279,7 @@ internal class StockDetailPage : BasePager() {
                 Text {
                     attr {
                         text("重新加载")
-                        fontSize(14f)
+                        fontSize(scaledFontSize(14f))
                         fontWeightMedium()
                         color(Color.WHITE)
                     }
@@ -307,7 +322,7 @@ internal class StockDetailPage : BasePager() {
                         Text {
                             attr {
                                 text(quote.name)
-                                fontSize(22f)
+                                fontSize(scaledFontSize(22f))
                                 fontWeightBold()
                                 color(StockChatTheme.textPrimary)
                             }
@@ -315,7 +330,7 @@ internal class StockDetailPage : BasePager() {
                         Text {
                             attr {
                                 text("${quote.marketLabel} · ${quote.symbol}")
-                                fontSize(13f)
+                                fontSize(scaledFontSize(13f))
                                 color(StockChatTheme.textSecondary)
                                 marginTop(4f)
                             }
@@ -340,7 +355,7 @@ internal class StockDetailPage : BasePager() {
                 Text {
                     attr {
                         text(quote.price)
-                        fontSize(38f)
+                        fontSize(scaledFontSize(38f))
                         fontWeightBold()
                         color(StockChatTheme.textPrimary)
                         marginTop(22f)
@@ -349,7 +364,7 @@ internal class StockDetailPage : BasePager() {
                 Text {
                     attr {
                         text("${quote.change}   ${quote.changePercent}")
-                        fontSize(16f)
+                        fontSize(scaledFontSize(16f))
                         fontWeightBold()
                         color(if (quote.isPositive) StockChatTheme.positive else StockChatTheme.negative)
                         marginTop(5f)
@@ -358,7 +373,7 @@ internal class StockDetailPage : BasePager() {
                 Text {
                     attr {
                         text(quote.updatedAt)
-                        fontSize(11f)
+                        fontSize(scaledFontSize(11f))
                         color(StockChatTheme.textTertiary)
                         marginTop(8f)
                     }
@@ -382,7 +397,7 @@ internal class StockDetailPage : BasePager() {
                     Text {
                         attr {
                             text("走势")
-                            fontSize(17f)
+                            fontSize(scaledFontSize(17f))
                             fontWeightBold()
                             color(StockChatTheme.textPrimary)
                             flex(1f)
@@ -393,13 +408,13 @@ internal class StockDetailPage : BasePager() {
                             height(28f)
                             borderRadius(14f)
                             padding(left = 10f, right = 10f)
-                            backgroundColor(Color(0xFFF1F4F2))
+                            backgroundColor(StockChatTheme.recessed)
                             allCenter()
                         }
                         Text {
                             attr {
                                 text("分时")
-                                fontSize(12f)
+                                fontSize(scaledFontSize(12f))
                                 fontWeightMedium()
                                 color(StockChatTheme.textPrimary)
                             }
@@ -416,21 +431,21 @@ internal class StockDetailPage : BasePager() {
                     Text {
                         attr {
                             text("09:30")
-                            fontSize(10f)
+                            fontSize(scaledFontSize(10f))
                             color(StockChatTheme.textTertiary)
                         }
                     }
                     Text {
                         attr {
                             text("11:30")
-                            fontSize(10f)
+                            fontSize(scaledFontSize(10f))
                             color(StockChatTheme.textTertiary)
                         }
                     }
                     Text {
                         attr {
                             text("15:00")
-                            fontSize(10f)
+                            fontSize(scaledFontSize(10f))
                             color(StockChatTheme.textTertiary)
                         }
                     }
@@ -445,8 +460,8 @@ internal class StockDetailPage : BasePager() {
                     marginTop(14f)
                     padding(top = 13f, left = 14f, bottom = 13f, right = 14f)
                     borderRadius(16f)
-                    backgroundColor(Color(0xFFFFF7EA))
-                    border(Border(1f, BorderStyle.SOLID, Color(0xFFF2DEBA)))
+                    backgroundColor(StockChatTheme.warningSoft)
+                    border(Border(1f, BorderStyle.SOLID, StockChatTheme.warningBorder))
                     flexDirectionRow()
                     alignItemsFlexStart()
                 }
@@ -462,8 +477,8 @@ internal class StockDetailPage : BasePager() {
                 Text {
                     attr {
                         text("StockChat Demo 信息，仅供参考，不构成投资建议。")
-                        fontSize(12f)
-                        lineHeight(18f)
+                        fontSize(scaledFontSize(12f))
+                        lineHeight(scaledFontSize(18f))
                         color(StockChatTheme.warning)
                         flex(1f)
                     }
@@ -557,7 +572,7 @@ internal class StockDetailPage : BasePager() {
                 Text {
                     attr {
                         text(title)
-                        fontSize(16f)
+                        fontSize(scaledFontSize(16f))
                         fontWeightBold()
                         color(StockChatTheme.textPrimary)
                     }
@@ -566,8 +581,8 @@ internal class StockDetailPage : BasePager() {
             Text {
                 attr {
                     text(content)
-                    fontSize(14f)
-                    lineHeight(22f)
+                    fontSize(scaledFontSize(14f))
+                    lineHeight(scaledFontSize(22f))
                     color(StockChatTheme.textSecondary)
                     marginTop(11f)
                 }
@@ -605,10 +620,22 @@ internal class StockDetailPage : BasePager() {
         val content = StockChatShareContentBuilder.fromQuote(quote)
         acquireModule<ShareModule>(ShareModule.MODULE_NAME).share(content) { result ->
             when (result) {
-                ShareResult.Success -> Unit
+                ShareResult.Success -> StockChatSettingsStore.repository.recordSharedChat(
+                    sessionId = "stock-detail-${quote.symbol}",
+                    question = "${quote.name}（${quote.symbol}）行情详情",
+                    content = content,
+                )
                 ShareResult.Cancelled -> Unit
                 is ShareResult.Failure -> bridgeModule.toast(result.errorMessage)
             }
         }
     }
+
+    private fun applySavedAppearance() {
+        StockChatTheme.applyAppearance(
+            appearance = StockChatSettingsStore.repository.loadSnapshot().appearance,
+            systemDark = isNightMode(),
+        )
+    }
+
 }

@@ -18,6 +18,7 @@ import com.guet.liang.stockchat.data.MimoSpeechSynthesisService
 import com.guet.liang.stockchat.data.MimoVoiceApiConfig
 import com.guet.liang.stockchat.data.StockChatDataSource
 import com.guet.liang.stockchat.data.StockChatShareContentBuilder
+import com.guet.liang.stockchat.data.StockChatSettingsStore
 import com.guet.liang.stockchat.data.TodayMarketDataSource
 import com.guet.liang.stockchat.data.TencentTodayMarketDataSource
 import com.guet.liang.stockchat.data.providerSymbolForQuote
@@ -27,12 +28,16 @@ import com.guet.liang.stockchat.model.ChatHistoryItem
 import com.guet.liang.stockchat.model.ChatMessage
 import com.guet.liang.stockchat.model.ChatRole
 import com.guet.liang.stockchat.model.MessageState
+import com.guet.liang.stockchat.model.ModelCapability
+import com.guet.liang.stockchat.model.ModelProviderConfig
+import com.guet.liang.stockchat.model.ModelProviderKind
 import com.guet.liang.stockchat.model.ShareResult
 import com.guet.liang.stockchat.model.SpeechRecognitionResult
 import com.guet.liang.stockchat.model.SpeechSynthesisResult
 import com.guet.liang.stockchat.model.StockQuote
 import com.guet.liang.stockchat.model.TodayMarketUiState
 import com.guet.liang.stockchat.model.VoiceInputState
+import com.guet.liang.stockchat.ui.settings.SETTINGS_PAGE_NAME
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.base.Animation
 import com.tencent.kuikly.core.base.Border
@@ -70,8 +75,15 @@ private const val CHAT_PAGE_NAME = "router"
 private const val STOCK_DETAIL_PAGE_NAME = "stock_detail"
 private const val IMAGE_PREVIEW_PAGE_NAME = "stock_image_preview"
 private const val DEFAULT_CHAT_MODEL_ID = "qwen-plus"
+private const val DEFAULT_CHAT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 private const val HOME_TAB_CHAT = 0
 private const val HOME_TAB_TODAY_MARKET = 1
+private const val HOME_SCENE_EXIT_DURATION = 0.16f
+private const val HOME_SCENE_ENTER_DURATION = 0.32f
+private const val HOME_SCENE_ENTER_DAMPING = 0.92f
+private const val HOME_SCENE_ENTER_VELOCITY = 0.12f
+private const val HOME_COMPOSER_ENTER_DURATION = 0.38f
+private const val HOME_CAPSULE_TRAVEL_DURATION = 0.46f
 // 键盘回调未给出动画时长时的兜底值（秒）
 private const val DEFAULT_KEYBOARD_ANIM_DURATION = 0.25f
 
@@ -94,6 +106,7 @@ private data class ChatModelOption(
     val description: String,
     val badge: String,
     val multiplier: String,
+    val capabilities: Set<ModelCapability> = setOf(ModelCapability.CHAT),
 )
 
 private val CHAT_MODEL_OPTIONS = listOf(
@@ -141,6 +154,11 @@ internal class StockChatPage : BasePager() {
     private var keyboardAnimDuration by observable(DEFAULT_KEYBOARD_ANIM_DURATION)
     private val homeFlow = StockChatHomeFlow()
     private var homeState by observable(homeFlow.state.value)
+    private var homeSceneInteractive by observable(true)
+    private var homeSceneEnterReady by observable(true)
+    private var homeSceneOutgoingTab by observable(-1)
+    private var homeSceneAnimationPhase by observable(0)
+    private var homeSceneTransitionGeneration = 0
     private val selectedHomeTab: Int
         get() = when (homeState.destination) {
             StockChatHomeDestination.AI_CHAT -> HOME_TAB_CHAT
@@ -174,6 +192,8 @@ internal class StockChatPage : BasePager() {
     private var conversationMenuOpen by observable(false)
     private var modelMenuOpen by observable(false)
     private var selectedModelId by observable(DEFAULT_CHAT_MODEL_ID)
+    private var activeModelProviderId by observable("")
+    private var chatModelOptions by observable(CHAT_MODEL_OPTIONS)
     private var imagePickerOpen by observable(false)
     private var selectedImageCount by observable(0)
     private var messages by observableList<ChatMessage>()
@@ -202,6 +222,7 @@ internal class StockChatPage : BasePager() {
     private var drawerPanStartY = 0f
     private var messageListNearBottom = true
     private var stickMessageListToBottom = true
+    private lateinit var networkModule: NetworkModule
     private lateinit var dataSource: StockChatDataSource
     private lateinit var speechRecognitionService: MimoSpeechRecognitionService
     private lateinit var speechSynthesisService: MimoSpeechSynthesisService
@@ -219,26 +240,16 @@ internal class StockChatPage : BasePager() {
 
     override fun created() {
         super.created()
-        val qwenConfig = AliyunApiConfig(
-            apiKey = pageData.params.optString("qwenApiKey").trim(),
-        )
+        applySavedAppearance()
         val mimoVoiceConfig = MimoVoiceApiConfig(
             apiKey = pageData.params.optString("mimoVoiceApiKey").trim(),
         )
-        val networkModule = acquireModule<NetworkModule>(NetworkModule.MODULE_NAME)
+        networkModule = acquireModule(NetworkModule.MODULE_NAME)
         chatHistoryRepository = ChatHistoryDatabase.repository()
         tableArtifactRepository = ChatHistoryDatabase.artifactRepository()
         mindMapArtifactRepository = ChatHistoryDatabase.mindMapArtifactRepository()
         todayMarketDataSource = TencentTodayMarketDataSource(networkModule)
-        dataSource = AliyunStockChatDataSource(
-            networkModule = networkModule,
-            config = qwenConfig,
-            bridgeModule = bridgeModule,
-            useNativeStreaming = pageData.params.optInt(
-                "aliyunNativeStreaming",
-                pageData.params.optInt("mimoNativeStreaming"),
-            ) == 1,
-        )
+        configureChatProvider()
         speechRecognitionService = MimoSpeechRecognitionService(networkModule, mimoVoiceConfig)
         speechSynthesisService = MimoSpeechSynthesisService(
             networkModule = networkModule,
@@ -254,8 +265,8 @@ internal class StockChatPage : BasePager() {
                 "left" -> closeDrawer()
             }
         }
-        // 键盘/聚焦任一信号出现，主页内容立即卸载；信号全部消失后立即恢复。
-        // 不做任何过渡动画，避免与键盘动画联动时序打架
+        // 键盘/聚焦任一信号出现时隐藏欢迎内容；节点保持挂载，只切透明度，
+        // 避免键盘回落后重建绝对定位子树时从左上角飞入
         bindValueChange({
             composerFocused || keyboardVisible || keyboardHeight > 0f || keyboardDropSettling
         }) { hidden ->
@@ -265,13 +276,64 @@ internal class StockChatPage : BasePager() {
         }
     }
 
+    override fun pageDidAppear() {
+        super.pageDidAppear()
+        applySavedAppearance()
+        configureChatProvider()
+    }
+
+    override fun themeDidChanged(data: JSONObject) {
+        super.themeDidChanged(data)
+        applySavedAppearance()
+    }
+
     private fun dispatchHome(event: StockChatHomeEvent) {
+        val previousDestination = homeState.destination
         val effects = homeFlow.dispatch(event)
         val nextState = homeFlow.state.value
+        if (nextState.destination != previousDestination) {
+            stageHomeSceneTransition(previousDestination, nextState.destination)
+        }
         if (nextState != homeState) {
             homeState = nextState
         }
         effects.forEach(::handleHomeEffect)
+    }
+
+    private fun stageHomeSceneTransition(
+        previousDestination: StockChatHomeDestination,
+        destination: StockChatHomeDestination,
+    ) {
+        val generation = ++homeSceneTransitionGeneration
+        homeSceneOutgoingTab = when (previousDestination) {
+            StockChatHomeDestination.AI_CHAT -> HOME_TAB_CHAT
+            StockChatHomeDestination.TODAY_MARKET -> HOME_TAB_TODAY_MARKET
+        }
+        homeSceneEnterReady = false
+        homeSceneInteractive = false
+        homeSceneAnimationPhase += 1
+        setTimeout((HOME_SCENE_EXIT_DURATION * 1000f).toInt()) {
+            if (
+                generation == homeSceneTransitionGeneration &&
+                homeState.destination == destination
+            ) {
+                homeSceneEnterReady = true
+                homeSceneOutgoingTab = -1
+                homeSceneAnimationPhase += 1
+                val enterDuration = when (destination) {
+                    StockChatHomeDestination.AI_CHAT -> HOME_COMPOSER_ENTER_DURATION
+                    StockChatHomeDestination.TODAY_MARKET -> HOME_SCENE_ENTER_DURATION
+                }
+                setTimeout((enterDuration * 1000f).toInt()) {
+                    if (
+                        generation == homeSceneTransitionGeneration &&
+                        homeState.destination == destination
+                    ) {
+                        homeSceneInteractive = true
+                    }
+                }
+            }
+        }
     }
 
     private fun handleHomeEffect(effect: StockChatHomeEffect) {
@@ -312,6 +374,7 @@ internal class StockChatPage : BasePager() {
         }
         bridgeModule.stopObservingDrawerGestures()
         requestToken += 1
+        homeSceneTransitionGeneration += 1
         dispatchHome(StockChatHomeEvent.Stopped)
         super.pageWillDestroy()
     }
@@ -409,7 +472,7 @@ internal class StockChatPage : BasePager() {
                         allCenter()
                     }
                     event {
-                        click { ctx.bridgeModule.toast("设置功能暂未开放") }
+                        click { ctx.openSettings() }
                     }
                     Text {
                         attr {
@@ -745,30 +808,39 @@ internal class StockChatPage : BasePager() {
             View {
                 attr {
                     val active = ctx.selectedHomeTab == HOME_TAB_TODAY_MARKET
+                    val entering = active && ctx.homeSceneEnterReady
+                    val exiting =
+                        ctx.homeSceneOutgoingTab == HOME_TAB_TODAY_MARKET &&
+                            !ctx.homeSceneEnterReady
                     absolutePosition(
                         top = pagerData.statusBarHeight + metrics.dp(66f),
                         left = 0f,
                         right = 0f,
                         bottom = 0f,
                     )
-                    opacity(if (active) 1f else 0f)
+                    visibility(active || exiting)
+                    opacity(if (entering) 1f else 0f)
                     transform(
                         Translate(
                             0f,
                             0f,
                             0f,
-                            if (active) 0f else metrics.dp(12f),
+                            if (entering) 0f else metrics.dp(12f),
                         )
                     )
-                    touchEnable(active)
-                    zIndex(if (active) 2 else 0)
+                    touchEnable(entering && ctx.homeSceneInteractive)
+                    zIndex(if (entering || exiting) 2 else 0)
                     animate(
-                        if (active) {
-                            Animation.easeIn(0.14f)
+                        if (entering) {
+                            Animation.springEaseOut(
+                                HOME_SCENE_ENTER_DURATION,
+                                HOME_SCENE_ENTER_DAMPING,
+                                HOME_SCENE_ENTER_VELOCITY,
+                            )
                         } else {
-                            Animation.easeOut(0.24f).delay(0.16f)
+                            Animation.easeOut(HOME_SCENE_EXIT_DURATION)
                         },
-                        ctx.selectedHomeTab,
+                        ctx.homeSceneAnimationPhase,
                     )
                 }
                 event {
@@ -779,7 +851,10 @@ internal class StockChatPage : BasePager() {
                     pageWidth = ctx.pagerData.pageViewWidth,
                     scale = ctx.layoutMetrics.scale,
                     safeAreaBottom = ctx.pagerData.safeAreaInsets.bottom,
-                    touchEnabled = { ctx.selectedHomeTab == HOME_TAB_TODAY_MARKET },
+                    touchEnabled = {
+                        ctx.selectedHomeTab == HOME_TAB_TODAY_MARKET &&
+                            ctx.homeSceneInteractive
+                    },
                     onQuoteClick = { quote ->
                         if (ctx.selectedHomeTab == HOME_TAB_TODAY_MARKET) {
                             ctx.openStockDetail(
@@ -805,25 +880,38 @@ internal class StockChatPage : BasePager() {
             View {
                 attr {
                     val active = ctx.selectedHomeTab == HOME_TAB_CHAT
+                    val entering = active && ctx.homeSceneEnterReady
+                    val exiting = ctx.homeSceneOutgoingTab == HOME_TAB_CHAT &&
+                        !ctx.homeSceneEnterReady
                     absolutePositionAllZero()
-                    opacity(if (active) 1f else 0f)
+                    visibility(active || exiting)
+                    opacity(if (entering) 1f else 0f)
                     transform(
                         Translate(
                             0f,
                             0f,
                             0f,
-                            if (active) 0f else -metrics.dp(12f),
+                            if (entering) 0f else -metrics.dp(12f),
                         )
                     )
-                    touchEnable(active)
-                    zIndex(if (active) 2 else 0)
+                    touchEnable(entering && ctx.homeSceneInteractive)
+                    zIndex(if (entering || exiting) 2 else 0)
+                    backgroundLinearGradient(
+                        Direction.TO_BOTTOM_RIGHT,
+                        ColorStop(StockChatTheme.chatBackgroundStart, 0f),
+                        ColorStop(StockChatTheme.chatBackgroundEnd, 1f),
+                    )
                     animate(
-                        if (active) {
-                            Animation.easeIn(0.16f)
+                        if (entering) {
+                            Animation.springEaseOut(
+                                HOME_SCENE_ENTER_DURATION,
+                                HOME_SCENE_ENTER_DAMPING,
+                                HOME_SCENE_ENTER_VELOCITY,
+                            )
                         } else {
-                            Animation.easeOut(0.24f).delay(0.14f)
+                            Animation.easeOut(HOME_SCENE_EXIT_DURATION)
                         },
-                        ctx.selectedHomeTab,
+                        ctx.homeSceneAnimationPhase,
                     )
                 }
                 event {
@@ -831,6 +919,30 @@ internal class StockChatPage : BasePager() {
                         if (ctx.selectedHomeTab == HOME_TAB_CHAT) {
                             ctx.handleBlankAreaTap()
                         }
+                    }
+                }
+                vif({ !StockChatTheme.backgroundImageUri.isNullOrBlank() }) {
+                    Image {
+                        attr {
+                            absolutePositionAllZero()
+                            resizeCover()
+                            src(StockChatTheme.backgroundImageUri.orEmpty(), false)
+                            touchEnable(false)
+                        }
+                    }
+                }
+                View {
+                    attr {
+                        absolutePositionAllZero()
+                        backgroundColor(StockChatTheme.backgroundSofteningMask)
+                        touchEnable(false)
+                    }
+                }
+                View {
+                    attr {
+                        absolutePositionAllZero()
+                        backgroundColor(StockChatTheme.backgroundMask)
+                        touchEnable(false)
                     }
                 }
                 View {
@@ -853,10 +965,7 @@ internal class StockChatPage : BasePager() {
                         animate(Animation.easeOut(ctx.keyboardAnimDuration), ctx.keyboardHeight)
                         animate(Animation.easeOut(0.2f), ctx.composerExpanded)
                     }
-                    vif({
-                        ctx.homeState.chatStage == StockChatHomeChatStage.WELCOME &&
-                            !ctx.homeState.welcomeObscured
-                    }) {
+                    vif({ ctx.homeState.chatStage == StockChatHomeChatStage.WELCOME }) {
                         ctx.HomeContentLayer(this)
                     }
                     vif({ ctx.homeState.chatStage == StockChatHomeChatStage.CONVERSATION }) {
@@ -883,8 +992,8 @@ internal class StockChatPage : BasePager() {
                             height(metrics.composerContentFadeHeight)
                             backgroundLinearGradient(
                                 Direction.TO_BOTTOM,
-                                ColorStop(Color(0x00F6F7F4), 0f),
-                                ColorStop(Color(0xFFF6F7F4), 1f),
+                                ColorStop(Color(0x00000000), 0f),
+                                ColorStop(StockChatTheme.chatBackgroundEnd, 1f),
                             )
                             touchEnable(false)
                             zIndex(5)
@@ -933,11 +1042,15 @@ internal class StockChatPage : BasePager() {
                     )
                     width(switcherWidth)
                     height(switcherHeight)
-                    touchEnable(visible)
+                    touchEnable(visible && ctx.homeSceneInteractive)
                     zIndex(8)
                     animate(
-                        Animation.springEaseOut(0.46f, 0.92f, 0.16f),
-                        presentation.ordinal,
+                        Animation.springEaseOut(
+                            HOME_CAPSULE_TRAVEL_DURATION,
+                            0.92f,
+                            0.16f,
+                        ),
+                        ctx.homeState.capsulePresentation.ordinal,
                     )
                 }
                 View {
@@ -955,7 +1068,7 @@ internal class StockChatPage : BasePager() {
                             } else {
                                 Animation.easeOut(0.14f)
                             },
-                            presentation.ordinal,
+                            ctx.homeState.capsulePresentation.ordinal,
                         )
                     }
                     event {
@@ -967,7 +1080,8 @@ internal class StockChatPage : BasePager() {
                         elevated = true,
                         enabled = {
                             ctx.homeState.capsulePresentation !=
-                                StockChatHomeCapsulePresentation.HIDDEN
+                                StockChatHomeCapsulePresentation.HIDDEN &&
+                                ctx.homeSceneInteractive
                         },
                     )
                 }
@@ -994,6 +1108,9 @@ internal class StockChatPage : BasePager() {
                 attr {
                     absolutePositionAllZero()
                     overflow(true)
+                    val visible = !ctx.homeState.welcomeObscured
+                    visibility(visible)
+                    touchEnable(visible)
                 }
                 ctx.WelcomeContent(this)
             }
@@ -1401,6 +1518,11 @@ internal class StockChatPage : BasePager() {
                                 size(metrics.welcomeHeroSize, metrics.welcomeHeroSize)
                                 resizeContain()
                                 src(ImageUri.commonAssets("stockchat_app_icon.png"))
+                                opacity(if (ctx.homeState.welcomeObscured) 0f else 1f)
+                                animate(
+                                    Animation.easeOut(0.2f),
+                                    ctx.homeState.welcomeObscured,
+                                )
                             }
                         }
                         Text {
@@ -1411,6 +1533,11 @@ internal class StockChatPage : BasePager() {
                                 color(StockChatTheme.textPrimary)
                                 textAlignCenter()
                                 marginTop(metrics.dp(26f))
+                                opacity(if (ctx.homeState.welcomeObscured) 0f else 1f)
+                                animate(
+                                    Animation.easeOut(0.2f),
+                                    ctx.homeState.welcomeObscured,
+                                )
                             }
                         }
                         Text {
@@ -1420,6 +1547,11 @@ internal class StockChatPage : BasePager() {
                                 color(StockChatTheme.textTertiary)
                                 textAlignCenter()
                                 marginTop(metrics.dp(12f))
+                                opacity(if (ctx.homeState.welcomeObscured) 0f else 1f)
+                                animate(
+                                    Animation.easeOut(0.2f),
+                                    ctx.homeState.welcomeObscured,
+                                )
                             }
                         }
                     }
@@ -1464,6 +1596,11 @@ internal class StockChatPage : BasePager() {
                                 alignItemsCenter()
                                 padding(left = metrics.dp(13f), right = metrics.dp(15f))
                                 marginRight(metrics.dp(9f))
+                                opacity(if (ctx.homeState.welcomeObscured) 0f else 1f)
+                                animate(
+                                    Animation.easeOut(0.2f),
+                                    ctx.homeState.welcomeObscured,
+                                )
                             }
                             event {
                                 click {
@@ -1606,6 +1743,9 @@ internal class StockChatPage : BasePager() {
         View {
             attr {
                 val active = ctx.selectedHomeTab == HOME_TAB_CHAT
+                val entering = active && ctx.homeSceneEnterReady
+                val exiting = ctx.homeSceneOutgoingTab == HOME_TAB_CHAT &&
+                    !ctx.homeSceneEnterReady
                 val effectiveInset = metrics.composerBottomInset(
                     ctx.keyboardHeight,
                     pagerData.safeAreaInsets.bottom,
@@ -1625,28 +1765,33 @@ internal class StockChatPage : BasePager() {
                         extraInputLines = ctx.composerExtraInputLines(),
                     )
                 )
-                opacity(if (active) 1f else 0f)
+                visibility(active || exiting)
+                opacity(if (entering) 1f else 0f)
                 transform(
                     Translate(
                         0f,
                         0f,
                         0f,
-                        if (active) 0f else metrics.dp(30f),
+                        if (entering) 0f else metrics.dp(30f),
                     )
                 )
-                touchEnable(active)
-                    zIndex(if (active) 6 else 0)
+                touchEnable(entering && ctx.homeSceneInteractive)
+                zIndex(if (entering || exiting) 6 else 0)
                 // 展开态与键盘态解耦：键盘回落期间展开态不变，回落动画不会被
                 // 无动画的几何更新打断；收缩只发生在键盘静止时，两条动画不并发
                 animate(Animation.easeOut(ctx.keyboardAnimDuration), ctx.keyboardHeight)
                 animate(Animation.easeOut(0.2f), ctx.composerExpanded)
                 animate(
-                    if (active) {
-                        Animation.easeIn(0.16f)
+                    if (entering) {
+                        Animation.springEaseOut(
+                            HOME_COMPOSER_ENTER_DURATION,
+                            0.88f,
+                            0.18f,
+                        )
                     } else {
-                        Animation.springEaseOut(0.36f, 0.9f, 0.18f).delay(0.2f)
+                        Animation.easeOut(HOME_SCENE_EXIT_DURATION)
                     },
-                    ctx.selectedHomeTab,
+                    ctx.homeSceneAnimationPhase,
                 )
             }
             event {
@@ -2359,12 +2504,12 @@ internal class StockChatPage : BasePager() {
                         marginBottom(metrics.dp(10f))
                     }
                 }
-                CHAT_MODEL_OPTIONS.forEach { option ->
+                ctx.chatModelOptions.forEach { option ->
                     ctx.ModelMenuItem(this, option)
                 }
                 Text {
                     attr {
-                        text("模型选择仅影响后续回答；图片问题自动使用千问视觉模型")
+                        text("模型选择会同步到设置，并影响后续回答")
                         fontSize(metrics.dp(11f))
                         color(StockChatTheme.textTertiary)
                         textAlignCenter()
@@ -2762,16 +2907,99 @@ internal class StockChatPage : BasePager() {
     }
 
     private fun selectModel(modelId: String) {
-        if (CHAT_MODEL_OPTIONS.none { it.id == modelId }) {
+        if (chatModelOptions.none { it.id == modelId }) {
             return
         }
         selectedModelId = modelId
+        if (activeModelProviderId.isNotBlank()) {
+            StockChatSettingsStore.repository.selectModel(activeModelProviderId, modelId)
+            configureChatProvider()
+        }
         closeModelMenu()
     }
 
     private fun selectedModel(): ChatModelOption {
-        return CHAT_MODEL_OPTIONS.firstOrNull { it.id == selectedModelId }
+        return chatModelOptions.firstOrNull { it.id == selectedModelId }
+            ?: chatModelOptions.firstOrNull()
             ?: CHAT_MODEL_OPTIONS.first()
+    }
+
+    private fun configureChatProvider() {
+        val configuration = StockChatSettingsStore.repository.loadSnapshot().modelConfiguration
+        val provider = configuration.providers.firstOrNull { candidate ->
+            candidate.id == configuration.activeProviderId
+        }
+        val options = provider?.toChatModelOptions().orEmpty()
+        chatModelOptions = options.ifEmpty { CHAT_MODEL_OPTIONS }
+        activeModelProviderId = provider?.id.orEmpty()
+        selectedModelId = provider?.selectedModelId
+            ?.takeIf { modelId -> chatModelOptions.any { option -> option.id == modelId } }
+            ?: chatModelOptions.first().id
+
+        val routeApiKey = pageData.params.optString("qwenApiKey").trim()
+        val providerApiKey = when {
+            provider == null -> routeApiKey
+            !provider.isEnabled -> ""
+            provider.apiKey.isNotBlank() -> provider.apiKey
+            provider.kind == ModelProviderKind.ALIYUN -> routeApiKey
+            else -> ""
+        }
+        val config = AliyunApiConfig(
+            apiKey = providerApiKey,
+            baseUrl = provider?.baseUrl?.takeIf(String::isNotBlank)
+                ?: DEFAULT_CHAT_BASE_URL,
+            chatModel = selectedModelId,
+            visionModel = selectedModelId,
+            providerDisplayName = provider?.displayName ?: "阿里云百炼",
+            useAliyunExtensions = provider == null || provider.kind == ModelProviderKind.ALIYUN,
+            supportsVision = ModelCapability.VISION in selectedModel().capabilities,
+        )
+        val nativeStreamingEnabled = pageData.params.optInt(
+            "aliyunNativeStreaming",
+            pageData.params.optInt("mimoNativeStreaming"),
+        ) == 1
+        dataSource = AliyunStockChatDataSource(
+            networkModule = networkModule,
+            config = config,
+            bridgeModule = bridgeModule,
+            useNativeStreaming = nativeStreamingEnabled &&
+                (provider == null || provider.kind == ModelProviderKind.ALIYUN),
+        )
+    }
+
+    private fun applySavedAppearance() {
+        StockChatTheme.applyAppearance(
+            appearance = StockChatSettingsStore.repository.loadSnapshot().appearance,
+            systemDark = isNightMode(),
+        )
+    }
+
+    private fun ModelProviderConfig.toChatModelOptions(): List<ChatModelOption> {
+        return models.mapIndexed { index, model ->
+            val capabilityLabel = model.capabilities
+                .joinToString(" · ") { capability -> capability.displayName }
+                .ifBlank { "对话" }
+            ChatModelOption(
+                id = model.id,
+                displayName = model.displayName,
+                description = "$displayName · $capabilityLabel",
+                badge = when {
+                    model.id == selectedModelId -> "当前"
+                    index == 0 -> "推荐"
+                    else -> model.capabilities.firstOrNull()?.displayName ?: "对话"
+                },
+                multiplier = model.contextWindowLabel,
+                capabilities = model.capabilities,
+            )
+        }
+    }
+
+    private fun openSettings() {
+        closeDrawer()
+        acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
+            SETTINGS_PAGE_NAME,
+            JSONObject(),
+        )
     }
 
     private fun focusComposer() {
@@ -3344,6 +3572,13 @@ internal class StockChatPage : BasePager() {
             bridgeModule.toast("图片处理失败，请重新选择")
             return
         }
+        if (
+            attachedImages.isNotEmpty() &&
+            ModelCapability.VISION !in selectedModel().capabilities
+        ) {
+            bridgeModule.toast("当前模型不支持图片理解，请切换到“视觉理解”模型后重试")
+            return
+        }
         val typedQuestion = (submittedText ?: inputText).trim()
         val question = typedQuestion.ifBlank {
             if (attachedImages.isNotEmpty()) IMAGE_ONLY_QUESTION else ""
@@ -3413,12 +3648,27 @@ internal class StockChatPage : BasePager() {
     ) {
         val history = conversationHistoryBefore(messageId)
         val attachedImages = imagesBeforeAnswer(messageId)
+        val activeModel = selectedModel()
+        if (
+            attachedImages.isNotEmpty() &&
+            ModelCapability.VISION !in activeModel.capabilities
+        ) {
+            applyAnswer(
+                messageId,
+                question,
+                attempt,
+                ChatAnswer.Failure(
+                    "当前模型 ${activeModel.displayName} 不支持图片理解，请切换到“视觉理解”模型后重试。"
+                ),
+            )
+            return
+        }
         runCatching {
             dataSource.answer(
                 question,
                 history,
                 attachedImages,
-                selectedModel().id,
+                activeModel.id,
                 attempt,
             ) response@{ answer ->
                 if (currentRequestToken != requestToken) {
@@ -3432,7 +3682,7 @@ internal class StockChatPage : BasePager() {
                     messageId,
                     question,
                     attempt,
-                    ChatAnswer.Failure("阿里云 AI 服务暂时不可用，请稍后重试。"),
+                    ChatAnswer.Failure("AI 服务暂时不可用，请稍后重试。"),
                 )
             }
         }
@@ -3601,13 +3851,34 @@ internal class StockChatPage : BasePager() {
             bridgeModule.toast("当前消息暂无可分享内容")
             return
         }
+        val sharedSessionId = activeSessionId
+        val sharedQuestion = sharedQuestion(message)
         acquireModule<ShareModule>(ShareModule.MODULE_NAME).share(content) { result ->
             when (result) {
-                ShareResult.Success -> Unit
+                ShareResult.Success -> StockChatSettingsStore.repository.recordSharedChat(
+                    sessionId = sharedSessionId,
+                    question = sharedQuestion,
+                    content = content,
+                )
                 ShareResult.Cancelled -> Unit
                 is ShareResult.Failure -> bridgeModule.toast(result.errorMessage)
             }
         }
+    }
+
+    private fun sharedQuestion(message: ChatMessage): String {
+        if (message.retryQuestion.isNotBlank()) {
+            return message.retryQuestion.trim()
+        }
+        if (message.role == ChatRole.USER) {
+            return messageText(message)
+        }
+        val messageIndex = messages.indexOfFirst { candidate -> candidate.id == message.id }
+        return messages.take(messageIndex.coerceAtLeast(0))
+            .lastOrNull { candidate -> candidate.role == ChatRole.USER }
+            ?.let(::messageText)
+            ?.ifBlank { null }
+            ?: conversationTitle()
     }
 
     private fun copySelectedText(content: String) {
