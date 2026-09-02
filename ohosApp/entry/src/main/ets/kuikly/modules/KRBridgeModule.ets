@@ -7,6 +7,7 @@ import { KuiklyRenderCallback } from '@kuikly-open/render';
 import util from '@ohos.util';
 import fs from '@ohos.file.fs';
 import { fileUri } from '@kit.CoreFileKit';
+import { photoAccessHelper } from '@kit.MediaLibraryKit';
 
 export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly MODULE_NAME = "HRBridgeModule";
@@ -28,6 +29,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly PLAY_BASE64_AUDIO = "playBase64Audio";
   static readonly STOP_AUDIO_PLAYBACK = "stopAudioPlayback";
   static readonly PICK_IMAGES = "pickImages";
+  private imagePickerPending: boolean = false;
 
   syncMode(): boolean {
     return false;
@@ -102,7 +104,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         break;
       }
       case KRBridgeModule.PICK_IMAGES: {
-        this.pickImages(callback);
+        this.pickImages(params, callback);
         break;
       }
       default:
@@ -211,14 +213,57 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     callback?.({ "success": 1 });
   }
 
-  private pickImages(callback: KuiklyRenderCallback | null) {
-    callback?.({
-      "success": 0,
-      "cancelled": 0,
-      "images": [],
-      "truncated": 0,
-      "errorCode": "IMAGE_PICKER_UNAVAILABLE",
-      "errorMessage": "当前平台的图片选择适配尚未接入"
+  private pickImages(params: KRAny, callback: KuiklyRenderCallback | null) {
+    if (this.imagePickerPending) {
+      callback?.({
+        "success": 0,
+        "cancelled": 0,
+        "images": [],
+        "previewImages": [],
+        "truncated": 0,
+        "errorCode": "IMAGE_PICKER_BUSY",
+        "errorMessage": "图片选择器已打开"
+      });
+      return;
+    }
+    let maxCount: number = 1;
+    if (typeof params === 'string') {
+      try {
+        const records = JSON.parse(params) as Record<string, number>;
+        const requestedCount = records["maxCount"];
+        if (typeof requestedCount === 'number') {
+          maxCount = Math.max(1, Math.min(9, Math.trunc(requestedCount)));
+        }
+      } catch (error) {
+        console.error(`KuiklyRender parse image picker params failed: ${JSON.stringify(error)}`);
+      }
+    }
+    const options = new photoAccessHelper.PhotoSelectOptions();
+    options.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE;
+    options.maxSelectNumber = maxCount;
+    this.imagePickerPending = true;
+    const picker = new photoAccessHelper.PhotoViewPicker();
+    picker.select(options).then((result: photoAccessHelper.PhotoSelectResult) => {
+      this.imagePickerPending = false;
+      const selectedUris = result.photoUris.slice(0, maxCount);
+      callback?.({
+        "success": 1,
+        "cancelled": selectedUris.length === 0 ? 1 : 0,
+        "images": [],
+        "previewImages": selectedUris,
+        "truncated": result.photoUris.length > maxCount ? 1 : 0
+      });
+    }).catch((error: BusinessError) => {
+      this.imagePickerPending = false;
+      callback?.({
+        "success": 0,
+        "cancelled": 0,
+        "images": [],
+        "previewImages": [],
+        "truncated": 0,
+        "errorCode": "IMAGE_PICKER_FAILED",
+        "errorMessage": error.message || "图片选择失败，请稍后重试"
+      });
     });
   }
 

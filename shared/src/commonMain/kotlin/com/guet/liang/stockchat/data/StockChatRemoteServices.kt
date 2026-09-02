@@ -17,6 +17,9 @@ internal data class AliyunApiConfig(
     val chatModel: String = "qwen-plus",
     val visionModel: String = "qwen-vl-plus",
     val embeddingModel: String = "text-embedding-v4",
+    val providerDisplayName: String = "阿里云百炼",
+    val useAliyunExtensions: Boolean = true,
+    val supportsVision: Boolean = true,
 )
 
 internal data class MimoVoiceApiConfig(
@@ -34,7 +37,12 @@ internal class AliyunStockChatDataSource(
     private val useNativeStreaming: Boolean = false,
 ) : StockChatDataSource {
     private val marketDataService = TencentMarketDataService(networkModule)
-    private val intentRecognitionService = DashScopeIntentRecognitionService(networkModule, config)
+    private val intentRecognitionService = if (config.useAliyunExtensions) {
+        DashScopeIntentRecognitionService(networkModule, config)
+    } else {
+        null
+    }
+    private val localIntentRecognizer = EmbeddingFirstIntentRecognizer()
 
     override fun answer(
         question: String,
@@ -45,6 +53,10 @@ internal class AliyunStockChatDataSource(
         callback: (ChatAnswer) -> Unit,
     ) {
         if (images.isNotEmpty()) {
+            if (!config.supportsVision) {
+                callback(ChatAnswer.Failure(visionUnsupportedMessage(model)))
+                return
+            }
             answerWithAi(
                 question = question,
                 history = history,
@@ -57,37 +69,61 @@ internal class AliyunStockChatDataSource(
             )
             return
         }
-        intentRecognitionService.classify(question, history) { classification ->
-            val marketPlan = if (classification.kind == IntentKind.MARKET_DATA) {
-                SecuritiesQueryRouter.route(question, history)
-                    ?: SecuritiesQueryRouter.route(
-                        question = question,
-                        history = history,
-                        assumeMarketIntent = true,
-                    )
-            } else {
-                null
-            }
-            if (marketPlan != null) {
-                answerMarketQuery(
+        val recognitionService = intentRecognitionService
+        if (recognitionService == null) {
+            answerClassifiedQuestion(
+                question,
+                history,
+                model,
+                attempt,
+                localIntentRecognizer.localClassification(question, history),
+                callback,
+            )
+            return
+        }
+        recognitionService.classify(question, history) { classification ->
+            answerClassifiedQuestion(
+                question,
+                history,
+                model,
+                attempt,
+                classification,
+                callback,
+            )
+        }
+    }
+
+    private fun answerClassifiedQuestion(
+        question: String,
+        history: List<ChatHistoryItem>,
+        model: String,
+        attempt: Int,
+        classification: IntentClassification,
+        callback: (ChatAnswer) -> Unit,
+    ) {
+        val marketPlan = if (classification.kind == IntentKind.MARKET_DATA) {
+            SecuritiesQueryRouter.route(question, history)
+                ?: SecuritiesQueryRouter.route(
                     question = question,
                     history = history,
-                    model = model,
-                    plan = marketPlan,
-                    callback = callback,
+                    assumeMarketIntent = true,
                 )
-            } else {
-                answerWithAi(
-                    question = question,
-                    history = history,
-                    images = emptyList(),
-                    model = model,
-                    snapshots = emptyList(),
-                    plan = null,
-                    attempt = attempt,
-                    callback = callback,
-                )
-            }
+        } else {
+            null
+        }
+        if (marketPlan != null) {
+            answerMarketQuery(question, history, model, marketPlan, callback)
+        } else {
+            answerWithAi(
+                question = question,
+                history = history,
+                images = emptyList(),
+                model = model,
+                snapshots = emptyList(),
+                plan = null,
+                attempt = attempt,
+                callback = callback,
+            )
         }
     }
 
@@ -238,8 +274,12 @@ internal class AliyunStockChatDataSource(
                 if (images.isEmpty()) model.ifBlank { config.chatModel } else config.visionModel,
             )
             put("messages", messages)
-            put("thinking", JSONObject().apply { put("type", "disabled") })
-            put("max_completion_tokens", 1024)
+            if (config.useAliyunExtensions) {
+                put("thinking", JSONObject().apply { put("type", "disabled") })
+                put("max_completion_tokens", 1024)
+            } else {
+                put("max_tokens", 1024)
+            }
             put("stream", true)
         }
         if (useNativeStreaming && bridgeModule != null) {
@@ -271,7 +311,7 @@ internal class AliyunStockChatDataSource(
             if (streamDeltas.isEmpty()) {
                 callback(
                     aiFailureOrMarketFallback(
-                        "阿里云百炼没有返回可展示的回答，请稍后重试。",
+                        "${config.providerDisplayName} 没有返回可展示的回答，请稍后重试。",
                         plan,
                         snapshots,
                     )
@@ -287,7 +327,7 @@ internal class AliyunStockChatDataSource(
             if (content.isEmpty()) {
                 callback(
                     aiFailureOrMarketFallback(
-                        "阿里云百炼没有返回可展示的回答，请稍后重试。",
+                        "${config.providerDisplayName} 没有返回可展示的回答，请稍后重试。",
                         plan,
                         snapshots,
                     )
@@ -365,7 +405,9 @@ internal class AliyunStockChatDataSource(
                     null,
                     data.apiErrorMessage()
                         ?: errorMessage.apiErrorMessage()
-                        ?: errorMessage.ifBlank { "阿里云百炼请求失败，请稍后重试。" },
+                        ?: errorMessage.ifBlank {
+                            "${config.providerDisplayName} 请求失败，请稍后重试。"
+                        },
                 )
             } else {
                 callback(data, null)
@@ -444,6 +486,12 @@ internal class AliyunStockChatDataSource(
         } else {
             ChatAnswer.Failure(message)
         }
+    }
+
+    private fun visionUnsupportedMessage(model: String): String {
+        val modelName = model.ifBlank { config.chatModel }
+        return "${config.providerDisplayName} 的当前模型 $modelName 不支持图片理解，" +
+            "请切换到带“视觉理解”能力的模型后重试。"
     }
 
     companion object {

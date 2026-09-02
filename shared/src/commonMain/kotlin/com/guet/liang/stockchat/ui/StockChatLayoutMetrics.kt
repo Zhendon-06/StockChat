@@ -3,8 +3,10 @@ package com.guet.liang.stockchat.ui
 internal class StockChatLayoutMetrics(pageWidth: Float) {
     private val referenceWidth = 400f
     private val availableWidth = pageWidth.takeIf { it > 0f } ?: referenceWidth
+    private val viewportScale = (availableWidth / referenceWidth).coerceIn(0.88f, 1.12f)
+    private val fontScale = StockChatTheme.fontScale
 
-    val scale = (availableWidth / referenceWidth).coerceIn(0.88f, 1.12f)
+    val scale = viewportScale * fontScale
     val drawerWidth = availableWidth * 0.78f
     // 欢迎页主视觉（方形图形 logo）边长：接近 WorkBuddy 吉祥物的视觉分量
     val welcomeHeroSize = (availableWidth * 0.36f).coerceIn(130f, 162f)
