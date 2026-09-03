@@ -186,7 +186,8 @@ internal class StockChatPage : BasePager() {
     // 回落任务代次：键盘在回落窗口内再次弹起又收起时，作废旧定时器防止提前解冻
     private var dockSettleGeneration = 0
     private var inputText by observable("")
-    // 输入内容折行后的行数（估算），驱动输入框与面板同步增高
+    // 输入内容折行后的行数（估算，封顶 MAX_INPUT_LINES），驱动输入框与面板同步增高；
+    // 超出封顶后 TextArea 自身高度不再增长，交由原生多行输入框的内部滚动查看之前内容
     private var inputLineCount by observable(1)
     private var isSending by observable(false)
     private var voiceInputState by observable(VoiceInputState.IDLE)
@@ -383,7 +384,10 @@ internal class StockChatPage : BasePager() {
                     inputRef.view?.blur()
                 }
                 resetKeyboardState()
-                composerExpanded = false
+                // 输入框有内容时保持展开：收缩态按单行布局排版，多行文本会挤乱
+                if (inputText.isEmpty()) {
+                    composerExpanded = false
+                }
                 voiceMode = false
                 imagePickerOpen = false
                 messageMenuTargetId = ""
@@ -1551,12 +1555,32 @@ internal class StockChatPage : BasePager() {
                     }
                     View {
                         attr {
+                            // 外层容器的 bottom 会随输入框展开/多行/附件而变化，
+                            // 这里用“折叠态基线”反向抵消该增量，避免欢迎图标随之抬高
+                            val bottomInset = metrics.composerBottomInset(
+                                ctx.keyboardHeight,
+                                pagerData.safeAreaInsets.bottom,
+                            )
+                            val liveContentBottom = metrics.composerContentBottom(
+                                bottomInset,
+                                ctx.composerExpanded,
+                                ctx.voiceMode,
+                                ctx.selectedImageCount > 0,
+                                ctx.composerExtraInputLines(),
+                            )
+                            val collapsedContentBottom = metrics.composerContentBottom(
+                                bottomInset,
+                                focused = false,
+                            )
                             absolutePosition(
                                 top = 0f,
                                 left = 0f,
                                 right = 0f,
-                                bottom = metrics.dp(136f),
+                                bottom = metrics.dp(136f) -
+                                    (liveContentBottom - collapsedContentBottom),
                             )
+                            animate(Animation.easeOut(ctx.keyboardAnimDuration), ctx.keyboardHeight)
+                            animate(Animation.easeOut(0.2f), ctx.composerExpanded)
                             alignItemsCenter()
                             justifyContentCenter()
                             padding(left = metrics.dp(24f), right = metrics.dp(24f))
@@ -1565,6 +1589,18 @@ internal class StockChatPage : BasePager() {
                             attr {
                                 val phase = ctx.welcomeMotionPhase
                                 opacity(phase)
+                                transform(
+                                    Translate(
+                                        0f,
+                                        0f,
+                                        0f,
+                                        ctx.keyboardHeight / 2f,
+                                    )
+                                )
+                                animate(
+                                    Animation.easeOut(ctx.keyboardAnimDuration),
+                                    ctx.keyboardHeight,
+                                )
                                 animate(Animation.easeOut(WELCOME_FADE_DURATION), phase)
                                 touchEnable(
                                     ctx.selectedHomeTab == HOME_TAB_CHAT &&
@@ -1996,7 +2032,10 @@ internal class StockChatPage : BasePager() {
                                 left = metrics.dp(if (expanded) 20f else 61f),
                                 right = metrics.dp(if (expanded) 20f else 60f),
                             )
-                            // 单行高 38dp（23 行高 + 15 上下留白）；超过一行后按行数撑高，面板同步增高
+                            // 单行高 38dp（23 行高 + 15 上下留白）；超过一行后按行数撑高，面板同步增高，
+                            // 到 MAX_INPUT_LINES 后框高封顶——超出的内容交由原生多行输入框自身的
+                            // 内部滚动查看（不额外包 Scroller：那会与原生输入框自带的拖拽滚动争抢
+                            // 触摸，导致滑动时好时坏）
                             val visibleLines = if (expanded && !ctx.voiceMode) {
                                 ctx.inputLineCount
                             } else {
@@ -2144,6 +2183,11 @@ internal class StockChatPage : BasePager() {
                         }
                     }
                 }
+                // 折叠态专用手势层（点击聚焦/长按说话）：展开态直接不渲染。
+                // 这层的 top/bottom 拉伸 bounds 不依赖 inputLineCount，聚焦后继续
+                // 输入、行数撑高面板时它不会重算，冻结的旧区域会盖住输入框上半
+                // 部分、挡住触摸（表现为封顶后只有最下面一两行能点能滑）
+                vif({ !ctx.composerExpanded }) {
                 View {
                     attr {
                         val hasAttachments = ctx.selectedImageCount > 0
@@ -2154,8 +2198,12 @@ internal class StockChatPage : BasePager() {
                             right = metrics.dp(51f),
                             bottom = if (ctx.voiceMode || hasAttachments) metrics.dp(52f) else 0f,
                         )
+                        // 展开态下点击聚焦/长按说话都已经没有意义（composerHoldToTalkReady
+                        // 本就要求未聚焦且无内容），提前让开，避免这层覆盖住原生输入框、
+                        // 挡住上半部分的点按选区和滑动
                         touchEnable(
-                            ctx.selectedHomeTab == HOME_TAB_CHAT && !ctx.composerFocused
+                            ctx.selectedHomeTab == HOME_TAB_CHAT &&
+                                !ctx.composerFocused && !ctx.composerExpanded
                         )
                         zIndex(3)
                         // 常驻捕获长按：是否真正进入按住说话在事件回调里实时判断，
@@ -2196,6 +2244,7 @@ internal class StockChatPage : BasePager() {
                             }
                         }
                     }
+                }
                 }
                 View {
                     attr {
@@ -3018,6 +3067,9 @@ internal class StockChatPage : BasePager() {
         messageMenuTargetId = ""
         conversationMenuOpen = false
         closeDrawer()
+        // 每次打开面板前都从最新 settings 重新构建 provider / model 选项，
+        // 即便用户在「模型配置」页里切换了当前 provider 也能即时同步
+        configureChatProvider()
         modelMenuOpen = true
     }
 
@@ -3158,6 +3210,10 @@ internal class StockChatPage : BasePager() {
             }
             resetKeyboardState()
         }
+        // 输入框有内容时保持展开：收缩态按单行布局排版，多行文本会挤乱
+        if (inputText.isNotEmpty()) {
+            return
+        }
         if (keyboardWasUp || keyboardDropSettling) {
             // 回落窗口结束时由 beginComposerDockSettle 的定时器执行收缩
             collapseComposerAfterSettle = true
@@ -3234,6 +3290,10 @@ internal class StockChatPage : BasePager() {
             metrics.dp(17f),
             availableWidth,
         ).coerceIn(1, MAX_INPUT_LINES)
+    }
+
+    private fun resetInputLineMetrics() {
+        inputLineCount = 1
     }
 
     private fun InputModeMark(
@@ -3722,7 +3782,7 @@ internal class StockChatPage : BasePager() {
             inputRef.view?.blur()
         }
         inputText = ""
-        inputLineCount = 1
+        resetInputLineMetrics()
         selectedImagePreviews.clear()
         selectedImages.clear()
         selectedImagePayloads.clear()
@@ -4195,7 +4255,7 @@ internal class StockChatPage : BasePager() {
             messages.clear()
             messageSequence = 0
             inputText = ""
-            inputLineCount = 1
+            resetInputLineMetrics()
             selectedImagePreviews.clear()
             selectedImages.clear()
             selectedImagePayloads.clear()
@@ -4248,7 +4308,7 @@ internal class StockChatPage : BasePager() {
         activeSessionId = nextSessionId()
         messages.clear()
         inputText = ""
-        inputLineCount = 1
+        resetInputLineMetrics()
         selectedImagePreviews.clear()
         selectedImages.clear()
         selectedImagePayloads.clear()

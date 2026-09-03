@@ -134,6 +134,26 @@ internal object MockSettingsData {
         ),
     )
 
+    /**
+     * Returns the built-in default model list for the given provider kind. Used as a
+     * mock fallback when the user hasn't entered an API key yet but still wants to
+     * browse / select a default model on the configuration page.
+     */
+    fun defaultModelsFor(kind: ModelProviderKind): List<ModelOption> {
+        return modelConfiguration.providers
+            .firstOrNull { provider -> provider.kind == kind }
+            ?.models
+            .orEmpty()
+    }
+
+    /**
+     * Returns the first model id that should be pre-selected when the user opens the
+     * configuration page without ever having picked a model.
+     */
+    fun defaultSelectedModelIdFor(kind: ModelProviderKind): String {
+        return defaultModelsFor(kind).firstOrNull()?.id.orEmpty()
+    }
+
     private fun provider(
         id: String,
         kind: ModelProviderKind,
