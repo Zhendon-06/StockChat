@@ -183,6 +183,21 @@ internal object StockChatTheme {
     val typingInactive: Color
         get() = palette().typingInactive
 
+    val marketMoodBackgroundStart: Color
+        get() = palette().marketMoodBackgroundStart
+
+    val marketMoodBackgroundEnd: Color
+        get() = palette().marketMoodBackgroundEnd
+
+    val marketMoodBorder: Color
+        get() = palette().marketMoodBorder
+
+    val marketPositiveSoft: Color
+        get() = palette().marketPositiveSoft
+
+    val marketNegativeSoft: Color
+        get() = palette().marketNegativeSoft
+
     fun applyAppearance(appearance: AppearanceSettings, systemDark: Boolean) {
         appearanceState = appearance
         systemDarkState = systemDark
@@ -268,6 +283,11 @@ internal object StockChatTheme {
         val warningBorder: Color,
         val typingActive: Color,
         val typingInactive: Color,
+        val marketMoodBackgroundStart: Color,
+        val marketMoodBackgroundEnd: Color,
+        val marketMoodBorder: Color,
+        val marketPositiveSoft: Color,
+        val marketNegativeSoft: Color,
     )
 
     private val LightPalette = StockChatPalette(
@@ -289,6 +309,11 @@ internal object StockChatTheme {
         warningBorder = Color(0xFFF2D9AE),
         typingActive = Color(0xFF4A4F4C),
         typingInactive = Color(0xFFB5BAB6),
+        marketMoodBackgroundStart = Color(0xFFEAF8F2),
+        marketMoodBackgroundEnd = Color(0xFFF7FBF8),
+        marketMoodBorder = Color(0xFFD7EDE2),
+        marketPositiveSoft = Color(0xFFFDEEED),
+        marketNegativeSoft = Color(0xFFE9F5F1),
     )
 
     private val DarkPalette = StockChatPalette(
@@ -310,12 +335,21 @@ internal object StockChatTheme {
         warningBorder = Color(0xFF624C29),
         typingActive = Color(0xFFD8E0DC),
         typingInactive = Color(0xFF626C67),
+        marketMoodBackgroundStart = Color(0xFF1D3A30),
+        marketMoodBackgroundEnd = Color(0xFF18251F),
+        marketMoodBorder = Color(0xFF345447),
+        marketPositiveSoft = Color(0xFF4A2928),
+        marketNegativeSoft = Color(0xFF173B32),
     )
 
     private const val LIGHT_APP_BACKGROUND = 0xFFF6F7F4
     private const val DARK_APP_BACKGROUND = 0xFF111510
     private const val LIGHT_TEXT_PRIMARY = CHAT_DARK_TEXT_ARGB
     private const val DARK_TEXT_PRIMARY = CHAT_LIGHT_TEXT_ARGB
+}
+
+internal fun stockChatThemedAsset(lightAsset: String, darkAsset: String): String {
+    return if (StockChatTheme.isDark) darkAsset else lightAsset
 }
 
 private enum class MessageActionIcon {
@@ -665,10 +699,10 @@ private fun ViewContainer<*, *>.MessageActionMark(
     hidden: () -> Boolean = { false },
 ) {
     val asset = when (icon) {
-        MessageActionIcon.COPY -> "copy_all.png"
-        MessageActionIcon.REGENERATE -> "reuptransport.png"
-        MessageActionIcon.READ_ALOUD -> "tts_voice.png"
-        MessageActionIcon.MORE -> "menu.png"
+        MessageActionIcon.COPY -> stockChatThemedAsset("copy_all.png", "copy_all_white.png")
+        MessageActionIcon.REGENERATE -> stockChatThemedAsset("reuptransport.png", "reuptransport_white.png")
+        MessageActionIcon.READ_ALOUD -> stockChatThemedAsset("tts_voice.png", "tts_voice_white.png")
+        MessageActionIcon.MORE -> stockChatThemedAsset("menu.png", "menu_white.png")
     }
     Image {
         attr {

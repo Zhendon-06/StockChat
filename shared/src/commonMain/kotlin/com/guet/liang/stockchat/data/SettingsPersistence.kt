@@ -287,7 +287,7 @@ internal object SettingsSnapshotJsonCodec {
                 modelsJson.optJSONObject(index)?.toModelOption()?.let(::add)
             }
         }
-        if (id.isBlank() || models.isEmpty()) {
+        if (id.isBlank()) {
             return null
         }
         val kind = enumValueOrDefault(optString("kind"), ModelProviderKind.CUSTOM)

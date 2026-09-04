@@ -49,8 +49,7 @@ internal object MockSettingsData {
 
     val sharedChats = emptyList<SharedChatRecord>()
 
-    // 内置 Provider 只预置名称与服务地址，模型列表一律通过「获取可用模型」
-    // 从 Provider 的 /models 接口实时拉取，避免向用户展示虚构的模型名称。
+    // 默认 Provider 提供内置免费模型；其他 Provider 的模型列表需由用户拉取。
     val modelConfiguration = ModelConfiguration(
         activeProviderId = DEFAULT_PROVIDER_ID,
         providers = listOf(

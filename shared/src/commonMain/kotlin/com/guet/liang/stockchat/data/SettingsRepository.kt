@@ -6,6 +6,7 @@ import com.guet.liang.stockchat.model.FontSizeSettings
 import com.guet.liang.stockchat.model.ModelConfiguration
 import com.guet.liang.stockchat.model.ModelOption
 import com.guet.liang.stockchat.model.ModelProviderConfig
+import com.guet.liang.stockchat.model.ModelProviderKind
 import com.guet.liang.stockchat.model.SettingsSnapshot
 import com.guet.liang.stockchat.model.ShareContent
 import com.guet.liang.stockchat.model.SharedChatRecord
@@ -227,10 +228,18 @@ internal class InMemorySettingsRepository(
         val apiKeysByProviderId = modelConfiguration.providers.associate { provider ->
             provider.id to provider.apiKey
         }
-        val restoredModelConfiguration = storedState.modelConfiguration.normalized()
+        val restoredModelConfiguration = storedState.modelConfiguration
+            .withBuiltInDefaultProvider()
+            .normalized()
         modelConfiguration = restoredModelConfiguration.copy(
             providers = restoredModelConfiguration.providers.map { provider ->
-                provider.copy(apiKey = apiKeysByProviderId[provider.id].orEmpty())
+                val apiKey = apiKeysByProviderId[provider.id].orEmpty()
+                val canRestoreModels = provider.kind == ModelProviderKind.DEFAULT || apiKey.isNotBlank()
+                provider.copy(
+                    apiKey = apiKey,
+                    models = provider.models.takeIf { canRestoreModels }.orEmpty(),
+                    selectedModelId = provider.selectedModelId.takeIf { canRestoreModels }.orEmpty(),
+                )
             }
         )
         mutableSnapshot.value = createSnapshot()
@@ -306,12 +315,30 @@ internal class InMemorySettingsRepository(
         )
     }
 
+    private fun ModelConfiguration.withBuiltInDefaultProvider(): ModelConfiguration {
+        val builtInDefault = MockSettingsData.modelConfiguration.providers
+            .firstOrNull { provider -> provider.kind == ModelProviderKind.DEFAULT }
+            ?: return this
+        val existingDefault = providers.firstOrNull { provider ->
+            provider.kind == ModelProviderKind.DEFAULT
+        }
+        val restoredDefault = builtInDefault.copy(
+            selectedModelId = existingDefault?.selectedModelId
+                ?.takeIf { modelId -> builtInDefault.models.any { model -> model.id == modelId } }
+                ?: builtInDefault.selectedModelId,
+        )
+        return copy(
+            providers = listOf(restoredDefault) + providers.filterNot { provider ->
+                provider.kind == ModelProviderKind.DEFAULT
+            },
+        )
+    }
+
     private fun ModelProviderConfig.normalized(): ModelProviderConfig {
         val normalizedModels = models
             .filter { model -> model.id.isNotBlank() }
             .distinctBy(ModelOption::id)
-        // 模型列表允许为空：内置 Provider 初始不预置任何模型，
-        // 需要通过「获取可用模型」从 /models 接口拉取后再写入。
+        // 第三方 Provider 的模型列表允许为空，需通过「获取可用模型」拉取后再写入。
         val normalizedSelectedModelId = selectedModelId.takeIf { selectedId ->
             normalizedModels.any { model -> model.id == selectedId }
         } ?: normalizedModels.firstOrNull()?.id.orEmpty()

@@ -3,6 +3,7 @@ package com.guet.liang.stockchat.data
 import com.guet.liang.stockchat.model.ChatBackgroundSettings
 import com.guet.liang.stockchat.model.FontSizeSettings
 import com.guet.liang.stockchat.model.ModelOption
+import com.guet.liang.stockchat.model.ModelProviderConfig
 import com.guet.liang.stockchat.model.ModelProviderKind
 import com.guet.liang.stockchat.model.ShareContent
 import com.guet.liang.stockchat.model.SharedChatRecord
@@ -76,7 +77,7 @@ class SettingsRepositoryTest {
     @Test
     fun selectingModelAlsoActivatesItsProvider() {
         val repository = InMemorySettingsRepository()
-        // 内置 Provider 初始不预置模型，先写入一组真实拉取的模型再验证选择逻辑
+        // 第三方 Provider 初始不预置模型，先写入一组真实拉取的模型再验证选择逻辑
         val deepseek = repository.loadSnapshot().modelConfiguration.providers
             .first { provider -> provider.kind == ModelProviderKind.DEEPSEEK }
         repository.saveModelProvider(
@@ -117,6 +118,63 @@ class SettingsRepositoryTest {
         assertTrue(providers.filter { provider -> provider.kind != ModelProviderKind.DEFAULT }
             .all { provider -> provider.models.isEmpty() })
         assertEquals(3, providers.first { provider -> provider.kind == ModelProviderKind.DEFAULT }.models.size)
+    }
+
+    @Test
+    fun persistedEmptyCustomModelCatalogIsRestored() {
+        val persistence = FakeSettingsPersistence()
+        val repository = InMemorySettingsRepository(initialPersistence = persistence)
+
+        repository.saveModelProvider(
+            ModelProviderConfig(
+                id = "custom-provider",
+                kind = ModelProviderKind.CUSTOM,
+                displayName = "自定义服务",
+                baseUrl = "https://example.com/v1",
+                models = emptyList(),
+                selectedModelId = "",
+            ),
+        )
+
+        val restoredProvider = InMemorySettingsRepository(initialPersistence = persistence)
+            .loadSnapshot()
+            .modelConfiguration
+            .providers
+            .first { provider -> provider.id == "custom-provider" }
+
+        assertTrue(restoredProvider.models.isEmpty())
+        assertEquals("", restoredProvider.selectedModelId)
+    }
+
+    @Test
+    fun persistedThirdPartyModelsAreClearedWhenApiKeyIsNotAvailable() {
+        val persistence = FakeSettingsPersistence()
+        val firstRepository = InMemorySettingsRepository(initialPersistence = persistence)
+        val deepseek = firstRepository.loadSnapshot().modelConfiguration.providers
+            .first { provider -> provider.kind == ModelProviderKind.DEEPSEEK }
+        firstRepository.saveModelProvider(
+            deepseek.copy(
+                apiKey = "runtime-only-key",
+                models = listOf(
+                    ModelOption(
+                        id = "deepseek-chat",
+                        displayName = "DeepSeek Chat",
+                        contextWindowLabel = "64K",
+                    ),
+                ),
+                selectedModelId = "deepseek-chat",
+            ),
+        )
+
+        val restoredProvider = InMemorySettingsRepository(initialPersistence = persistence)
+            .loadSnapshot()
+            .modelConfiguration
+            .providers
+            .first { provider -> provider.kind == ModelProviderKind.DEEPSEEK }
+
+        assertTrue(restoredProvider.apiKey.isBlank())
+        assertTrue(restoredProvider.models.isEmpty())
+        assertEquals("", restoredProvider.selectedModelId)
     }
 
     @Test
