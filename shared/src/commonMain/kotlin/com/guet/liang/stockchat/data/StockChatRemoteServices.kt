@@ -14,8 +14,8 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 internal data class AliyunApiConfig(
     val apiKey: String,
     val baseUrl: String = "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    val chatModel: String = "qwen-plus",
-    val visionModel: String = "qwen-vl-plus",
+    val chatModel: String = "",
+    val visionModel: String = "",
     val embeddingModel: String = "text-embedding-v4",
     val providerDisplayName: String = "阿里云百炼",
     val useAliyunExtensions: Boolean = true,
@@ -496,7 +496,7 @@ internal class AliyunStockChatDataSource(
 
     companion object {
         const val MISSING_API_KEY_MESSAGE =
-            "尚未配置千问 API Key，请在项目 local.properties 的 QWEN_API_KEY= 后填写。"
+            "尚未配置模型服务 API Key，请在模型配置页面填写。"
 
         private const val SYSTEM_PROMPT =
             "你是 StockMate，一名以股票研究和投资教育为特色的中文 AI 助手。" +

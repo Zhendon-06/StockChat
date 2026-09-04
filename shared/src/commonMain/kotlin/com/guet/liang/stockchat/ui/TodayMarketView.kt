@@ -217,8 +217,8 @@ private fun ViewContainer<*, *>.TodayMarketSnapshotContent(
             marginBottom(8f * scale)
             padding(top = 12f * scale, left = 14f * scale, bottom = 12f * scale, right = 14f * scale)
             borderRadius(15f * scale)
-            backgroundColor(Color(0xFFFFF7EA))
-            border(Border(1f, BorderStyle.SOLID, Color(0xFFF2DEBA)))
+            backgroundColor(StockChatTheme.warningSoft)
+            border(Border(1f, BorderStyle.SOLID, StockChatTheme.warningBorder))
         }
         Text {
             attr {
@@ -246,10 +246,16 @@ private fun ViewContainer<*, *>.TodayMarketMoodCard(
             borderRadius(20f * scale)
             backgroundLinearGradient(
                 Direction.TO_BOTTOM_RIGHT,
-                com.tencent.kuikly.core.base.ColorStop(Color(0xFFEAF8F2), 0f),
-                com.tencent.kuikly.core.base.ColorStop(Color(0xFFF7FBF8), 1f),
+                com.tencent.kuikly.core.base.ColorStop(
+                    StockChatTheme.marketMoodBackgroundStart,
+                    0f,
+                ),
+                com.tencent.kuikly.core.base.ColorStop(
+                    StockChatTheme.marketMoodBackgroundEnd,
+                    1f,
+                ),
             )
-            border(Border(1f, BorderStyle.SOLID, Color(0xFFD7EDE2)))
+            border(Border(1f, BorderStyle.SOLID, StockChatTheme.marketMoodBorder))
         }
         View {
             attr {
@@ -515,9 +521,9 @@ private fun ViewContainer<*, *>.TodayMarketSampleStocks(
                         allCenter()
                         backgroundColor(
                             if (quote.isPositive) {
-                                Color(0xFFFDEEED)
+                                StockChatTheme.marketPositiveSoft
                             } else {
-                                Color(0xFFE9F5F1)
+                                StockChatTheme.marketNegativeSoft
                             }
                         )
                     }

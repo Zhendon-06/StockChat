@@ -79,7 +79,6 @@ import com.tencent.kuikly.core.views.View
 private const val CHAT_PAGE_NAME = "router"
 private const val STOCK_DETAIL_PAGE_NAME = "stock_detail"
 private const val IMAGE_PREVIEW_PAGE_NAME = "stock_image_preview"
-private const val DEFAULT_CHAT_MODEL_ID = "qwen-plus"
 private const val DEFAULT_CHAT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 private const val HOME_TAB_CHAT = 0
 private const val HOME_TAB_TODAY_MARKET = 1
@@ -120,43 +119,11 @@ private data class ChatModelOption(
     val badge: String,
     val multiplier: String,
     val capabilities: Set<ModelCapability> = setOf(ModelCapability.CHAT),
-    val iconAsset: String = "tongyi-qianwen.png",
+    val iconAsset: String = "stockchat_app_icon.png",
     val isLocked: Boolean = false,
 )
 
-private const val DEFAULT_CHAT_MODEL_ICON_ASSET = "tongyi-qianwen.png"
-
-private val CHAT_MODEL_OPTIONS = listOf(
-    ChatModelOption(
-        id = DEFAULT_CHAT_MODEL_ID,
-        displayName = "千问",
-        description = "均衡，适合股票问答与综合分析",
-        badge = "默认",
-        multiplier = "1.00x",
-        isLocked = true,
-    ),
-    ChatModelOption(
-        id = "qwen-max",
-        displayName = "千问 Max",
-        description = "复杂推理与深度研究",
-        badge = "深度",
-        multiplier = "2.00x",
-    ),
-    ChatModelOption(
-        id = "qwen-turbo",
-        displayName = "千问 Turbo",
-        description = "更快响应日常问题",
-        badge = "快速",
-        multiplier = "0.50x",
-    ),
-    ChatModelOption(
-        id = "qwen-long",
-        displayName = "千问 Long",
-        description = "适合长文本与财报分析",
-        badge = "长文",
-        multiplier = "1.20x",
-    ),
-)
+private const val DEFAULT_CHAT_MODEL_ICON_ASSET = "stockchat_app_icon.png"
 
 @Page(CHAT_PAGE_NAME, supportInLocal = true)
 internal class StockChatPage : BasePager() {
@@ -209,9 +176,9 @@ internal class StockChatPage : BasePager() {
     private var messageMenuTargetId by observable("")
     private var conversationMenuOpen by observable(false)
     private var modelMenuOpen by observable(false)
-    private var selectedModelId by observable(DEFAULT_CHAT_MODEL_ID)
+    private var selectedModelId by observable("")
     private var activeModelProviderId by observable("")
-    private var chatModelOptions by observable(CHAT_MODEL_OPTIONS)
+    private var chatModelOptions by observable<List<ChatModelOption>>(emptyList())
     // drawer 打开时从当前 Provider 拉取真实模型列表的状态
     private var drawerModelsLoading by observable(false)
     private var drawerModelsError by observable("")
@@ -2196,11 +2163,10 @@ internal class StockChatPage : BasePager() {
                         }
                     }
                 }
-                // 折叠态专用手势层（点击聚焦/长按说话）：展开态直接不渲染。
-                // 这层的 top/bottom 拉伸 bounds 不依赖 inputLineCount，聚焦后继续
-                // 输入、行数撑高面板时它不会重算，冻结的旧区域会盖住输入框上半
-                // 部分、挡住触摸（表现为封顶后只有最下面一两行能点能滑）
-                vif({ !ctx.composerExpanded }) {
+                // 折叠态用于点击聚焦/长按说话；语音模式下即使保留草稿、面板处于
+                // 展开态，也需要这层接收按住说话手势。bounds 不依赖 inputLineCount，
+                // 避免文字输入继续增高时覆盖原生输入框的选区和内部滚动。
+                vif({ !ctx.composerExpanded || ctx.voiceMode }) {
                 View {
                     attr {
                         val hasAttachments = ctx.selectedImageCount > 0
@@ -2211,12 +2177,12 @@ internal class StockChatPage : BasePager() {
                             right = metrics.dp(51f),
                             bottom = if (ctx.voiceMode || hasAttachments) metrics.dp(52f) else 0f,
                         )
-                        // 展开态下点击聚焦/长按说话都已经没有意义（composerHoldToTalkReady
-                        // 本就要求未聚焦且无内容），提前让开，避免这层覆盖住原生输入框、
-                        // 挡住上半部分的点按选区和滑动
+                        // 非语音展开态提前让开，避免覆盖原生输入框的点按选区和内部滚动；
+                        // 语音模式则保留整块输入区域用于按住说话
                         touchEnable(
                             ctx.selectedHomeTab == HOME_TAB_CHAT &&
-                                !ctx.composerFocused && !ctx.composerExpanded
+                                (!ctx.composerExpanded || ctx.voiceMode) &&
+                                (!ctx.composerFocused || ctx.voiceMode)
                         )
                         zIndex(3)
                         // 常驻捕获长按：是否真正进入按住说话在事件回调里实时判断，
@@ -3268,7 +3234,14 @@ internal class StockChatPage : BasePager() {
     private fun selectedModel(): ChatModelOption {
         return chatModelOptions.firstOrNull { it.id == selectedModelId }
             ?: chatModelOptions.firstOrNull()
-            ?: CHAT_MODEL_OPTIONS.first()
+            ?: ChatModelOption(
+                id = selectedModelId,
+                displayName = "未选择模型",
+                description = "当前 Provider 暂无可用模型",
+                badge = "",
+                multiplier = "",
+                iconAsset = DEFAULT_CHAT_MODEL_ICON_ASSET,
+            )
     }
 
     // composer 上的模型展示：未拉取到模型时显示当前 Provider 名称，
@@ -3298,16 +3271,13 @@ internal class StockChatPage : BasePager() {
         val provider = configuration.providers.firstOrNull { candidate ->
             candidate.id == configuration.activeProviderId
         }
-        // 内置模型始终可用；Provider 模型在用户配置并拉取后追加展示。
-        val options = buildList {
-            addAll(CHAT_MODEL_OPTIONS.take(1))
-            addAll(provider?.toChatModelOptions().orEmpty())
-        }.distinctBy(ChatModelOption::id)
+        // 模型选择面板只展示当前 Provider 已保存的模型列表。
+        val options = provider?.toChatModelOptions().orEmpty()
         chatModelOptions = options
         activeModelProviderId = provider?.id.orEmpty()
         selectedModelId = provider?.selectedModelId
             ?.takeIf { modelId -> chatModelOptions.any { option -> option.id == modelId } }
-            ?: DEFAULT_CHAT_MODEL_ID
+            ?: chatModelOptions.firstOrNull()?.id.orEmpty()
 
         val routeApiKey = pageData.params.optString("qwenApiKey").trim()
         val providerApiKey = when {
@@ -3323,7 +3293,7 @@ internal class StockChatPage : BasePager() {
                 ?: DEFAULT_CHAT_BASE_URL,
             chatModel = selectedModelId,
             visionModel = selectedModelId,
-            providerDisplayName = provider?.displayName ?: "阿里云百炼",
+            providerDisplayName = provider?.displayName ?: "选择模型",
             useAliyunExtensions = provider == null || provider.kind == ModelProviderKind.ALIYUN,
             supportsVision = ModelCapability.VISION in selectedModel().capabilities,
         )
@@ -3392,20 +3362,18 @@ internal class StockChatPage : BasePager() {
                     drawerModelsError = result.message
                 }
                 is ModelCatalogResult.Success -> {
-                    if (result.models.isNotEmpty()) {
-                        val nextSelectedModelId = result.models
-                            .firstOrNull { model -> model.id == provider.selectedModelId }
-                            ?.id
-                            .orEmpty()
-                        StockChatSettingsStore.repository.saveModelProvider(
-                            provider.copy(
-                                models = result.models,
-                                selectedModelId = nextSelectedModelId,
-                            ),
-                        )
-                        // 重新从设置构建面板选项与聊天数据源
-                        configureChatProvider()
-                    }
+                    val nextSelectedModelId = result.models
+                        .firstOrNull { model -> model.id == provider.selectedModelId }
+                        ?.id
+                        ?: result.models.firstOrNull()?.id.orEmpty()
+                    StockChatSettingsStore.repository.saveModelProvider(
+                        provider.copy(
+                            models = result.models,
+                            selectedModelId = nextSelectedModelId,
+                        ),
+                    )
+                    // 重新从设置构建面板选项与聊天数据源
+                    configureChatProvider()
                 }
             }
         }
@@ -3602,7 +3570,14 @@ internal class StockChatPage : BasePager() {
                 attr {
                     size(32f * scale, 32f * scale)
                     resizeContain()
-                    src(ImageUri.commonAssets("composer_voice_32.png"))
+                    src(
+                        ImageUri.commonAssets(
+                            stockChatThemedAsset(
+                                lightAsset = "composer_voice_32.png",
+                                darkAsset = "composer_voice_32_white.png",
+                            )
+                        )
+                    )
                     opacity(if (ctx.voiceMode) 0f else 1f)
                     animation(Animation.easeOut(0.18f), ctx.voiceMode)
                 }
@@ -3668,7 +3643,14 @@ internal class StockChatPage : BasePager() {
                 attr {
                     size(32f * scale, 32f * scale)
                     resizeContain()
-                    src(ImageUri.commonAssets("composer_plus_32.png"))
+                    src(
+                        ImageUri.commonAssets(
+                            stockChatThemedAsset(
+                                lightAsset = "composer_plus_32.png",
+                                darkAsset = "composer_plus_32_white.png",
+                            )
+                        )
+                    )
                 }
             }
         }
@@ -4039,6 +4021,10 @@ internal class StockChatPage : BasePager() {
             bridgeModule.toast("请先结束语音输入")
             return
         }
+        if (selectedModelId.isBlank()) {
+            bridgeModule.toast("当前 Provider 暂无可用模型，请先在模型配置中获取模型")
+            return
+        }
         val attachedImages = selectedImagePreviews.toList()
         val attachedImagePayloads = selectedImagePayloads.toList()
         if (
@@ -4122,6 +4108,15 @@ internal class StockChatPage : BasePager() {
         attempt: Int,
         currentRequestToken: Int,
     ) {
+        if (selectedModelId.isBlank()) {
+            applyAnswer(
+                messageId,
+                question,
+                attempt,
+                ChatAnswer.Failure("当前 Provider 暂无可用模型，请先在模型配置中获取模型。"),
+            )
+            return
+        }
         val history = conversationHistoryBefore(messageId)
         val attachedImages = imagesBeforeAnswer(messageId)
         val activeModel = selectedModel()

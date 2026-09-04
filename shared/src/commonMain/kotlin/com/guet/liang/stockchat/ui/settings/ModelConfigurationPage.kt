@@ -115,7 +115,7 @@ internal class ModelConfigurationPage : BasePager() {
                 }
                 Text {
                     attr {
-                        text("切换并维护五个模型服务商的地址、密钥与默认模型。")
+                        text("默认服务无需配置，也可切换并维护五个模型服务商。")
                         fontSize(13f.settingsDp())
                         lineHeight(20f.settingsDp())
                         color(ctx.palette().textSecondary)
@@ -192,7 +192,7 @@ internal class ModelConfigurationPage : BasePager() {
                                 lines(1)
                             }
                         }
-                        vif({ ctx.configuration.activeProviderId == provider.id }) {
+                        vif({ ctx.selectedProviderId == provider.id }) {
                             View {
                                 attr {
                                     absolutePosition(top = 9f.settingsDp(), right = 9f.settingsDp())
@@ -219,7 +219,6 @@ internal class ModelConfigurationPage : BasePager() {
 
     private fun ProviderEditor(container: ViewContainer<*, *>) {
         val ctx = this
-        val isDefaultProvider = ctx.selectedProvider().kind == ModelProviderKind.DEFAULT
         with(container) {
             SettingsCard(
                 width = (ctx.pagerData.pageViewWidth - 32f.settingsDp()).coerceAtLeast(1f),
@@ -274,22 +273,43 @@ internal class ModelConfigurationPage : BasePager() {
                             }
                         }
                     }
-                    ctx.ProviderField(
-                        this,
-                        label = "Provider 名称",
-                        value = { ctx.providerName },
-                        placeholder = "服务商名称",
-                        onChanged = { ctx.providerName = it },
-                    )
-                    ctx.ProviderField(
-                        this,
-                        label = "Base URL",
-                        value = { ctx.baseUrl },
-                        placeholder = "https://api.example.com/v1",
-                        onChanged = { ctx.updateBaseUrl(it) },
-                        readOnly = isDefaultProvider,
-                    )
-                    View {
+                    vif({ ctx.selectedProvider().kind == ModelProviderKind.DEFAULT }) {
+                        ctx.ProviderField(
+                            this,
+                            label = "Provider 名称",
+                            value = { ctx.providerName },
+                            placeholder = "服务商名称",
+                            onChanged = { ctx.providerName = it },
+                            readOnly = true,
+                        )
+                        Text {
+                            attr {
+                                text("免费内置服务，无需配置地址或 API Key，直接选择下方模型即可使用。")
+                                fontSize(12f.settingsDp())
+                                lineHeight(18f.settingsDp())
+                                color(ctx.palette().textSecondary)
+                                marginTop(14f.settingsDp())
+                            }
+                        }
+                    }
+                    vif({ ctx.selectedProvider().kind != ModelProviderKind.DEFAULT }) {
+                        ctx.ProviderField(
+                            this,
+                            label = "Provider 名称",
+                            value = { ctx.providerName },
+                            placeholder = "服务商名称",
+                            onChanged = { ctx.providerName = it },
+                        )
+                        ctx.ProviderField(
+                            this,
+                            label = "Base URL",
+                            value = { ctx.baseUrl },
+                            placeholder = "https://api.example.com/v1",
+                            onChanged = { ctx.updateBaseUrl(it) },
+                        )
+                    }
+                    vif({ ctx.selectedProvider().kind != ModelProviderKind.DEFAULT }) {
+                        View {
                         attr {
                             marginTop(15f.settingsDp())
                         }
@@ -311,7 +331,6 @@ internal class ModelConfigurationPage : BasePager() {
                                 flexDirectionRow()
                                 alignItemsCenter()
                                 overflow(true)
-                                touchEnable(!isDefaultProvider)
                             }
                             vif({ !ctx.keyVisible }) {
                                 Input {
@@ -381,25 +400,23 @@ internal class ModelConfigurationPage : BasePager() {
                                 }
                             }
                         }
-                        vif({ isDefaultProvider }) {
-                            Text {
-                                attr {
-                                    text("🔒")
-                                    fontSize(12f.settingsDp())
-                                    marginLeft(6f.settingsDp())
-                                }
-                            }
                         }
                     }
                     Text {
                         attr {
-                            text("未填写 API Key 时不会发起该 Provider 的鉴权请求。")
+                            text(
+                                if (ctx.selectedProvider().kind == ModelProviderKind.DEFAULT) {
+                                    "内置模型仅供演示，不构成投资建议。"
+                                } else {
+                                    "未填写 API Key 时不会发起该 Provider 的鉴权请求。"
+                                },
+                            )
                             fontSize(11f.settingsDp())
                             color(ctx.palette().textTertiary)
                             marginTop(8f.settingsDp())
                         }
                     }
-                    View {
+                    vif({ ctx.selectedProvider().kind != ModelProviderKind.DEFAULT }) { View {
                         attr {
                             flexDirectionRow()
                             alignItemsCenter()
@@ -462,7 +479,7 @@ internal class ModelConfigurationPage : BasePager() {
                                 }
                             }
                         }
-                    }
+                    } }
                 }
             }
         }
@@ -509,6 +526,15 @@ internal class ModelConfigurationPage : BasePager() {
                         textDidChange(isSyncEdit = true) { onChanged(it.text) }
                     }
                 }
+                vif({ readOnly }) {
+                    Text {
+                        attr {
+                            text("🔒")
+                            fontSize(12f.settingsDp())
+                            absolutePosition(right = 14f.settingsDp(), bottom = 16f.settingsDp())
+                        }
+                    }
+                }
             }
         }
     }
@@ -516,7 +542,11 @@ internal class ModelConfigurationPage : BasePager() {
     private fun ModelList(container: ViewContainer<*, *>) {
         val ctx = this
         with(container) {
-            View {
+            vif({
+                ctx.modelListLoading ||
+                    ctx.modelListVisible ||
+                    ctx.modelListError.isNotBlank()
+            }) {
                 View {
                     attr {
                         width((ctx.pagerData.pageViewWidth - 40f.settingsDp()).coerceAtLeast(1f))
@@ -549,6 +579,18 @@ internal class ModelConfigurationPage : BasePager() {
                         }
                     }
                 }
+                vif({ ctx.selectedProvider().kind == ModelProviderKind.DEFAULT }) {
+                    Text {
+                        attr {
+                            width((ctx.pagerData.pageViewWidth - 40f.settingsDp()).coerceAtLeast(1f))
+                            alignSelfCenter()
+                            text("内置免费模型，无需配置，直接点击模型即可使用")
+                            fontSize(12f.settingsDp())
+                            color(ctx.palette().textSecondary)
+                            marginTop(6f.settingsDp())
+                        }
+                    }
+                }
                 vif({ ctx.modelListLoading }) {
                     ctx.ModelCatalogStatus(this, "正在从 Provider 获取可用模型…", false)
                 }
@@ -565,50 +607,6 @@ internal class ModelConfigurationPage : BasePager() {
                 }) {
                     ctx.availableModels.forEach { model ->
                         ctx.ModelCard(this, model)
-                    }
-                }
-                vif({
-                    !ctx.modelListLoading &&
-                        !ctx.modelListVisible &&
-                        ctx.modelListError.isBlank()
-                }) {
-                    ctx.BuiltInModelCard(this)
-                }
-            }
-        }
-    }
-
-    private fun BuiltInModelCard(container: ViewContainer<*, *>) {
-        val ctx = this
-        with(container) {
-            SettingsCard(
-                width = (ctx.pagerData.pageViewWidth - 32f.settingsDp()).coerceAtLeast(1f),
-                palette = ctx::palette,
-                marginTop = 10f.settingsDp(),
-            ) {
-                View {
-                    attr {
-                        minHeight(72f.settingsDp())
-                        padding(all = 16f.settingsDp())
-                        flexDirectionRow()
-                        alignItemsCenter()
-                        backgroundColor(ctx.palette().accentSoft)
-                    }
-                    Text {
-                        attr {
-                            text("千问")
-                            fontSize(15f.settingsDp())
-                            fontWeightBold()
-                            color(ctx.palette().textPrimary)
-                        }
-                    }
-                    Text {
-                        attr {
-                            text("🔒 内置默认模型")
-                            fontSize(12f.settingsDp())
-                            color(ctx.palette().textSecondary)
-                            marginLeft(10f.settingsDp())
-                        }
                     }
                 }
             }
@@ -887,8 +885,10 @@ internal class ModelConfigurationPage : BasePager() {
         if (providerId == selectedProviderId) {
             return
         }
-        val currentDraft = currentDraftProvider() ?: return
-        StockChatSettingsStore.repository.saveModelProvider(currentDraft)
+        if (selectedProvider().kind != ModelProviderKind.DEFAULT) {
+            val currentDraft = currentDraftProvider() ?: return
+            StockChatSettingsStore.repository.saveModelProvider(currentDraft)
+        }
         configuration = StockChatSettingsStore.repository.loadSnapshot().modelConfiguration
         selectProvider(providerId)
     }
@@ -985,26 +985,24 @@ internal class ModelConfigurationPage : BasePager() {
                     modelListVisible = true
                     modelListError = ""
                     lastLoadedModelRequest = fingerprint
-                    if (models.isNotEmpty()) {
-                        val nextSelectedModelId = selectedModelId.takeIf { id ->
-                            models.any { model -> model.id == id }
-                        }.orEmpty()
-                        selectedModelId = nextSelectedModelId
-                        val provider = selectedProvider()
-                        val updated = provider.copy(
-                            displayName = providerName.trim().ifBlank { provider.kind.displayName },
-                            baseUrl = normalizedBaseUrl,
-                            apiKey = normalizedApiKey,
-                            models = models,
-                            selectedModelId = nextSelectedModelId,
-                        )
-                        StockChatSettingsStore.repository.saveModelProvider(updated)
-                        configuration = StockChatSettingsStore.repository.loadSnapshot().modelConfiguration
-                        providerName = updated.displayName
-                        baseUrl = updated.baseUrl
-                        apiKey = updated.apiKey
-                        bridgeModule.toast("已获取 ${models.size} 个可用模型")
-                    }
+                    val nextSelectedModelId = models.firstOrNull { model ->
+                        model.id == selectedModelId
+                    }?.id ?: models.firstOrNull()?.id.orEmpty()
+                    selectedModelId = nextSelectedModelId
+                    val provider = selectedProvider()
+                    val updated = provider.copy(
+                        displayName = providerName.trim().ifBlank { provider.kind.displayName },
+                        baseUrl = normalizedBaseUrl,
+                        apiKey = normalizedApiKey,
+                        models = models,
+                        selectedModelId = nextSelectedModelId,
+                    )
+                    StockChatSettingsStore.repository.saveModelProvider(updated)
+                    configuration = StockChatSettingsStore.repository.loadSnapshot().modelConfiguration
+                    providerName = updated.displayName
+                    baseUrl = updated.baseUrl
+                    apiKey = updated.apiKey
+                    bridgeModule.toast("已获取 ${models.size} 个可用模型")
                 }
             }
         }
@@ -1018,6 +1016,12 @@ internal class ModelConfigurationPage : BasePager() {
         }
         val normalizedBaseUrl = baseUrl.trim()
         if (normalizedBaseUrl.isEmpty()) {
+            if (selectedProvider().kind == ModelProviderKind.DEFAULT) {
+                return selectedProvider().copy(
+                    displayName = normalizedName.ifBlank { selectedProvider().kind.displayName },
+                    selectedModelId = selectedModelId,
+                )
+            }
             bridgeModule.toast("请输入 Base URL")
             return null
         }
