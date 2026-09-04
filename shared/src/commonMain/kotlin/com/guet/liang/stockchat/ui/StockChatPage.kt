@@ -124,6 +124,7 @@ private data class ChatModelOption(
 )
 
 private const val DEFAULT_CHAT_MODEL_ICON_ASSET = "stockchat_app_icon.png"
+private const val DRAWER_MODEL_CATALOG_FALLBACK_TIMEOUT_MS = 35_000
 
 @Page(CHAT_PAGE_NAME, supportInLocal = true)
 internal class StockChatPage : BasePager() {
@@ -152,6 +153,9 @@ internal class StockChatPage : BasePager() {
         get() = homeState.todayMarketState
     // 键盘关闭后的强制归位计数，见 scheduleComposerDockResync
     private var composerDockNudge by observable(0)
+    // 输入框收缩动画结束后的强制归位计数，避免 TextArea 位置动画被打断后停在中间值
+    private var composerInputLayoutNudge by observable(0)
+    private var composerInputLayoutResyncGeneration = 0
     // 键盘回落动画进行中的标记：期间主页内容不回挂（避免挂载大子树拖慢回落），
     // 空白点击/滑动触发的收缩也挂起到回落播完（避免同节点两动画互相打断）
     private var keyboardDropSettling by observable(false)
@@ -179,10 +183,15 @@ internal class StockChatPage : BasePager() {
     private var selectedModelId by observable("")
     private var activeModelProviderId by observable("")
     private var chatModelOptions by observable<List<ChatModelOption>>(emptyList())
-    // drawer 打开时从当前 Provider 拉取真实模型列表的状态
+    private var composerModelLabel by observable("选择模型")
+    private var composerModelIcon by observable(DEFAULT_CHAT_MODEL_ICON_ASSET)
+    private var modelMenuContentRevision by observable(0)
+    // drawer 模型列表请求状态
     private var drawerModelsLoading by observable(false)
     private var drawerModelsError by observable("")
     private var lastDrawerModelFetch = ""
+    private var drawerModelInFlightFingerprint = ""
+    private var drawerModelRequestToken = 0
     private var imagePickerOpen by observable(false)
     private var selectedImageCount by observable(0)
     private var messages by observableList<ChatMessage>()
@@ -209,8 +218,12 @@ internal class StockChatPage : BasePager() {
     private var voiceWaveTimer: Timer? = null
     private var drawerPanStartX = 0f
     private var drawerPanStartY = 0f
-    private var messageListNearBottom = true
+    private var modelMenuPanStartX = 0f
+    private var modelMenuPanStartY = 0f
+    private var messageListNearBottom by observable(true)
     private var stickMessageListToBottom = true
+    private var messageListContentHeight = 0f
+    private var messageListViewHeight = 0f
     private lateinit var networkModule: NetworkModule
     private lateinit var dataSource: StockChatDataSource
     private lateinit var speechRecognitionService: MimoSpeechRecognitionService
@@ -256,6 +269,7 @@ internal class StockChatPage : BasePager() {
                 "left" -> closeDrawer()
             }
         }
+        observeBackRequests()
         // 键盘/聚焦任一信号出现时隐藏欢迎内容；节点保持挂载，只切透明度，
         // 避免键盘回落后重建绝对定位子树时从左上角飞入
         bindValueChange({
@@ -270,8 +284,15 @@ internal class StockChatPage : BasePager() {
     override fun pageDidAppear() {
         super.pageDidAppear()
         applySavedAppearance()
+        observeBackRequests()
         configureChatProvider()
         refreshRecentSessions()
+    }
+
+    private fun observeBackRequests() {
+        bridgeModule.observeBackRequests {
+            handleBackRequest()
+        }
     }
 
     override fun themeDidChanged(data: JSONObject) {
@@ -366,7 +387,7 @@ internal class StockChatPage : BasePager() {
                 resetKeyboardState()
                 // 输入框有内容时保持展开：收缩态按单行布局排版，多行文本会挤乱
                 if (inputText.isEmpty()) {
-                    composerExpanded = false
+                    collapseComposer()
                 }
                 voiceMode = false
                 imagePickerOpen = false
@@ -396,7 +417,9 @@ internal class StockChatPage : BasePager() {
             persistChatHistory()
         }
         bridgeModule.stopObservingDrawerGestures()
+        bridgeModule.stopObservingBackRequests()
         requestToken += 1
+        drawerModelRequestToken += 1
         welcomeMotionGeneration += 1
         dispatchHome(StockChatHomeEvent.Stopped)
         super.pageWillDestroy()
@@ -1323,6 +1346,13 @@ internal class StockChatPage : BasePager() {
             ctx.ConversationTopBar(this)
             ctx.HomeTabCapsule(this)
             ctx.ComposerDock(this)
+            vif({
+                ctx.selectedHomeTab == HOME_TAB_CHAT &&
+                    ctx.homeState.chatStage == StockChatHomeChatStage.CONVERSATION &&
+                    !ctx.messageListNearBottom
+            }) {
+                ctx.ScrollToBottomButton(this)
+            }
             vif({ ctx.selectedHomeTab == HOME_TAB_CHAT }) {
                 ctx.VoiceRecordingOverlay(this)
                 ctx.MessageMenuOverlay(this)
@@ -1800,6 +1830,8 @@ internal class StockChatPage : BasePager() {
                     }
                 }
                 scroll { params ->
+                    ctx.messageListContentHeight = params.contentHeight
+                    ctx.messageListViewHeight = params.viewHeight
                     val remaining = params.contentHeight - params.offsetY - params.viewHeight
                     ctx.messageListNearBottom = remaining <= 48f
                     if (!ctx.messageListNearBottom) {
@@ -1807,10 +1839,9 @@ internal class StockChatPage : BasePager() {
                     }
                 }
                 contentSizeChanged { _, contentHeight ->
+                    ctx.messageListContentHeight = contentHeight
                     if (ctx.stickMessageListToBottom || ctx.messageListNearBottom) {
-                        if (ctx::messageScrollerRef.isInitialized) {
-                            ctx.messageScrollerRef.view?.setContentOffset(0f, contentHeight, true)
-                        }
+                        ctx.scrollMessageListToBottom(animated = true)
                     }
                 }
             }
@@ -1870,6 +1901,77 @@ internal class StockChatPage : BasePager() {
                 }
         }
         }
+    }
+
+    private fun ScrollToBottomButton(container: ViewContainer<*, *>) {
+        val ctx = this
+        val metrics = ctx.layoutMetrics
+        with(container) {
+            View {
+                attr {
+                    absolutePosition(
+                        right = metrics.dp(18f),
+                        bottom = metrics.composerContentBottom(
+                            metrics.composerBottomInset(
+                                ctx.keyboardHeight,
+                                pagerData.safeAreaInsets.bottom,
+                            ),
+                            ctx.composerExpanded,
+                            ctx.voiceMode,
+                            ctx.selectedImageCount > 0,
+                            ctx.composerExtraInputLines(),
+                        ) + metrics.dp(12f),
+                    )
+                    size(metrics.dp(44f), metrics.dp(44f))
+                    borderRadius(metrics.dp(22f))
+                    backgroundColor(StockChatTheme.surface)
+                    boxShadow(
+                        BoxShadow(
+                            metrics.dp(1f),
+                            metrics.dp(4f),
+                            metrics.dp(12f),
+                            Color(0x26000000),
+                        )
+                    )
+                    allCenter()
+                    zIndex(7)
+                }
+                event {
+                    click {
+                        ctx.stickMessageListToBottom = true
+                        ctx.messageListNearBottom = true
+                        ctx.scrollMessageListToBottom(animated = true)
+                    }
+                }
+                Text {
+                    attr {
+                        text("⌄")
+                        fontSize(metrics.dp(25f))
+                        fontWeightBold()
+                        color(StockChatTheme.textPrimary)
+                        marginTop(metrics.dp(-3f))
+                    }
+                }
+            }
+        }
+    }
+
+    private fun scrollMessageListToBottom(animated: Boolean) {
+        if (!::messageScrollerRef.isInitialized || messageListContentHeight <= 0f) {
+            return
+        }
+        val targetOffset = maxOf(
+            0f,
+            messageListContentHeight - messageListViewHeight,
+        )
+        messageScrollerRef.view?.setContentOffset(0f, targetOffset, animated)
+    }
+
+    private fun resetMessageListScrollState() {
+        messageListNearBottom = true
+        stickMessageListToBottom = true
+        messageListContentHeight = 0f
+        messageListViewHeight = 0f
     }
 
     private fun ComposerDock(container: ViewContainer<*, *>) {
@@ -2004,13 +2106,14 @@ internal class StockChatPage : BasePager() {
                             } else {
                                 0f
                             }
+                            val inputLayoutNudge = (ctx.composerInputLayoutNudge % 2) * 0.01f
                             absolutePosition(
                                 // 折叠态：面板高 68dp，按钮行居中后按钮中心在 34dp（即面板中心）；
                                 // 文字行高 23dp 且从 TextArea 顶部绘制，top 取 (68 - 23) / 2 = 22.5，
                                 // 让占位文字与加号、语音按钮一起垂直居中
                                 top = attachmentOffset + if (expanded) metrics.dp(14f) else metrics.dp(22.5f),
-                                left = metrics.dp(if (expanded) 20f else 61f),
-                                right = metrics.dp(if (expanded) 20f else 60f),
+                                left = metrics.dp(if (expanded) 20f else 61f) + inputLayoutNudge,
+                                right = metrics.dp(if (expanded) 20f else 60f) + inputLayoutNudge,
                             )
                             // 单行高 38dp（23 行高 + 15 上下留白）；超过一行后按行数撑高，面板同步增高，
                             // 到 MAX_INPUT_LINES 后框高封顶——超出的内容交由原生多行输入框自身的
@@ -2260,7 +2363,7 @@ internal class StockChatPage : BasePager() {
                             val showModel = ctx.composerExpanded ||
                                 ctx.voiceMode ||
                                 ctx.selectedImageCount > 0
-                            width(metrics.dp(104f))
+                            width(metrics.dp(132f))
                             height(metrics.dp(34f))
                             borderRadius(metrics.dp(17f))
                             marginLeft(metrics.dp(10f))
@@ -2641,12 +2744,21 @@ internal class StockChatPage : BasePager() {
                 }
                 View {
                     attr {
-                        width(metrics.dp(44f))
-                        height(metrics.dp(5f))
-                        borderRadius(metrics.dp(3f))
-                        backgroundColor(StockChatTheme.borderStrong)
-                        alignSelfCenter()
-                        marginTop(metrics.dp(12f))
+                        height(metrics.dp(32f))
+                        alignSelfStretch()
+                        allCenter()
+                        capture(CaptureRule.pan(CaptureRuleDirection.VERTICAL))
+                    }
+                    event {
+                        pan { params -> ctx.handleModelMenuPan(params) }
+                    }
+                    View {
+                        attr {
+                            width(metrics.dp(44f))
+                            height(metrics.dp(5f))
+                            borderRadius(metrics.dp(3f))
+                            backgroundColor(StockChatTheme.borderStrong)
+                        }
                     }
                 }
                 Text {
@@ -2666,42 +2778,55 @@ internal class StockChatPage : BasePager() {
                         showScrollerIndicator(false)
                         bouncesEnable(true)
                     }
-                    vif({ ctx.drawerModelsLoading }) {
-                        ctx.DrawerModelNotice(
-                            this,
-                            message = "正在从 Provider 拉取可用模型…",
-                        )
+                    vif({ ctx.modelMenuContentRevision % 2 == 0 }) {
+                        ctx.ModelMenuContent(this)
                     }
-                    vif({
-                        !ctx.drawerModelsLoading && ctx.drawerModelsError.isNotBlank()
-                    }) {
-                        ctx.DrawerModelNotice(
-                            this,
-                            message = ctx.drawerModelsError,
-                            actionText = "重试",
-                            onAction = { ctx.retryDrawerModels() },
-                        )
+                    velse {
+                        ctx.ModelMenuContent(this)
                     }
-                    vif({
-                        !ctx.drawerModelsLoading &&
-                            ctx.drawerModelsError.isBlank() &&
-                            ctx.chatModelOptions.isEmpty()
-                    }) {
-                        ctx.DrawerModelEmptyState(this)
-                    }
-                    ctx.chatModelOptions.forEach { option ->
-                        ctx.ModelMenuItem(this, option)
-                    }
-                    Text {
-                        attr {
-                            text("模型选择会同步到设置，并影响后续回答")
-                            fontSize(metrics.dp(11f))
-                            color(StockChatTheme.textTertiary)
-                            textAlignCenter()
-                            marginTop(metrics.dp(8f))
-                            marginBottom(metrics.dp(8f))
-                        }
-                    }
+                }
+            }
+        }
+    }
+
+    private fun ModelMenuContent(container: ViewContainer<*, *>) {
+        val ctx = this
+        val metrics = ctx.layoutMetrics
+        with(container) {
+            vif({ ctx.drawerModelsLoading }) {
+                ctx.DrawerModelNotice(
+                    this,
+                    message = "正在从 Provider 拉取可用模型…",
+                )
+            }
+            vif({
+                !ctx.drawerModelsLoading && ctx.drawerModelsError.isNotBlank()
+            }) {
+                ctx.DrawerModelNotice(
+                    this,
+                    message = ctx.drawerModelsError,
+                    actionText = "重试",
+                    onAction = { ctx.retryDrawerModels() },
+                )
+            }
+            vif({
+                !ctx.drawerModelsLoading &&
+                    ctx.drawerModelsError.isBlank() &&
+                    ctx.chatModelOptions.isEmpty()
+            }) {
+                ctx.DrawerModelEmptyState(this)
+            }
+            ctx.chatModelOptions.forEach { option ->
+                ctx.ModelMenuItem(this, option)
+            }
+            Text {
+                attr {
+                    text("模型选择会同步到设置，并影响后续回答")
+                    fontSize(metrics.dp(11f))
+                    color(StockChatTheme.textTertiary)
+                    textAlignCenter()
+                    marginTop(metrics.dp(8f))
+                    marginBottom(metrics.dp(8f))
                 }
             }
         }
@@ -3209,9 +3334,8 @@ internal class StockChatPage : BasePager() {
         // 每次打开面板前都从最新 settings 重新构建 provider / model 选项，
         // 即便用户在「模型配置」页里切换了当前 provider 也能即时同步
         configureChatProvider()
-        // 面板展示的模型必须与设置中拉取到的数据一致：
-        // 有 Key 时实时从 Provider 的 /models 接口拉取，列表为空时强制重试
-        fetchDrawerModels(force = currentProviderHasNoModels())
+        // 先展示已入库列表，再刷新一次 Provider，确保配置页和 Drawer 不会使用旧目录。
+        fetchDrawerModels(force = true)
         modelMenuOpen = true
     }
 
@@ -3244,26 +3368,13 @@ internal class StockChatPage : BasePager() {
             )
     }
 
-    // composer 上的模型展示：未拉取到模型时显示当前 Provider 名称，
-    // 避免向用户展示内置演示模型名
+    // composer 只显示当前模型提供商名称，Drawer 展示该提供商的模型列表
     private fun composerModelDisplayName(): String {
-        chatModelOptions.firstOrNull { it.id == selectedModelId }?.let { return it.displayName }
-        chatModelOptions.firstOrNull()?.let { return it.displayName }
-        val configuration = StockChatSettingsStore.repository.loadSnapshot().modelConfiguration
-        return configuration.providers
-            .firstOrNull { provider -> provider.id == activeModelProviderId }
-            ?.displayName
-            ?: "选择模型"
+        return composerModelLabel
     }
 
     private fun composerModelIconAsset(): String {
-        chatModelOptions.firstOrNull { it.id == selectedModelId }?.let { return it.iconAsset }
-        chatModelOptions.firstOrNull()?.let { return it.iconAsset }
-        val configuration = StockChatSettingsStore.repository.loadSnapshot().modelConfiguration
-        val kind = configuration.providers
-            .firstOrNull { provider -> provider.id == activeModelProviderId }
-            ?.kind
-        return kind?.let { providerIconAsset(it) } ?: DEFAULT_CHAT_MODEL_ICON_ASSET
+        return composerModelIcon
     }
 
     private fun configureChatProvider() {
@@ -3271,22 +3382,41 @@ internal class StockChatPage : BasePager() {
         val provider = configuration.providers.firstOrNull { candidate ->
             candidate.id == configuration.activeProviderId
         }
+        val usesDashScope = provider == null || provider.kind == ModelProviderKind.DEFAULT ||
+            provider.kind == ModelProviderKind.ALIYUN
+        val nextProviderId = provider?.id.orEmpty()
+        if (activeModelProviderId != nextProviderId) {
+            drawerModelRequestToken += 1
+            drawerModelsLoading = false
+            drawerModelsError = ""
+            lastDrawerModelFetch = ""
+            drawerModelInFlightFingerprint = ""
+        }
         // 模型选择面板只展示当前 Provider 已保存的模型列表。
         val options = provider?.toChatModelOptions().orEmpty()
         chatModelOptions = options
-        activeModelProviderId = provider?.id.orEmpty()
+        activeModelProviderId = nextProviderId
         selectedModelId = provider?.selectedModelId
             ?.takeIf { modelId -> chatModelOptions.any { option -> option.id == modelId } }
             ?: chatModelOptions.firstOrNull()?.id.orEmpty()
+        modelMenuContentRevision += 1
+        composerModelLabel = when (provider?.kind) {
+            ModelProviderKind.CUSTOM -> provider.displayName
+            null -> null
+            else -> provider.kind.displayName
+        } ?: provider?.displayName ?: "选择模型"
+        composerModelIcon = provider?.kind?.let(::providerIconAsset) ?: DEFAULT_CHAT_MODEL_ICON_ASSET
 
         val routeApiKey = pageData.params.optString("qwenApiKey").trim()
         val providerApiKey = when {
             provider == null -> routeApiKey
             !provider.isEnabled -> ""
             provider.apiKey.isNotBlank() -> provider.apiKey
-            provider.kind == ModelProviderKind.ALIYUN -> routeApiKey
+            usesDashScope -> routeApiKey
             else -> ""
         }
+        val selectedModelCapabilities = selectedModel().capabilities
+        val supportsStreaming = ModelCapability.STREAMING in selectedModelCapabilities
         val config = AliyunApiConfig(
             apiKey = providerApiKey,
             baseUrl = provider?.baseUrl?.takeIf(String::isNotBlank)
@@ -3294,8 +3424,9 @@ internal class StockChatPage : BasePager() {
             chatModel = selectedModelId,
             visionModel = selectedModelId,
             providerDisplayName = provider?.displayName ?: "选择模型",
-            useAliyunExtensions = provider == null || provider.kind == ModelProviderKind.ALIYUN,
-            supportsVision = ModelCapability.VISION in selectedModel().capabilities,
+            useAliyunExtensions = usesDashScope,
+            supportsVision = ModelCapability.VISION in selectedModelCapabilities,
+            supportsStreaming = supportsStreaming,
         )
         val nativeStreamingEnabled = pageData.params.optInt(
             "aliyunNativeStreaming",
@@ -3305,23 +3436,11 @@ internal class StockChatPage : BasePager() {
             networkModule = networkModule,
             config = config,
             bridgeModule = bridgeModule,
-            useNativeStreaming = nativeStreamingEnabled &&
-                (provider == null || provider.kind == ModelProviderKind.ALIYUN),
+            useNativeStreaming = nativeStreamingEnabled && supportsStreaming,
         )
     }
 
-    private fun currentProviderHasNoModels(): Boolean {
-        val configuration = StockChatSettingsStore.repository.loadSnapshot().modelConfiguration
-        return configuration.providers
-            .firstOrNull { provider -> provider.id == configuration.activeProviderId }
-            ?.models
-            .isNullOrEmpty()
-    }
-
-    /**
-     * 打开模型面板时从当前 Provider 的 /models 接口拉取真实模型列表，
-     * 成功后写回设置存储并刷新面板选项，保证 drawer 与「模型配置」页拉取到的数据一致。
-     */
+    /** 拉取当前 Provider 的模型列表并写回设置存储。 */
     private fun fetchDrawerModels(force: Boolean = false) {
         if (!::modelCatalogService.isInitialized) {
             return
@@ -3332,7 +3451,18 @@ internal class StockChatPage : BasePager() {
             candidate.id == configuration.activeProviderId
         }
         if (provider == null) {
+            drawerModelRequestToken += 1
             drawerModelsLoading = false
+            lastDrawerModelFetch = ""
+            drawerModelInFlightFingerprint = ""
+            return
+        }
+        if (provider.kind == ModelProviderKind.DEFAULT) {
+            // 内置三档千问模型是固定配置，避免 /models 返回的完整目录覆盖面板。
+            drawerModelRequestToken += 1
+            drawerModelsLoading = false
+            lastDrawerModelFetch = ""
+            drawerModelInFlightFingerprint = ""
             return
         }
         val routeApiKey = pageData.params.optString("qwenApiKey").trim()
@@ -3344,37 +3474,106 @@ internal class StockChatPage : BasePager() {
         val requestBaseUrl = provider.baseUrl.trim().trimEnd('/')
         if (requestKey.isBlank() || requestBaseUrl.isBlank()) {
             // 无 Key / 无地址时不发起请求，由面板的空态提示引导去模型配置页
+            drawerModelRequestToken += 1
             drawerModelsLoading = false
+            lastDrawerModelFetch = ""
+            drawerModelInFlightFingerprint = ""
             return
         }
         val fingerprint = "${provider.id}|$requestBaseUrl|$requestKey"
-        if (drawerModelsLoading || (!force && fingerprint == lastDrawerModelFetch)) {
+        if (drawerModelsLoading) {
+            if (fingerprint == drawerModelInFlightFingerprint) {
+                return
+            }
+            drawerModelRequestToken += 1
+            drawerModelsLoading = false
+            drawerModelsError = ""
+            lastDrawerModelFetch = ""
+            drawerModelInFlightFingerprint = ""
+        }
+        if (!force && fingerprint == lastDrawerModelFetch) {
             return
         }
+        val providerId = provider.id
+        val requestToken = drawerModelRequestToken + 1
+        drawerModelRequestToken = requestToken
         lastDrawerModelFetch = fingerprint
+        drawerModelInFlightFingerprint = fingerprint
         drawerModelsLoading = true
-        modelCatalogService.load(requestBaseUrl, requestKey) { result ->
-            drawerModelsLoading = false
-            when (result) {
-                is ModelCatalogResult.Failure -> {
-                    // 允许下次打开面板时重试
-                    lastDrawerModelFetch = ""
-                    drawerModelsError = result.message
+        setTimeout(DRAWER_MODEL_CATALOG_FALLBACK_TIMEOUT_MS) {
+            if (requestToken == drawerModelRequestToken && drawerModelsLoading) {
+                drawerModelRequestToken += 1
+                drawerModelsLoading = false
+                lastDrawerModelFetch = ""
+                drawerModelInFlightFingerprint = ""
+                drawerModelsError = "模型列表请求超时，请检查网络后重试。"
+            }
+        }
+        try {
+            modelCatalogService.load(requestBaseUrl, requestKey) { result ->
+                val latestConfiguration = StockChatSettingsStore.repository.loadSnapshot()
+                    .modelConfiguration
+                val latestProvider = latestConfiguration.providers.firstOrNull { candidate ->
+                    candidate.id == providerId
                 }
-                is ModelCatalogResult.Success -> {
-                    val nextSelectedModelId = result.models
-                        .firstOrNull { model -> model.id == provider.selectedModelId }
-                        ?.id
-                        ?: result.models.firstOrNull()?.id.orEmpty()
-                    StockChatSettingsStore.repository.saveModelProvider(
-                        provider.copy(
-                            models = result.models,
-                            selectedModelId = nextSelectedModelId,
-                        ),
-                    )
-                    // 重新从设置构建面板选项与聊天数据源
-                    configureChatProvider()
+                if (latestProvider == null) {
+                    if (requestToken == drawerModelRequestToken) {
+                        drawerModelsLoading = false
+                        lastDrawerModelFetch = ""
+                        drawerModelInFlightFingerprint = ""
+                    }
+                    return@load
                 }
+                val latestRequestKey = when {
+                    latestProvider.apiKey.isNotBlank() -> latestProvider.apiKey
+                    latestProvider.kind == ModelProviderKind.ALIYUN -> routeApiKey
+                    else -> ""
+                }
+                val latestFingerprint =
+                    "${latestProvider.id}|${latestProvider.baseUrl.trim().trimEnd('/')}|$latestRequestKey"
+                if (
+                    requestToken != drawerModelRequestToken ||
+                    latestConfiguration.activeProviderId != providerId ||
+                    latestFingerprint != fingerprint
+                ) {
+                    if (requestToken == drawerModelRequestToken && drawerModelsLoading) {
+                        drawerModelsLoading = false
+                        lastDrawerModelFetch = ""
+                        drawerModelInFlightFingerprint = ""
+                    }
+                    return@load
+                }
+                drawerModelsLoading = false
+                drawerModelInFlightFingerprint = ""
+                when (result) {
+                    is ModelCatalogResult.Failure -> {
+                        // 允许下次打开面板时重试
+                        lastDrawerModelFetch = ""
+                        drawerModelsError = result.message
+                    }
+                    is ModelCatalogResult.Success -> {
+                        val nextSelectedModelId = result.models
+                            .firstOrNull { model -> model.id == latestProvider.selectedModelId }
+                            ?.id
+                            ?: result.models.firstOrNull()?.id.orEmpty()
+                        StockChatSettingsStore.repository.saveModelProvider(
+                            latestProvider.copy(
+                                models = result.models,
+                                selectedModelId = nextSelectedModelId,
+                            ),
+                        )
+                        // 重新从设置构建面板选项与聊天数据源
+                        configureChatProvider()
+                    }
+                }
+            }
+        } catch (_: Throwable) {
+            if (requestToken == drawerModelRequestToken && drawerModelsLoading) {
+                drawerModelRequestToken += 1
+                drawerModelsLoading = false
+                lastDrawerModelFetch = ""
+                drawerModelInFlightFingerprint = ""
+                drawerModelsError = "模型列表请求失败，请稍后重试。"
             }
         }
     }
@@ -3401,17 +3600,41 @@ internal class StockChatPage : BasePager() {
 
     private fun ModelProviderConfig.toChatModelOptions(): List<ChatModelOption> {
         return models.mapIndexed { index, model ->
-            val capabilityLabel = model.capabilities
-                .joinToString(" · ") { capability -> capability.displayName }
-                .ifBlank { "对话" }
+            val capabilityLabels = buildList {
+                add(
+                    if (ModelCapability.VISION in model.capabilities) {
+                        "视觉理解"
+                    } else {
+                        "仅文本"
+                    },
+                )
+                add(
+                    if (ModelCapability.STREAMING in model.capabilities) {
+                        "流式输出"
+                    } else {
+                        "非流式"
+                    },
+                )
+                model.capabilities
+                    .filterNot {
+                        it == ModelCapability.CHAT ||
+                            it == ModelCapability.VISION ||
+                            it == ModelCapability.STREAMING
+                    }
+                    .forEach { capability -> add(capability.displayName) }
+            }
             ChatModelOption(
                 id = model.id,
                 displayName = model.displayName,
-                description = "$displayName · $capabilityLabel",
+                description = "$displayName · ${capabilityLabels.joinToString(" · ")}",
                 badge = when {
                     model.id == selectedModelId -> "当前"
                     index == 0 -> "推荐"
-                    else -> model.capabilities.firstOrNull()?.displayName ?: "对话"
+                    else -> if (ModelCapability.VISION in model.capabilities) {
+                        "视觉"
+                    } else {
+                        "文本"
+                    }
                 },
                 multiplier = model.contextWindowLabel,
                 capabilities = model.capabilities,
@@ -3421,7 +3644,7 @@ internal class StockChatPage : BasePager() {
     }
 
     private fun providerIconAsset(kind: ModelProviderKind): String = when (kind) {
-        ModelProviderKind.DEFAULT -> "stockchat_app_icon.png"
+        ModelProviderKind.DEFAULT -> "tongyi-qianwen.png"
         ModelProviderKind.ALIYUN -> "tongyi-qianwen.png"
         ModelProviderKind.DEEPSEEK -> "deepseek.png"
         ModelProviderKind.GLM -> "glm.png"
@@ -3473,7 +3696,7 @@ internal class StockChatPage : BasePager() {
             // 回落窗口结束时由 beginComposerDockSettle 的定时器执行收缩
             collapseComposerAfterSettle = true
         } else {
-            composerExpanded = false
+            collapseComposer()
         }
     }
 
@@ -3499,7 +3722,7 @@ internal class StockChatPage : BasePager() {
                 // 回落期间挂起的空白交互收缩，此刻键盘动画已结束，可安全播放
                 if (collapseComposerAfterSettle) {
                     collapseComposerAfterSettle = false
-                    composerExpanded = false
+                    collapseComposer()
                 }
             }
         }
@@ -3523,6 +3746,21 @@ internal class StockChatPage : BasePager() {
             if (composerFocused && !voiceMode && ::inputRef.isInitialized) {
                 inputRef.view?.setText(inputText)
                 inputRef.view?.focus()
+            }
+        }
+    }
+
+    private fun collapseComposer() {
+        composerExpanded = false
+        val generation = ++composerInputLayoutResyncGeneration
+        setTimeout(260) {
+            if (
+                generation == composerInputLayoutResyncGeneration &&
+                !composerExpanded &&
+                !voiceMode &&
+                selectedImageCount == 0
+            ) {
+                composerInputLayoutNudge += 1
             }
         }
     }
@@ -4463,6 +4701,56 @@ internal class StockChatPage : BasePager() {
         }
     }
 
+    private fun handleModelMenuPan(params: PanGestureParams) {
+        when (params.state) {
+            "start" -> {
+                modelMenuPanStartX = params.pageX
+                modelMenuPanStartY = params.pageY
+            }
+            "end" -> {
+                val deltaX = params.pageX - modelMenuPanStartX
+                val deltaY = params.pageY - modelMenuPanStartY
+                if (
+                    modelMenuOpen &&
+                    deltaY >= MODEL_MENU_DISMISS_DISTANCE &&
+                    kotlin.math.abs(deltaY) > kotlin.math.abs(deltaX)
+                ) {
+                    closeModelMenu()
+                }
+                modelMenuPanStartX = 0f
+                modelMenuPanStartY = 0f
+            }
+        }
+    }
+
+    private fun handleBackRequest() {
+        val layer = StockChatBackStack.topLayer(
+            StockChatBackState(
+                renameDialogOpen = renameSessionId.isNotEmpty(),
+                voiceRecording = voicePressActive || voiceInputState != VoiceInputState.IDLE,
+                modelMenuOpen = modelMenuOpen,
+                conversationMenuOpen = conversationMenuOpen,
+                messageMenuOpen = messageMenuTargetId.isNotEmpty(),
+                imagePickerOpen = imagePickerOpen,
+                drawerOpen = drawerOpen,
+                composerOpen = composerFocused || keyboardVisible || keyboardHeight > 0f,
+            )
+        )
+        when (layer) {
+            StockChatBackLayer.RENAME_DIALOG -> closeRenameDialog()
+            StockChatBackLayer.VOICE_RECORDING -> cancelVoiceInput()
+            StockChatBackLayer.MODEL_MENU -> closeModelMenu()
+            StockChatBackLayer.CONVERSATION_MENU -> closeConversationMenu()
+            StockChatBackLayer.MESSAGE_MENU -> messageMenuTargetId = ""
+            StockChatBackLayer.IMAGE_PICKER -> imagePickerOpen = false
+            StockChatBackLayer.DRAWER -> closeDrawer()
+            StockChatBackLayer.COMPOSER -> handleBlankAreaTap()
+            StockChatBackLayer.PAGE -> {
+                acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+            }
+        }
+    }
+
     private fun openDrawer() {
         cancelVoiceInput()
         conversationMenuOpen = false
@@ -4535,6 +4823,7 @@ internal class StockChatPage : BasePager() {
         if (deletingActiveSession) {
             activeSessionId = recentSessions.firstOrNull()?.id ?: nextSessionId()
             messages.clear()
+            resetMessageListScrollState()
             messageSequence = 0
             inputText = ""
             resetInputLineMetrics()
@@ -4574,6 +4863,7 @@ internal class StockChatPage : BasePager() {
         requestToken += 1
         activeSessionId = sessionId
         messages.clear()
+        resetMessageListScrollState()
         messageSequence = 0
         isSending = false
         messageMenuTargetId = ""
@@ -4589,6 +4879,7 @@ internal class StockChatPage : BasePager() {
         requestToken += 1
         activeSessionId = nextSessionId()
         messages.clear()
+        resetMessageListScrollState()
         inputText = ""
         resetInputLineMetrics()
         selectedImagePreviews.clear()
@@ -4847,6 +5138,7 @@ internal class StockChatPage : BasePager() {
         private const val MAX_HISTORY_TURNS = 6
         private const val MAX_INPUT_LINES = 5
         private const val DRAWER_SWIPE_DISTANCE = 56f
+        private const val MODEL_MENU_DISMISS_DISTANCE = 48f
         private const val VOICE_CANCEL_DISTANCE = 56f
         private const val MAX_IMAGE_SELECTION_COUNT = 9
         private const val IMAGE_ONLY_QUESTION = "请分析我上传的图片"

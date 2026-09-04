@@ -28,6 +28,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly CANCEL_VOICE_RECORDING = "cancelVoiceRecording";
   static readonly PLAY_BASE64_AUDIO = "playBase64Audio";
   static readonly STOP_AUDIO_PLAYBACK = "stopAudioPlayback";
+  static readonly STREAM_CHAT_COMPLETION = "streamChatCompletion";
   static readonly PICK_IMAGES = "pickImages";
   private imagePickerPending: boolean = false;
 
@@ -101,6 +102,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
       case KRBridgeModule.STOP_AUDIO_PLAYBACK: {
         this.stopAudioPlayback(callback);
+        break;
+      }
+      case KRBridgeModule.STREAM_CHAT_COMPLETION: {
+        this.streamChatCompletion(callback);
         break;
       }
       case KRBridgeModule.PICK_IMAGES: {
@@ -211,6 +216,14 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
 
   private stopAudioPlayback(callback: KuiklyRenderCallback | null) {
     callback?.({ "success": 1 });
+  }
+
+  private streamChatCompletion(callback: KuiklyRenderCallback | null) {
+    callback?.({
+      "success": 0,
+      "errorCode": "STREAM_UNAVAILABLE",
+      "errorMessage": "当前平台暂不支持原生流式请求，将使用兼容网络请求。"
+    });
   }
 
   private pickImages(params: KRAny, callback: KuiklyRenderCallback | null) {

@@ -35,10 +35,12 @@ class ModelCatalogResponseParserTest {
         assertEquals("32K", models[0].contextWindowLabel)
         assertTrue(ModelCapability.REASONING in models[0].capabilities)
         assertTrue(ModelCapability.VISION in models[1].capabilities)
+        assertTrue(ModelCapability.STREAMING in models[1].capabilities)
         assertEquals("GPT 4 Omni", models[2].displayName)
         assertEquals("128K", models[2].contextWindowLabel)
         assertEquals("32K", models[3].contextWindowLabel)
         assertTrue(ModelCapability.REASONING in models[3].capabilities)
+        assertTrue(ModelCapability.STREAMING in models[3].capabilities)
     }
 
     @Test
@@ -83,6 +85,110 @@ class ModelCatalogResponseParserTest {
         assertEquals("Provider Model", model.displayName)
         assertEquals("128K", model.contextWindowLabel)
         assertTrue(ModelCapability.VISION in model.capabilities)
+        assertTrue(ModelCapability.STREAMING in model.capabilities)
+    }
+
+    @Test
+    fun honorsExplicitStreamingSupportMetadata() {
+        val response = JSONObject().apply {
+            put(
+                "data",
+                JSONArray().apply {
+                    put(
+                        JSONObject().apply {
+                            put("id", "completion-only")
+                            put("supports_streaming", false)
+                        }
+                    )
+                    put(
+                        JSONObject().apply {
+                            put("id", "streaming-model")
+                            put("supportsStreaming", "true")
+                        }
+                    )
+                },
+            )
+        }
+
+        val models = ModelCatalogResponseParser.parse(response)
+
+        assertTrue(ModelCapability.STREAMING !in models[0].capabilities)
+        assertTrue(ModelCapability.STREAMING in models[1].capabilities)
+    }
+
+    @Test
+    fun honorsExplicitVisionSupportMetadata() {
+        val response = JSONObject().apply {
+            put(
+                "data",
+                JSONArray().apply {
+                    put(
+                        JSONObject().apply {
+                            put("id", "qwen-vl-plus")
+                            put("supports_vision", false)
+                        }
+                    )
+                    put(
+                        JSONObject().apply {
+                            put("id", "custom-chat")
+                            put("visionSupported", "true")
+                        }
+                    )
+                },
+            )
+        }
+
+        val models = ModelCatalogResponseParser.parse(response)
+
+        assertTrue(ModelCapability.VISION !in models[0].capabilities)
+        assertTrue(ModelCapability.VISION in models[1].capabilities)
+    }
+
+    @Test
+    fun parsesStringAndObjectModalities() {
+        val response = JSONObject().apply {
+            put(
+                "data",
+                JSONArray().apply {
+                    put(
+                        JSONObject().apply {
+                            put("id", "string-modalities")
+                            put("modalities", "text,image")
+                        }
+                    )
+                    put(
+                        JSONObject().apply {
+                            put("id", "object-modalities")
+                            put(
+                                "modalities",
+                                JSONObject().apply {
+                                    put("input", JSONArray().apply { put("text"); put("image") })
+                                    put("output", JSONArray().apply { put("text") })
+                                },
+                            )
+                        }
+                    )
+                    put(
+                        JSONObject().apply {
+                            put("id", "object-negative")
+                            put(
+                                "modalities",
+                                JSONObject().apply {
+                                    put("vision", false)
+                                    put("image", true)
+                                },
+                            )
+                        }
+                    )
+                },
+            )
+        }
+
+        val models = ModelCatalogResponseParser.parse(response)
+
+        assertTrue(ModelCapability.VISION in models[0].capabilities)
+        assertTrue(ModelCapability.VISION in models[1].capabilities)
+        assertTrue(ModelCapability.VISION !in models[2].capabilities)
     }
 
     @Test

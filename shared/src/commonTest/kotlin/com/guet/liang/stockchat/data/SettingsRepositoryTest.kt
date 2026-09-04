@@ -2,6 +2,7 @@ package com.guet.liang.stockchat.data
 
 import com.guet.liang.stockchat.model.ChatBackgroundSettings
 import com.guet.liang.stockchat.model.FontSizeSettings
+import com.guet.liang.stockchat.model.ModelCapability
 import com.guet.liang.stockchat.model.ModelOption
 import com.guet.liang.stockchat.model.ModelProviderConfig
 import com.guet.liang.stockchat.model.ModelProviderKind
@@ -117,7 +118,23 @@ class SettingsRepositoryTest {
 
         assertTrue(providers.filter { provider -> provider.kind != ModelProviderKind.DEFAULT }
             .all { provider -> provider.models.isEmpty() })
-        assertEquals(3, providers.first { provider -> provider.kind == ModelProviderKind.DEFAULT }.models.size)
+        val defaultProvider = providers.first { provider -> provider.kind == ModelProviderKind.DEFAULT }
+        assertEquals(3, defaultProvider.models.size)
+        assertEquals(
+            listOf("qwen3-vl-flash", "qwen3-vl-plus", "qwen-vl-plus"),
+            defaultProvider.models.map(ModelOption::id),
+        )
+        assertEquals("qwen3-vl-flash", defaultProvider.selectedModelId)
+        assertTrue(
+            defaultProvider.models.all { model ->
+                ModelCapability.VISION in model.capabilities &&
+                    ModelCapability.STREAMING in model.capabilities
+            },
+        )
+        assertEquals(
+            "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            defaultProvider.baseUrl,
+        )
     }
 
     @Test
@@ -147,7 +164,7 @@ class SettingsRepositoryTest {
     }
 
     @Test
-    fun persistedThirdPartyModelsAreClearedWhenApiKeyIsNotAvailable() {
+    fun persistedThirdPartyModelsAndApiKeyAreRestored() {
         val persistence = FakeSettingsPersistence()
         val firstRepository = InMemorySettingsRepository(initialPersistence = persistence)
         val deepseek = firstRepository.loadSnapshot().modelConfiguration.providers
@@ -172,9 +189,9 @@ class SettingsRepositoryTest {
             .providers
             .first { provider -> provider.kind == ModelProviderKind.DEEPSEEK }
 
-        assertTrue(restoredProvider.apiKey.isBlank())
-        assertTrue(restoredProvider.models.isEmpty())
-        assertEquals("", restoredProvider.selectedModelId)
+        assertEquals("runtime-only-key", restoredProvider.apiKey)
+        assertEquals(listOf("deepseek-chat"), restoredProvider.models.map(ModelOption::id))
+        assertEquals("deepseek-chat", restoredProvider.selectedModelId)
     }
 
     @Test
@@ -270,19 +287,36 @@ class SettingsRepositoryTest {
     }
 
     @Test
-    fun apiKeysStayInMemoryAndAreNotWrittenToSharedPreferences() {
+    fun apiKeysAndModelCatalogAreRestoredFromPersistence() {
         val persistence = FakeSettingsPersistence()
         val repository = InMemorySettingsRepository(initialPersistence = persistence)
         val provider = repository.loadSnapshot()
             .modelConfiguration
             .providers
-            .first()
-            .copy(apiKey = "secret-demo-key")
+            .first { it.kind == ModelProviderKind.DEEPSEEK }
+            .copy(
+                apiKey = "secret-demo-key",
+                models = listOf(
+                    ModelOption(
+                        id = "demo-model",
+                        displayName = "Demo Model",
+                        contextWindowLabel = "32K",
+                    ),
+                ),
+                selectedModelId = "demo-model",
+            )
 
         repository.saveModelProvider(provider)
 
-        assertEquals("secret-demo-key", repository.loadSnapshot().modelConfiguration.providers.first().apiKey)
-        assertFalse(persistence.value.orEmpty().contains("secret-demo-key"))
+        val restoredProvider = InMemorySettingsRepository(initialPersistence = persistence)
+            .loadSnapshot()
+            .modelConfiguration
+            .providers
+            .first { it.kind == ModelProviderKind.DEEPSEEK }
+
+        assertEquals("secret-demo-key", restoredProvider.apiKey)
+        assertEquals(listOf("demo-model"), restoredProvider.models.map(ModelOption::id))
+        assertEquals("demo-model", restoredProvider.selectedModelId)
     }
 
     private class FakeSettingsPersistence : SettingsPersistence {

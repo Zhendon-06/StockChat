@@ -49,20 +49,35 @@ internal object MockSettingsData {
 
     val sharedChats = emptyList<SharedChatRecord>()
 
-    // 默认 Provider 提供内置免费模型；其他 Provider 的模型列表需由用户拉取。
+    // 默认 Provider 使用构建参数中的千问 Key；其他 Provider 的模型列表需由用户拉取。
     val modelConfiguration = ModelConfiguration(
         activeProviderId = DEFAULT_PROVIDER_ID,
         providers = listOf(
             provider(
                 id = DEFAULT_PROVIDER_ID,
                 kind = ModelProviderKind.DEFAULT,
-                baseUrl = "",
+                baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1",
                 models = listOf(
-                    model("stockchat-default", "股票助手", setOf(ModelCapability.CHAT)),
-                    model("stockchat-analysis", "深度分析", setOf(ModelCapability.CHAT, ModelCapability.REASONING)),
-                    model("stockchat-fast", "快速问答", setOf(ModelCapability.CHAT)),
+                    model(
+                        "qwen3-vl-flash",
+                        "千问视觉·极速",
+                        setOf(ModelCapability.CHAT, ModelCapability.VISION, ModelCapability.STREAMING),
+                        "256K",
+                    ),
+                    model(
+                        "qwen3-vl-plus",
+                        "千问视觉·增强",
+                        setOf(ModelCapability.CHAT, ModelCapability.VISION, ModelCapability.STREAMING),
+                        "256K",
+                    ),
+                    model(
+                        "qwen-vl-plus",
+                        "千问视觉·经典",
+                        setOf(ModelCapability.CHAT, ModelCapability.VISION, ModelCapability.STREAMING),
+                        "32K",
+                    ),
                 ),
-                selectedModelId = "stockchat-default",
+                selectedModelId = "qwen3-vl-flash",
             ),
             provider(
                 id = ALIYUN_PROVIDER_ID,
@@ -114,7 +129,8 @@ internal object MockSettingsData {
         id: String,
         displayName: String,
         capabilities: Set<com.guet.liang.stockchat.model.ModelCapability>,
-    ) = ModelOption(id, displayName, "", capabilities)
+        contextWindowLabel: String = "",
+    ) = ModelOption(id, displayName, contextWindowLabel, capabilities)
 
     private const val ALIYUN_PROVIDER_ID = "aliyun"
     private const val DEFAULT_PROVIDER_ID = "default"

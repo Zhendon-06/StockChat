@@ -118,6 +118,7 @@ internal enum class ModelCapability(
     val displayName: String,
 ) {
     CHAT("对话"),
+    STREAMING("流式输出"),
     REASONING("深度思考"),
     VISION("视觉理解"),
     VOICE("语音"),
@@ -133,7 +134,7 @@ internal data class ModelOption(
 internal enum class ModelProviderKind(
     val displayName: String,
 ) {
-    DEFAULT("StockChat Model"),
+    DEFAULT("StockChat Free"),
     ALIYUN("阿里云百炼"),
     DEEPSEEK("DeepSeek"),
     GLM("智谱 GLM"),

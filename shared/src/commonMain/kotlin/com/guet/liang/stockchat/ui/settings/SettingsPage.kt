@@ -132,7 +132,7 @@ internal class SettingsPage : BasePager() {
                 SettingsNavigationRow(
                     title = "模型配置",
                     value = { ctx.activeProviderLabel() },
-                    subtitle = "配置阿里云、DeepSeek、GLM、Kimi 与 MiMo",
+                    subtitle = "内置通义千问，支持配置阿里云、DeepSeek、GLM、Kimi 与 MiMo",
                     palette = { ctx.palette() },
                     onClick = { ctx.openPage(MODEL_CONFIGURATION_PAGE_NAME) },
                 )

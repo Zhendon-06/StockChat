@@ -248,6 +248,7 @@ internal object SettingsSnapshotJsonCodec {
             put("kind", kind.name)
             put("displayName", displayName)
             put("baseUrl", baseUrl)
+            put("apiKey", apiKey)
             put("selectedModelId", selectedModelId)
             put("isEnabled", isEnabled)
             put("models", models.toJsonArray { model -> model.toJson() })
@@ -260,6 +261,8 @@ internal object SettingsSnapshotJsonCodec {
             put("displayName", displayName)
             put("contextWindowLabel", contextWindowLabel)
             put("capabilities", capabilities.map(ModelCapability::name).toJsonArray())
+            put("streamingSupported", ModelCapability.STREAMING in capabilities)
+            put("visionSupported", ModelCapability.VISION in capabilities)
         }
     }
 
@@ -296,7 +299,7 @@ internal object SettingsSnapshotJsonCodec {
             kind = kind,
             displayName = optString("displayName").trim().ifBlank { kind.displayName },
             baseUrl = optString("baseUrl").trim(),
-            apiKey = "",
+            apiKey = optString("apiKey").trim(),
             models = models,
             selectedModelId = optString("selectedModelId").trim(),
             isEnabled = optBoolean("isEnabled", true),
@@ -308,23 +311,238 @@ internal object SettingsSnapshotJsonCodec {
         if (id.isBlank()) {
             return null
         }
-        val capabilitiesJson = optJSONArray("capabilities")
-        val capabilities = buildSet {
-            if (capabilitiesJson != null) {
-                repeat(capabilitiesJson.length()) { index ->
-                    enumValueOrNull<ModelCapability>(
-                        capabilitiesJson.optString(index).orEmpty()
-                    )?.let(::add)
-                }
+        val parsedCapabilities = parseCapabilityValue(opt("capabilities"))
+        val parsedMetadata = listOf(
+            parsedCapabilities,
+            parseCapabilityValue(opt("modalities")),
+            parseCapabilityValue(opt("input_modalities")),
+            parseCapabilityValue(opt("inputModalities")),
+            parseCapabilityValue(opt("output_modalities")),
+            parseCapabilityValue(opt("outputModalities")),
+            parseCapabilityValue(opt("supported_modalities")),
+            parseCapabilityValue(opt("supportedModalities")),
+            parseCapabilityValue(opt("architecture")),
+        ).fold(PersistedCapabilityMetadata(), ::mergeCapabilityMetadata)
+        val capabilities = parsedMetadata.capabilities.ifEmpty { setOf(ModelCapability.CHAT) }
+        val streamingSupported = explicitBooleanValue(this, STREAMING_BOOLEAN_KEYS)
+            ?: parsedMetadata.streamingSupport
+            ?: true
+        val visionSupported = explicitBooleanValue(this, VISION_BOOLEAN_KEYS)
+            ?: parsedMetadata.visionSupport
+        val normalizedCapabilities = capabilities.toMutableSet().apply {
+            if (streamingSupported && ModelCapability.CHAT in this) {
+                add(ModelCapability.STREAMING)
+            } else if (!streamingSupported) {
+                remove(ModelCapability.STREAMING)
             }
-        }.ifEmpty { setOf(ModelCapability.CHAT) }
+            when (visionSupported) {
+                true -> add(ModelCapability.VISION)
+                false -> remove(ModelCapability.VISION)
+                null -> Unit
+            }
+        }.toSet()
         return ModelOption(
             id = id,
             displayName = optString("displayName").trim().ifBlank { id },
             contextWindowLabel = optString("contextWindowLabel").trim(),
-            capabilities = capabilities,
+            capabilities = normalizedCapabilities,
         )
     }
+
+    private fun parseCapabilityValue(value: Any?): PersistedCapabilityMetadata {
+        return when (value) {
+            is JSONArray -> {
+                var result = PersistedCapabilityMetadata()
+                for (index in 0 until value.length()) {
+                    result = mergeCapabilityMetadata(result, parseCapabilityValue(value.opt(index)))
+                }
+                result
+            }
+
+            is JSONObject -> {
+                var result = PersistedCapabilityMetadata()
+                val keys = value.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    val rawValue = value.opt(key)
+                    val keyCapability = capabilityForToken(key)
+                    val booleanValue = parseBooleanValue(rawValue)
+                    if (keyCapability != null && booleanValue != null) {
+                        result = mergeCapabilityMetadata(
+                            result,
+                            PersistedCapabilityMetadata(
+                                capabilities = if (booleanValue) setOf(keyCapability) else emptySet(),
+                                visionSupport = booleanSupportFor(keyCapability, booleanValue, ModelCapability.VISION),
+                                streamingSupport = booleanSupportFor(
+                                    keyCapability,
+                                    booleanValue,
+                                    ModelCapability.STREAMING,
+                                ),
+                            ),
+                        )
+                    }
+                    result = mergeCapabilityMetadata(result, parseCapabilityValue(rawValue))
+                }
+                result
+            }
+
+            is String -> parseCapabilityString(value)
+            else -> PersistedCapabilityMetadata()
+        }
+    }
+
+    private fun parseCapabilityString(value: String): PersistedCapabilityMetadata {
+        val normalized = value.trim()
+        if (normalized.isEmpty()) {
+            return PersistedCapabilityMetadata()
+        }
+        if (normalized.startsWith("[") && normalized.endsWith("]")) {
+            runCatching { JSONArray(normalized) }
+                .getOrNull()
+                ?.let { return parseCapabilityValue(it) }
+        }
+        if (normalized.startsWith("{") && normalized.endsWith("}")) {
+            runCatching { JSONObject(normalized) }
+                .getOrNull()
+                ?.let { return parseCapabilityValue(it) }
+        }
+        val capabilities = buildSet {
+            normalized
+                .split(Regex("[,;|/+\\s-]+"))
+                .mapNotNull(::capabilityForToken)
+                .forEach(::add)
+        }
+        return PersistedCapabilityMetadata(capabilities = capabilities)
+    }
+
+    private fun capabilityForToken(value: String): ModelCapability? {
+        val token = value.trim().lowercase().replace('-', '_')
+        return when {
+            token in VISION_TOKENS || token.contains("vision") ||
+                token.contains("image_input") || token.contains("multimodal") ->
+                ModelCapability.VISION
+            token in REASONING_TOKENS || token.contains("reason") || token.contains("think") ->
+                ModelCapability.REASONING
+            token in VOICE_TOKENS || token.contains("audio") || token.contains("speech") ||
+                token.contains("voice") -> ModelCapability.VOICE
+            token in STREAMING_TOKENS || token.contains("stream") || token == "sse" ->
+                ModelCapability.STREAMING
+            token in CHAT_TOKENS || token == "text" -> ModelCapability.CHAT
+            else -> enumValueOrNull<ModelCapability>(value.trim().uppercase())
+        }
+    }
+
+    private fun parseBooleanValue(value: Any?): Boolean? {
+        return when (value) {
+            is Boolean -> value
+            is Number -> value.toDouble().let { number ->
+                when {
+                    number.isNaN() -> null
+                    number == 0.0 -> false
+                    else -> true
+                }
+            }
+            is String -> when (value.trim().lowercase()) {
+                "true", "1", "yes", "y", "on", "supported", "enabled" -> true
+                "false", "0", "no", "n", "off", "unsupported", "disabled" -> false
+                else -> null
+            }
+            else -> null
+        }
+    }
+
+    private fun explicitBooleanValue(model: JSONObject, keys: Iterable<String>): Boolean? {
+        var result: Boolean? = null
+        for (key in keys) {
+            if (!model.has(key)) continue
+            parseBooleanValue(model.opt(key))?.let { value ->
+                result = mergeExplicitSupport(result, value)
+            }
+        }
+        return result
+    }
+
+    private fun booleanSupportFor(
+        capability: ModelCapability,
+        value: Boolean,
+        target: ModelCapability,
+    ): Boolean? {
+        return value.takeIf { capability == target }
+    }
+
+    private fun mergeCapabilityMetadata(
+        first: PersistedCapabilityMetadata,
+        second: PersistedCapabilityMetadata,
+    ): PersistedCapabilityMetadata {
+        return PersistedCapabilityMetadata(
+            capabilities = first.capabilities + second.capabilities,
+            visionSupport = mergeExplicitSupport(first.visionSupport, second.visionSupport),
+            streamingSupport = mergeExplicitSupport(first.streamingSupport, second.streamingSupport),
+        )
+    }
+
+    private fun mergeExplicitSupport(current: Boolean?, incoming: Boolean?): Boolean? {
+        return when {
+            incoming == null -> current
+            current == false -> false
+            incoming == false -> false
+            else -> true
+        }
+    }
+
+    private data class PersistedCapabilityMetadata(
+        val capabilities: Set<ModelCapability> = emptySet(),
+        val visionSupport: Boolean? = null,
+        val streamingSupport: Boolean? = null,
+    )
+
+    private val VISION_BOOLEAN_KEYS = listOf(
+        "vision",
+        "supports_vision",
+        "supportsVision",
+        "vision_supported",
+        "visionSupported",
+        "image_input",
+        "imageInput",
+        "supports_image_input",
+        "supportsImageInput",
+        "multimodal",
+        "supports_multimodal",
+        "supportsMultimodal",
+    )
+
+    private val STREAMING_BOOLEAN_KEYS = listOf(
+        "streamingSupported",
+        "streaming_supported",
+        "supportsStreaming",
+        "supports_streaming",
+        "streaming",
+    )
+
+    private val VISION_TOKENS = setOf(
+        "vision",
+        "visual",
+        "image",
+        "images",
+        "image_input",
+        "image_inputs",
+        "multimodal",
+        "multimodal_input",
+        "video",
+        "video_input",
+    )
+
+    private val REASONING_TOKENS = setOf("reasoning", "think", "thinking")
+    private val VOICE_TOKENS = setOf("voice", "audio", "speech", "tts", "asr", "realtime")
+    private val STREAMING_TOKENS = setOf(
+        "stream",
+        "streaming",
+        "sse",
+        "stream_output",
+        "streaming_output",
+        "streamable",
+    )
+    private val CHAT_TOKENS = setOf("chat", "text_input", "text_output", "text")
 
     private fun <T> List<T>.toJsonArray(transform: (T) -> Any?): JSONArray {
         return JSONArray().apply {
