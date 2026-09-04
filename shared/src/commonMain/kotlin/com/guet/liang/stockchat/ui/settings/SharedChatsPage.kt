@@ -33,6 +33,11 @@ internal class SharedChatsPage : BasePager() {
         reloadRecords()
     }
 
+    override fun pageDidAppear() {
+        super.pageDidAppear()
+        reloadRecords()
+    }
+
     override fun body(): ViewBuilder {
         val ctx = this
         return {
@@ -73,7 +78,7 @@ internal class SharedChatsPage : BasePager() {
                             attr {
                                 width((ctx.pagerData.pageViewWidth - 44f.settingsDp()).coerceAtLeast(1f))
                                 alignSelfCenter()
-                                text("这里记录已经发起系统分享的聊天内容；是否最终发送由系统分享面板决定。")
+                                text("点击分享后会先保存记录；是否最终发送由系统分享面板决定。")
                                 fontSize(11f.settingsDp())
                                 lineHeight(18f.settingsDp())
                                 color(ctx.palette().textTertiary)
@@ -156,7 +161,6 @@ internal class SharedChatsPage : BasePager() {
         record: SharedChatRecord,
     ) {
         val ctx = this
-        val expanded = expandedRecordId == record.id
         with(container) {
             SettingsCard(
                 width = (ctx.pagerData.pageViewWidth - 32f.settingsDp()).coerceAtLeast(1f),
@@ -172,15 +176,13 @@ internal class SharedChatsPage : BasePager() {
                             bottom = 14f.settingsDp(),
                         )
                     }
-                    event {
-                        click {
-                            ctx.expandedRecordId = if (expanded) "" else record.id
-                        }
-                    }
                     View {
                         attr {
                             flexDirectionRow()
                             alignItemsCenter()
+                        }
+                        event {
+                            click { ctx.toggleRecord(record.id) }
                         }
                         View {
                             attr {
@@ -213,7 +215,7 @@ internal class SharedChatsPage : BasePager() {
                         }
                         Text {
                             attr {
-                                text(if (expanded) "⌃" else "⌄")
+                                text(if (ctx.expandedRecordId == record.id) "⌃" else "⌄")
                                 fontSize(17f.settingsDp())
                                 color(ctx.palette().textTertiary)
                                 marginLeft(7f.settingsDp())
@@ -247,7 +249,7 @@ internal class SharedChatsPage : BasePager() {
                             lineHeight(20f.settingsDp())
                             color(ctx.palette().textSecondary)
                             marginTop(8f.settingsDp())
-                            lines(if (expanded) 20 else 3)
+                            lines(if (ctx.expandedRecordId == record.id) 20 else 3)
                         }
                     }
                     vif({ ctx.expandedRecordId == record.id }) {
@@ -378,21 +380,28 @@ internal class SharedChatsPage : BasePager() {
     }
 
     private fun shareAgain(record: SharedChatRecord) {
+        val newRecord = StockChatSettingsStore.repository.recordSharedChat(
+            sessionId = record.sessionId,
+            question = record.question,
+            content = record.content,
+            destinationLabel = "再次分享",
+        )
+        reloadRecords()
         acquireModule<ShareModule>(ShareModule.MODULE_NAME).share(record.content) { result ->
             when (result) {
-                ShareResult.Success -> {
-                    StockChatSettingsStore.repository.recordSharedChat(
-                        sessionId = record.sessionId,
-                        question = record.question,
-                        content = record.content,
-                        destinationLabel = "再次分享",
-                    )
-                    reloadRecords()
-                }
+                ShareResult.Success,
                 ShareResult.Cancelled -> Unit
-                is ShareResult.Failure -> bridgeModule.toast(result.errorMessage)
+                is ShareResult.Failure -> {
+                    StockChatSettingsStore.repository.deleteSharedChat(newRecord.id)
+                    reloadRecords()
+                    bridgeModule.toast(result.errorMessage)
+                }
             }
         }
+    }
+
+    private fun toggleRecord(recordId: String) {
+        expandedRecordId = if (expandedRecordId == recordId) "" else recordId
     }
 
     private fun deleteRecord(recordId: String) {

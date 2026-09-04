@@ -5,6 +5,10 @@ import com.tencent.kuikly.core.module.NetworkModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 
+private const val MIN_HISTORICAL_POINT_COUNT = 1
+private const val MAX_HISTORICAL_POINT_COUNT = 240
+private const val DEFAULT_HISTORICAL_POINT_COUNT = 120
+
 internal data class TencentMarketSnapshot(
     val providerSymbol: String,
     val quote: StockQuote,
@@ -25,6 +29,21 @@ internal sealed class MarketDataResult {
     data class Success(val snapshots: List<TencentMarketSnapshot>) : MarketDataResult()
     data object Empty : MarketDataResult()
     data class Failure(val message: String) : MarketDataResult()
+}
+
+internal data class TencentHistoricalPoint(
+    val date: String,
+    val close: Float,
+)
+
+internal sealed class HistoricalPointsResult {
+    data class Success(
+        val providerSymbol: String,
+        val points: List<TencentHistoricalPoint>,
+    ) : HistoricalPointsResult()
+
+    data object Empty : HistoricalPointsResult()
+    data class Failure(val message: String) : HistoricalPointsResult()
 }
 
 internal class TencentMarketDataService(
@@ -63,6 +82,47 @@ internal class TencentMarketDataService(
             needsIntraday = true,
             callback = callback,
         )
+    }
+
+    fun loadHistoricalPoints(
+        symbol: String,
+        count: Int = DEFAULT_HISTORICAL_POINT_COUNT,
+        callback: (HistoricalPointsResult) -> Unit,
+    ) {
+        val providerSymbol = normalizeProviderSymbol(symbol)
+        if (providerSymbol == null) {
+            callback(HistoricalPointsResult.Empty)
+            return
+        }
+        val requestedCount = count.coerceIn(MIN_HISTORICAL_POINT_COUNT, MAX_HISTORICAL_POINT_COUNT)
+        val params = JSONObject().apply {
+            put("param", "$providerSymbol,day,,,$requestedCount,qfq")
+        }
+        networkModule.requestGet(KLINE_URL, params) { data, success, errorMessage, response ->
+            if (!isSuccessful(success, response.statusCode)) {
+                callback(
+                    HistoricalPointsResult.Failure(
+                        errorMessage.ifBlank { "腾讯历史行情服务暂时不可用，请稍后重试。" }
+                    )
+                )
+                return@requestGet
+            }
+            val points = TencentMarketResponseParser.parseHistoricalPoints(
+                response = data,
+                providerSymbol = providerSymbol,
+                maxCount = requestedCount,
+            )
+            if (points.isEmpty()) {
+                callback(HistoricalPointsResult.Empty)
+            } else {
+                callback(
+                    HistoricalPointsResult.Success(
+                        providerSymbol = providerSymbol,
+                        points = points,
+                    )
+                )
+            }
+        }
     }
 
     private fun resolveTargets(
@@ -380,6 +440,40 @@ internal object TencentMarketResponseParser {
         return samplePoints(points, MAX_CHART_POINTS)
     }
 
+    fun parseHistoricalPoints(
+        response: JSONObject,
+        providerSymbol: String,
+        maxCount: Int = DEFAULT_HISTORICAL_POINT_COUNT,
+    ): List<TencentHistoricalPoint> {
+        if (response.optInt("code", -1) != 0 || maxCount <= 0) {
+            return emptyList()
+        }
+        val securityData = response.optJSONObject("data")
+            ?.optJSONObject(providerSymbol)
+            ?: return emptyList()
+        val rows = securityData.optJSONArray("qfqday")
+            ?.takeIf { it.length() > 0 }
+            ?: securityData.optJSONArray("day")?.takeIf { it.length() > 0 }
+            ?: return emptyList()
+        val points = buildList {
+            for (index in 0 until rows.length()) {
+                val row = rows.optJSONArray(index) ?: continue
+                val date = row.optString(0).orEmpty().trim()
+                val close = row.optString(2).orEmpty().trim().toFloatOrNull()
+                if (date.isNotEmpty() && close != null && close.isFinite() && close > 0f) {
+                    add(TencentHistoricalPoint(date = date, close = close))
+                }
+            }
+        }
+        val orderedPoints = points
+            .map { point ->
+                point.copy(date = point.date.replace('/', '-'))
+            }
+            .distinctBy(TencentHistoricalPoint::date)
+            .sortedBy(TencentHistoricalPoint::date)
+        return sampleHistoricalPoints(orderedPoints, maxCount)
+    }
+
     fun parseSearch(rawResponse: String): List<TencentSearchMatch> {
         val payload = rawResponse.substringAfter("=\"", "")
             .substringBeforeLast("\"", "")
@@ -503,6 +597,31 @@ internal object TencentMarketResponseParser {
     }
 
     private fun samplePoints(points: List<Float>, maxCount: Int): List<Float> {
+        if (maxCount <= 0 || points.isEmpty()) {
+            return emptyList()
+        }
+        if (maxCount == 1) {
+            return listOf(points.last())
+        }
+        if (points.size <= maxCount) {
+            return points
+        }
+        return List(maxCount) { index ->
+            val sourceIndex = index * (points.lastIndex).toFloat() / (maxCount - 1).toFloat()
+            points[sourceIndex.toInt().coerceIn(points.indices)]
+        }
+    }
+
+    private fun sampleHistoricalPoints(
+        points: List<TencentHistoricalPoint>,
+        maxCount: Int,
+    ): List<TencentHistoricalPoint> {
+        if (maxCount <= 0 || points.isEmpty()) {
+            return emptyList()
+        }
+        if (maxCount == 1) {
+            return listOf(points.last())
+        }
         if (points.size <= maxCount) {
             return points
         }

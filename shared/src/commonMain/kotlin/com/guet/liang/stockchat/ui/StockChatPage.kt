@@ -1943,13 +1943,11 @@ internal class StockChatPage : BasePager() {
                         ctx.scrollMessageListToBottom(animated = true)
                     }
                 }
-                Text {
+                Image {
                     attr {
-                        text("⌄")
-                        fontSize(metrics.dp(25f))
-                        fontWeightBold()
-                        color(StockChatTheme.textPrimary)
-                        marginTop(metrics.dp(-3f))
+                        size(metrics.dp(24f), metrics.dp(24f))
+                        resizeContain()
+                        src(ImageUri.commonAssets("down_to_bottom.png"))
                     }
                 }
             }
@@ -2405,9 +2403,10 @@ internal class StockChatPage : BasePager() {
                         }
                         View {
                             attr {
-                                flex(1f)
                                 flexDirectionRow()
                                 alignItemsCenter()
+                                justifyContentCenter()
+                                maxWidth(metrics.dp(84f))
                             }
                             Text {
                                 attr {
@@ -3290,9 +3289,13 @@ internal class StockChatPage : BasePager() {
     private fun openStockComparisonLibrary() {
         closeDrawer()
         closeConversationMenu()
+        val params = JSONObject()
+        pageData.params.optString("qwenApiKey").trim()
+            .takeIf(String::isNotBlank)
+            ?.let { params.put("qwenApiKey", it) }
         acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
             CONVERSATION_TABLE_ARTIFACTS_PAGE_NAME,
-            JSONObject(),
+            params,
         )
     }
 
@@ -3308,6 +3311,9 @@ internal class StockChatPage : BasePager() {
     private fun openTableArtifact(artifactId: Long) {
         val params = JSONObject()
         params.put(CONVERSATION_TABLE_ARTIFACT_ID_PARAM, artifactId.toString())
+        pageData.params.optString("qwenApiKey").trim()
+            .takeIf(String::isNotBlank)
+            ?.let { params.put("qwenApiKey", it) }
         acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
             CONVERSATION_TABLE_ARTIFACT_PAGE_NAME,
             params,
@@ -3644,8 +3650,8 @@ internal class StockChatPage : BasePager() {
     }
 
     private fun providerIconAsset(kind: ModelProviderKind): String = when (kind) {
-        ModelProviderKind.DEFAULT -> "tongyi-qianwen.png"
-        ModelProviderKind.ALIYUN -> "tongyi-qianwen.png"
+        ModelProviderKind.DEFAULT -> "stockchat_app_icon.png"
+        ModelProviderKind.ALIYUN -> "stockchat_app_icon.png"
         ModelProviderKind.DEEPSEEK -> "deepseek.png"
         ModelProviderKind.GLM -> "glm.png"
         ModelProviderKind.KIMI -> "kimi.png"
@@ -4562,15 +4568,19 @@ internal class StockChatPage : BasePager() {
         }
         val sharedSessionId = activeSessionId
         val sharedQuestion = sharedQuestion(message)
+        val sharedRecord = StockChatSettingsStore.repository.recordSharedChat(
+            sessionId = sharedSessionId,
+            question = sharedQuestion,
+            content = content,
+        )
         acquireModule<ShareModule>(ShareModule.MODULE_NAME).share(content) { result ->
             when (result) {
-                ShareResult.Success -> StockChatSettingsStore.repository.recordSharedChat(
-                    sessionId = sharedSessionId,
-                    question = sharedQuestion,
-                    content = content,
-                )
+                ShareResult.Success,
                 ShareResult.Cancelled -> Unit
-                is ShareResult.Failure -> bridgeModule.toast(result.errorMessage)
+                is ShareResult.Failure -> {
+                    StockChatSettingsStore.repository.deleteSharedChat(sharedRecord.id)
+                    bridgeModule.toast(result.errorMessage)
+                }
             }
         }
     }
@@ -4646,6 +4656,9 @@ internal class StockChatPage : BasePager() {
         }
         val params = JSONObject()
         params.put("symbol", providerSymbolForQuote(quote) ?: quote.symbol)
+        pageData.params.optString("qwenApiKey").trim()
+            .takeIf(String::isNotBlank)
+            ?.let { params.put("qwenApiKey", it) }
         acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(STOCK_DETAIL_PAGE_NAME, params)
     }
 
