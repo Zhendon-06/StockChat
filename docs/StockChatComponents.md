@@ -23,7 +23,8 @@ AI 回答完成后，Android、iOS 和鸿蒙端支持在 KuiklyMarkdown 内容�
 Kuikly 的跨节点文本选区目前不支持 Web/小程序，因此这些平台保留消息操作栏的“复制整条回答”
 作为明确降级路径。当前每个 Markdown 块维护独立选区，不能跨两个结构化回答块连续拖选。
 
-文本问答使用 `qwen-plus`，请求 DashScope OpenAI 兼容接口
+免费默认 Provider 预置 `qwen3-vl-flash`、`qwen3-vl-plus`、`qwen-vl-plus` 三个视觉模型，均支持
+流式输出，请求 DashScope OpenAI 兼容接口
 `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions`；意图识别使用同一 Key 和
 `text-embedding-v4`。语音识别使用
 `mimo-v2.5-asr`，回答朗读使用 `mimo-v2.5-tts` 与 `mimo_default` 音色，统一请求
@@ -43,7 +44,7 @@ Android 录音使用 16 kHz 单声道 PCM16，并封装为 WAV；单次录音限
 
 纯文本请求先将问题与 `MARKET_DATA`、`INVESTMENT_EDUCATION`、`GENERAL` 三类原型一起提交到
 DashScope Embeddings，并以余弦相似度和前两名分差判定。仅当 embedding 失败、相似度不足或分类
-边界过近时，才调用 `qwen-plus` 返回结构化意图；两条远程链路都不可用时再退回本地规则。图片问题
+边界过近时，才调用当前选中的免费视觉模型返回结构化意图；两条远程链路都不可用时再退回本地规则。图片问题
 不做文本意图识别，直接进入视觉模型。
 
 只有 `MARKET_DATA` 会继续交给 `SecuritiesQueryRouter` 提取报价、走势、对比、分析和证券实体。

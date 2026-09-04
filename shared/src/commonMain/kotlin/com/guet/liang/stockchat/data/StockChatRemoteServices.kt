@@ -20,6 +20,7 @@ internal data class AliyunApiConfig(
     val providerDisplayName: String = "阿里云百炼",
     val useAliyunExtensions: Boolean = true,
     val supportsVision: Boolean = true,
+    val supportsStreaming: Boolean = true,
 )
 
 internal data class MimoVoiceApiConfig(
@@ -280,10 +281,15 @@ internal class AliyunStockChatDataSource(
             } else {
                 put("max_tokens", 1024)
             }
-            put("stream", true)
+            put("stream", config.supportsStreaming)
         }
-        if (useNativeStreaming && bridgeModule != null) {
-            streamWithNativeBridge(requestBody, plan, snapshots, callback)
+        if (useNativeStreaming && config.supportsStreaming && bridgeModule != null) {
+            streamWithNativeBridge(
+                requestBody = requestBody,
+                plan = plan,
+                snapshots = snapshots,
+                callback = callback,
+            )
         } else {
             request(requestBody) { response, error ->
                 handleCompletedResponse(response, error, plan, snapshots, callback)
@@ -344,44 +350,73 @@ internal class AliyunStockChatDataSource(
         callback: (ChatAnswer) -> Unit,
     ) {
         var streamedContent = ""
-        bridgeModule?.streamChatCompletion(config.apiKey, requestBody) { payload ->
-            val success = payload?.optInt("success", 0) == 1
-            if (!success) {
-                callback(
-                    aiFailureOrMarketFallback(
-                        payload?.optString("errorMessage")?.ifBlank {
-                            "阿里云百炼请求失败，请稍后重试。"
-                        } ?: "阿里云百炼请求失败，请稍后重试。",
-                        plan,
-                        snapshots,
-                    )
-                )
-                return@streamChatCompletion
-            }
-            when (payload?.optString("event")) {
-                "delta" -> {
-                    val delta = payload.optString("content")
-                    if (delta.isNotEmpty()) {
-                        streamedContent += delta
-                        callback(ChatAnswer.Streaming(streamedContent))
-                    }
-                }
-                "end" -> {
-                    val content = streamedContent.trim()
-                    if (content.isEmpty()) {
-                        callback(
-                            aiFailureOrMarketFallback(
-                                "阿里云百炼没有返回可展示的回答，请稍后重试。",
-                                plan,
-                                snapshots,
-                            )
-                        )
-                    } else {
-                        callback(ChatAnswer.Success(answerBlocks(content, snapshots)))
-                    }
-                }
-            }
+        var networkFallbackStarted = false
+        var terminalEventReceived = false
+        val streamUrl = "${config.baseUrl.trimEnd('/')}/chat/completions"
+        val headers = JSONObject().apply {
+            put("Content-Type", "application/json")
+            put("Authorization", "Bearer ${config.apiKey}")
         }
+        bridgeModule?.streamChatCompletion(
+            apiKey = config.apiKey,
+            url = streamUrl,
+            requestBody = requestBody,
+            headers = headers,
+            providerDisplayName = config.providerDisplayName,
+            responseCallbackFn = { payload ->
+                if (terminalEventReceived) {
+                    return@streamChatCompletion
+                }
+                val success = payload?.optInt("success", 0) == 1
+                if (!success) {
+                    if (payload?.optString("errorCode") == "STREAM_UNAVAILABLE") {
+                        if (!networkFallbackStarted) {
+                            networkFallbackStarted = true
+                            terminalEventReceived = true
+                            request(requestBody) { response, error ->
+                                handleCompletedResponse(response, error, plan, snapshots, callback)
+                            }
+                        }
+                        return@streamChatCompletion
+                    }
+                    terminalEventReceived = true
+                    callback(
+                        aiFailureOrMarketFallback(
+                            payload?.optString("errorMessage")?.ifBlank {
+                                "${config.providerDisplayName} 请求失败，请稍后重试。"
+                            } ?: "${config.providerDisplayName} 请求失败，请稍后重试。",
+                            plan,
+                            snapshots,
+                        )
+                    )
+                    return@streamChatCompletion
+                }
+                when (payload?.optString("event")) {
+                    "delta" -> {
+                        val delta = payload.optString("content")
+                        if (delta.isNotEmpty() && !terminalEventReceived) {
+                            streamedContent += delta
+                            callback(ChatAnswer.Streaming(streamedContent))
+                        }
+                    }
+                    "end" -> {
+                        terminalEventReceived = true
+                        val content = streamedContent.trim()
+                        if (content.isEmpty()) {
+                            callback(
+                                aiFailureOrMarketFallback(
+                                    "${config.providerDisplayName} 没有返回可展示的回答，请稍后重试。",
+                                    plan,
+                                    snapshots,
+                                )
+                            )
+                        } else {
+                            callback(ChatAnswer.Success(answerBlocks(content, snapshots)))
+                        }
+                    }
+                }
+            },
+        )
     }
 
     private fun request(
@@ -713,10 +748,25 @@ internal const val MIMO_VOICE_MISSING_API_KEY_MESSAGE =
     "尚未配置 MiMo 语音 API Key，请在项目 local.properties 的 MIMO_VOICE_API_KEY= 后填写。"
 
 private fun JSONObject.assistantContent(): String? {
-    return optJSONArray("choices")
-        ?.optJSONObject(0)
-        ?.optJSONObject("message")
-        ?.optString("content")
+    val choice = optJSONArray("choices")?.optJSONObject(0)
+    return listOf(
+        choice?.optJSONObject("message")?.opt("content"),
+        choice?.optJSONObject("delta")?.opt("content"),
+        optJSONObject("output")
+            ?.optJSONArray("choices")
+            ?.optJSONObject(0)
+            ?.optJSONObject("message")
+            ?.opt("content"),
+        optJSONObject("output")
+            ?.optJSONArray("choices")
+            ?.optJSONObject(0)
+            ?.optJSONObject("delta")
+            ?.opt("content"),
+        opt("content"),
+    )
+        .asSequence()
+        .map(::contentText)
+        .firstOrNull(String::isNotBlank)
 }
 
 private fun JSONObject.assistantAudioData(): String? {
@@ -742,15 +792,53 @@ private fun JSONObject.streamDeltas(): List<String> {
                 return@mapNotNull null
             }
             runCatching {
-                JSONObject(payload)
-                    .optJSONArray("choices")
-                    ?.optJSONObject(0)
-                    ?.optJSONObject("delta")
-                    ?.optString("content")
-                    ?.takeIf { it.isNotEmpty() }
+                JSONObject(payload).streamPayloadContent().takeIf(String::isNotEmpty)
             }.getOrNull()
         }
         .toList()
+}
+
+private fun JSONObject.streamPayloadContent(): String {
+    val choice = optJSONArray("choices")?.optJSONObject(0)
+    return listOf(
+        choice?.optJSONObject("delta")?.opt("content"),
+        choice?.optJSONObject("message")?.opt("content"),
+        optJSONObject("output")
+            ?.optJSONArray("choices")
+            ?.optJSONObject(0)
+            ?.optJSONObject("delta")
+            ?.opt("content"),
+        optJSONObject("output")
+            ?.optJSONArray("choices")
+            ?.optJSONObject(0)
+            ?.optJSONObject("message")
+            ?.opt("content"),
+        opt("content"),
+    )
+        .asSequence()
+        .map(::contentText)
+        .firstOrNull(String::isNotBlank)
+        .orEmpty()
+}
+
+private fun contentText(value: Any?): String {
+    return when (value) {
+        is String -> value
+        is JSONArray -> buildString {
+            for (index in 0 until value.length()) {
+                val part = contentText(value.opt(index))
+                if (part.isNotEmpty()) {
+                    append(part)
+                }
+            }
+        }
+        is JSONObject -> listOf(value.opt("text"), value.opt("content"))
+            .asSequence()
+            .map(::contentText)
+            .firstOrNull(String::isNotBlank)
+            .orEmpty()
+        else -> ""
+    }
 }
 
 private fun JSONObject.apiErrorMessage(): String? {

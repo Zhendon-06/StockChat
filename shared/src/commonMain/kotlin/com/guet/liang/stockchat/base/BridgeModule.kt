@@ -11,6 +11,7 @@ import kotlin.coroutines.suspendCoroutine
 
 internal class BridgeModule : Module() {
     private var drawerGestureCallbackRef: CallbackRef? = null
+    private var backRequestCallbackRef: CallbackRef? = null
 
     override fun moduleName(): String {
         return MODULE_NAME
@@ -137,12 +138,20 @@ internal class BridgeModule : Module() {
 
     fun streamChatCompletion(
         apiKey: String,
+        url: String,
         requestBody: JSONObject,
         responseCallbackFn: CallbackFn,
+        headers: JSONObject? = null,
+        providerDisplayName: String = "",
     ) {
         val methodArgs = JSONObject().apply {
             put("apiKey", apiKey)
+            put("url", url)
             put("requestBody", requestBody.toString())
+            headers?.let { put("headers", it.toString()) }
+            if (providerDisplayName.isNotBlank()) {
+                put("providerDisplayName", providerDisplayName)
+            }
         }
         var callbackRef: CallbackRef? = null
         callbackRef = toNative(
@@ -175,6 +184,23 @@ internal class BridgeModule : Module() {
         callNativeMethod(STOP_OBSERVING_DRAWER_GESTURES, null, null)
         drawerGestureCallbackRef?.let(::removeCallback)
         drawerGestureCallbackRef = null
+    }
+
+    fun observeBackRequests(responseCallbackFn: CallbackFn) {
+        stopObservingBackRequests()
+        backRequestCallbackRef = toNative(
+            keepCallbackAlive = true,
+            methodName = OBSERVE_BACK_REQUESTS,
+            param = null,
+            callback = responseCallbackFn,
+            syncCall = false,
+        ).callbackRef
+    }
+
+    fun stopObservingBackRequests() {
+        callNativeMethod(STOP_OBSERVING_BACK_REQUESTS, null, null)
+        backRequestCallbackRef?.let(::removeCallback)
+        backRequestCallbackRef = null
     }
 
     fun openPage(
@@ -468,6 +494,8 @@ internal class BridgeModule : Module() {
         const val STREAM_CHAT_COMPLETION = "streamChatCompletion"
         const val OBSERVE_DRAWER_GESTURES = "observeDrawerGestures"
         const val STOP_OBSERVING_DRAWER_GESTURES = "stopObservingDrawerGestures"
+        const val OBSERVE_BACK_REQUESTS = "observeBackRequests"
+        const val STOP_OBSERVING_BACK_REQUESTS = "stopObservingBackRequests"
         private const val MAX_IMAGE_SELECTION_COUNT = 9
     }
 

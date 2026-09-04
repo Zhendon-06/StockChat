@@ -2,9 +2,11 @@ package com.guet.liang.stockchat.ui.settings
 
 import com.guet.liang.stockchat.base.BasePager
 import com.guet.liang.stockchat.base.bridgeModule
+import com.guet.liang.stockchat.base.setTimeout
 import com.guet.liang.stockchat.data.ModelCatalogResult
 import com.guet.liang.stockchat.data.ModelCatalogService
 import com.guet.liang.stockchat.data.StockChatSettingsStore
+import com.guet.liang.stockchat.model.ModelCapability
 import com.guet.liang.stockchat.model.ModelOption
 import com.guet.liang.stockchat.model.ModelProviderConfig
 import com.guet.liang.stockchat.model.ModelProviderKind
@@ -26,6 +28,8 @@ import com.tencent.kuikly.core.views.Scroller
 import com.tencent.kuikly.core.views.Text
 import com.tencent.kuikly.core.views.View
 
+private const val MODEL_CATALOG_FALLBACK_TIMEOUT_MS = 35_000
+
 @Page(MODEL_CONFIGURATION_PAGE_NAME, supportInLocal = true)
 internal class ModelConfigurationPage : BasePager() {
     private var configuration by observable(StockChatSettingsStore.repository.loadSnapshot().modelConfiguration)
@@ -40,9 +44,9 @@ internal class ModelConfigurationPage : BasePager() {
     private var modelListVisible by observable(false)
     private var modelListLoading by observable(false)
     private var modelListError by observable("")
+    private var unsavedDialogOpen by observable(false)
     private var modelRequestToken = 0
     private var lastAttemptedModelRequest = ""
-    private var lastLoadedModelRequest = ""
     private lateinit var modelCatalogService: ModelCatalogService
 
     override fun created() {
@@ -54,10 +58,22 @@ internal class ModelConfigurationPage : BasePager() {
         configuration = snapshot.modelConfiguration
         themeMode = snapshot.appearance.themeMode
         selectProvider(configuration.activeProviderId)
+        bridgeModule.observeBackRequests {
+            closePage()
+        }
+    }
+
+    override fun pageDidAppear() {
+        super.pageDidAppear()
+        val snapshot = StockChatSettingsStore.repository.loadSnapshot()
+        configuration = snapshot.modelConfiguration
+        themeMode = snapshot.appearance.themeMode
+        selectProvider(configuration.activeProviderId)
     }
 
     override fun pageWillDestroy() {
         modelRequestToken += 1
+        bridgeModule.stopObservingBackRequests()
         super.pageWillDestroy()
     }
 
@@ -92,6 +108,122 @@ internal class ModelConfigurationPage : BasePager() {
                 ctx.ProviderEditor(this)
                 ctx.ModelList(this)
                 ctx.SecurityNotice(this)
+            }
+            ctx.UnsavedChangesDialog(this)
+        }
+    }
+
+    private fun UnsavedChangesDialog(container: ViewContainer<*, *>) {
+        val ctx = this
+        with(container) {
+            vif({ ctx.unsavedDialogOpen }) {
+                View {
+                    attr {
+                        absolutePositionAllZero()
+                        backgroundColor(Color(0x88000000))
+                        zIndex(30)
+                    }
+                    event {
+                        click { }
+                    }
+                }
+                View {
+                    attr {
+                        absolutePositionAllZero()
+                        alignItemsCenter()
+                        justifyContentCenter()
+                        zIndex(31)
+                    }
+                    View {
+                        attr {
+                            width((ctx.pagerData.pageViewWidth - 56f.settingsDp()).coerceAtLeast(1f))
+                            alignSelfCenter()
+                            borderRadius(20f.settingsDp())
+                            backgroundColor(ctx.palette().surface)
+                            padding(all = 20f.settingsDp())
+                        }
+                    Text {
+                        attr {
+                            text("保存模型配置？")
+                            fontSize(19f.settingsDp())
+                            fontWeightBold()
+                            color(ctx.palette().textPrimary)
+                        }
+                    }
+                    Text {
+                        attr {
+                            text("当前页面有尚未保存的修改，退出后这些修改将丢失。")
+                            fontSize(13f.settingsDp())
+                            lineHeight(20f.settingsDp())
+                            color(ctx.palette().textSecondary)
+                            marginTop(10f.settingsDp())
+                        }
+                    }
+                    View {
+                        attr {
+                            flexDirectionRow()
+                            justifyContentFlexEnd()
+                            alignItemsCenter()
+                            marginTop(20f.settingsDp())
+                        }
+                        View {
+                            attr {
+                                height(38f.settingsDp())
+                                padding(left = 12f.settingsDp(), right = 12f.settingsDp())
+                                allCenter()
+                            }
+                            event {
+                                click { ctx.unsavedDialogOpen = false }
+                            }
+                            Text {
+                                attr {
+                                    text("继续编辑")
+                                    fontSize(13f.settingsDp())
+                                    color(ctx.palette().textSecondary)
+                                }
+                            }
+                        }
+                        View {
+                            attr {
+                                height(38f.settingsDp())
+                                padding(left = 12f.settingsDp(), right = 12f.settingsDp())
+                                allCenter()
+                            }
+                            event {
+                                click { ctx.discardAndClose() }
+                            }
+                            Text {
+                                attr {
+                                    text("放弃修改")
+                                    fontSize(13f.settingsDp())
+                                    color(ctx.palette().warning)
+                                }
+                            }
+                        }
+                        View {
+                            attr {
+                                height(38f.settingsDp())
+                                padding(left = 16f.settingsDp(), right = 16f.settingsDp())
+                                borderRadius(19f.settingsDp())
+                                backgroundColor(ctx.palette().accent)
+                                allCenter()
+                                marginLeft(4f.settingsDp())
+                            }
+                            event {
+                                click { ctx.saveAndClose() }
+                            }
+                            Text {
+                                attr {
+                                    text("保存并退出")
+                                    fontSize(13f.settingsDp())
+                                    fontWeightBold()
+                                    color(Color.WHITE)
+                                }
+                            }
+                        }
+                    }
+                }
+                }
             }
         }
     }
@@ -284,7 +416,7 @@ internal class ModelConfigurationPage : BasePager() {
                         )
                         Text {
                             attr {
-                                text("免费内置服务，无需配置地址或 API Key，直接选择下方模型即可使用。")
+                                text("内置千问服务，使用构建时配置的 API Key，直接选择下方模型即可使用。")
                                 fontSize(12f.settingsDp())
                                 lineHeight(18f.settingsDp())
                                 color(ctx.palette().textSecondary)
@@ -352,7 +484,6 @@ internal class ModelConfigurationPage : BasePager() {
                                         textDidChange(isSyncEdit = true) {
                                             ctx.updateApiKey(it.text)
                                         }
-                                        inputBlur { ctx.loadModelsIfNeeded() }
                                         inputReturn { ctx.loadModels(force = true) }
                                     }
                                 }
@@ -376,7 +507,6 @@ internal class ModelConfigurationPage : BasePager() {
                                         textDidChange(isSyncEdit = true) {
                                             ctx.updateApiKey(it.text)
                                         }
-                                        inputBlur { ctx.loadModelsIfNeeded() }
                                         inputReturn { ctx.loadModels(force = true) }
                                     }
                                 }
@@ -584,7 +714,7 @@ internal class ModelConfigurationPage : BasePager() {
                         attr {
                             width((ctx.pagerData.pageViewWidth - 40f.settingsDp()).coerceAtLeast(1f))
                             alignSelfCenter()
-                            text("内置免费模型，无需配置，直接点击模型即可使用")
+                            text("内置千问三档模型，直接点击模型即可使用")
                             fontSize(12f.settingsDp())
                             color(ctx.palette().textSecondary)
                             marginTop(6f.settingsDp())
@@ -735,8 +865,31 @@ internal class ModelConfigurationPage : BasePager() {
                                 alignItemsCenter()
                                 marginTop(7f.settingsDp())
                             }
-                            model.capabilities.forEach { capability ->
-                                ctx.CapabilityChip(this, capability.displayName)
+                            val capabilityLabels = buildList {
+                                add(
+                                    if (ModelCapability.VISION in model.capabilities) {
+                                        "视觉理解"
+                                    } else {
+                                        "仅文本"
+                                    },
+                                )
+                                add(
+                                    if (ModelCapability.STREAMING in model.capabilities) {
+                                        "流式输出"
+                                    } else {
+                                        "非流式"
+                                    },
+                                )
+                                model.capabilities
+                                    .filterNot {
+                                        it == ModelCapability.CHAT ||
+                                            it == ModelCapability.VISION ||
+                                            it == ModelCapability.STREAMING
+                                    }
+                                    .forEach { capability -> add(capability.displayName) }
+                            }
+                            capabilityLabels.forEach { label ->
+                                ctx.CapabilityChip(this, label)
                             }
                         }
                     }
@@ -829,7 +982,7 @@ internal class ModelConfigurationPage : BasePager() {
                 }
                 Text {
                     attr {
-                        text("源码不包含任何 API Key，测试密钥仅在本次运行中保留，应用重启后需重新填写。请避免在分享截图或日志中暴露。")
+                        text("API Key 和已获取的模型列表会保存在本机，便于下次启动继续使用。请避免在分享截图或日志中暴露密钥。")
                         fontSize(11f.settingsDp())
                         lineHeight(17f.settingsDp())
                         color(ctx.palette().warning)
@@ -850,13 +1003,8 @@ internal class ModelConfigurationPage : BasePager() {
         keyVisible = false
         resetModelCatalog()
         if (provider.models.isNotEmpty()) {
-            // 先展示上一次拉取并持久化的模型列表，再视情况后台刷新
             availableModels = provider.models
             modelListVisible = true
-        }
-        if (provider.apiKey.isNotBlank()) {
-            // 已填 API Key 时自动拉取实际模型，避免停留在过期的内置数据上
-            loadModelsIfNeeded()
         }
     }
 
@@ -890,7 +1038,10 @@ internal class ModelConfigurationPage : BasePager() {
             StockChatSettingsStore.repository.saveModelProvider(currentDraft)
         }
         configuration = StockChatSettingsStore.repository.loadSnapshot().modelConfiguration
-        selectProvider(providerId)
+        val provider = configuration.providers.firstOrNull { it.id == providerId } ?: return
+        StockChatSettingsStore.repository.selectModel(provider.id, provider.selectedModelId)
+        configuration = StockChatSettingsStore.repository.loadSnapshot().modelConfiguration
+        selectProvider(configuration.activeProviderId)
     }
 
     private fun updateApiKey(value: String) {
@@ -915,39 +1066,26 @@ internal class ModelConfigurationPage : BasePager() {
         modelListVisible = false
         modelListLoading = false
         modelListError = ""
-        // 保留 lastAttempted/lastLoaded 指纹：指纹包含 providerId、Base URL 与 Key，
-        // 切回已拉取过的 Provider 时可避免重复请求
     }
 
     private fun modelRequestFingerprint(): String {
         return "${selectedProviderId}|${baseUrl.trim().trimEnd('/')}|${apiKey.trim()}"
     }
 
-    private fun loadModelsIfNeeded() {
-        if (apiKey.trim().isBlank()) {
-            return
-        }
-        val fingerprint = modelRequestFingerprint()
-        if (
-            modelListLoading ||
-            fingerprint == lastAttemptedModelRequest ||
-            fingerprint == lastLoadedModelRequest
-        ) {
-            return
-        }
-        loadModels()
-    }
-
     private fun loadModels(force: Boolean = false) {
         val normalizedBaseUrl = baseUrl.trim().trimEnd('/')
         val normalizedApiKey = apiKey.trim()
         if (normalizedBaseUrl.isBlank()) {
+            modelRequestToken += 1
+            modelListLoading = false
             modelListVisible = false
             modelListError = "请先填写 Base URL。"
             bridgeModule.toast("请先填写 Base URL")
             return
         }
         if (normalizedApiKey.isBlank()) {
+            modelRequestToken += 1
+            modelListLoading = false
             modelListVisible = false
             modelListError = "请先填写 API Key。"
             bridgeModule.toast("请先填写 API Key")
@@ -967,43 +1105,64 @@ internal class ModelConfigurationPage : BasePager() {
         modelListLoading = true
         modelListVisible = false
         modelListError = ""
-        modelCatalogService.load(normalizedBaseUrl, normalizedApiKey) { result ->
-            if (requestToken != modelRequestToken || providerId != selectedProviderId) {
-                return@load
+        setTimeout(MODEL_CATALOG_FALLBACK_TIMEOUT_MS) {
+            if (requestToken == modelRequestToken && modelListLoading) {
+                modelRequestToken += 1
+                modelListLoading = false
+                modelListVisible = false
+                modelListError = "模型列表请求超时，请检查网络后重试。"
+                lastAttemptedModelRequest = ""
             }
-            modelListLoading = false
-            when (result) {
-                is ModelCatalogResult.Failure -> {
-                    modelListVisible = false
-                    modelListError = result.message
-                    // 失败后清除尝试指纹，下次 blur/切换回该 Provider 时可自动重试
-                    lastAttemptedModelRequest = ""
+        }
+        try {
+            modelCatalogService.load(normalizedBaseUrl, normalizedApiKey) { result ->
+                if (requestToken != modelRequestToken || providerId != selectedProviderId) {
+                    return@load
                 }
-                is ModelCatalogResult.Success -> {
-                    val models = result.models
-                    availableModels = models
-                    modelListVisible = true
-                    modelListError = ""
-                    lastLoadedModelRequest = fingerprint
-                    val nextSelectedModelId = models.firstOrNull { model ->
-                        model.id == selectedModelId
-                    }?.id ?: models.firstOrNull()?.id.orEmpty()
-                    selectedModelId = nextSelectedModelId
-                    val provider = selectedProvider()
-                    val updated = provider.copy(
-                        displayName = providerName.trim().ifBlank { provider.kind.displayName },
-                        baseUrl = normalizedBaseUrl,
-                        apiKey = normalizedApiKey,
-                        models = models,
-                        selectedModelId = nextSelectedModelId,
-                    )
-                    StockChatSettingsStore.repository.saveModelProvider(updated)
-                    configuration = StockChatSettingsStore.repository.loadSnapshot().modelConfiguration
-                    providerName = updated.displayName
-                    baseUrl = updated.baseUrl
-                    apiKey = updated.apiKey
-                    bridgeModule.toast("已获取 ${models.size} 个可用模型")
+                modelListLoading = false
+                when (result) {
+                    is ModelCatalogResult.Failure -> {
+                        modelListVisible = false
+                        modelListError = result.message
+                        lastAttemptedModelRequest = ""
+                    }
+                    is ModelCatalogResult.Success -> {
+                        val models = result.models
+                        availableModels = models
+                        modelListVisible = true
+                        modelListError = ""
+                        val nextSelectedModelId = models.firstOrNull { model ->
+                            model.id == selectedModelId
+                        }?.id ?: models.firstOrNull()?.id.orEmpty()
+                        selectedModelId = nextSelectedModelId
+                        val provider = selectedProvider()
+                        val updated = provider.copy(
+                            displayName = providerName.trim().ifBlank { provider.kind.displayName },
+                            baseUrl = normalizedBaseUrl,
+                            apiKey = normalizedApiKey,
+                            models = models,
+                            selectedModelId = nextSelectedModelId,
+                        )
+                        StockChatSettingsStore.repository.saveModelProvider(updated)
+                        configuration = StockChatSettingsStore.repository.loadSnapshot().modelConfiguration
+                        providerName = updated.displayName
+                        baseUrl = updated.baseUrl
+                        apiKey = updated.apiKey
+                        bridgeModule.toast("已获取 ${models.size} 个可用模型")
+                    }
                 }
+            }
+        } catch (_: Throwable) {
+            if (
+                requestToken == modelRequestToken &&
+                providerId == selectedProviderId &&
+                modelListLoading
+            ) {
+                modelRequestToken += 1
+                modelListLoading = false
+                modelListVisible = false
+                modelListError = "模型列表请求失败，请稍后重试。"
+                lastAttemptedModelRequest = ""
             }
         }
     }
@@ -1049,7 +1208,38 @@ internal class ModelConfigurationPage : BasePager() {
         keyVisible = false
     }
 
+    private fun hasUnsavedChanges(): Boolean {
+        val persistedProvider = configuration.providers.firstOrNull { it.id == selectedProviderId }
+            ?: return false
+        val draftProvider = persistedProvider.copy(
+            displayName = providerName.trim().ifBlank { persistedProvider.kind.displayName },
+            baseUrl = baseUrl.trim().trimEnd('/'),
+            apiKey = apiKey.trim(),
+            selectedModelId = selectedModelId,
+        )
+        return draftProvider != persistedProvider
+    }
+
+    private fun saveAndClose() {
+        saveProvider()
+        if (!hasUnsavedChanges()) {
+            acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+        }
+    }
+
+    private fun discardAndClose() {
+        unsavedDialogOpen = false
+        acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+    }
+
     private fun closePage() {
+        if (unsavedDialogOpen) {
+            return
+        }
+        if (hasUnsavedChanges()) {
+            unsavedDialogOpen = true
+            return
+        }
         acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
     }
 
@@ -1063,7 +1253,7 @@ internal class ModelConfigurationPage : BasePager() {
     }
 
     private fun providerAsset(kind: ModelProviderKind): String = when (kind) {
-        ModelProviderKind.DEFAULT -> "stockchat_app_icon.png"
+        ModelProviderKind.DEFAULT -> "tongyi-qianwen.png"
         ModelProviderKind.ALIYUN -> "tongyi-qianwen.png"
         ModelProviderKind.DEEPSEEK -> "deepseek.png"
         ModelProviderKind.GLM -> "glm.png"

@@ -13,10 +13,11 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Base64
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
-import android.view.MotionEvent
 import android.view.WindowManager
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -51,6 +52,7 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
     private var imagePickerCallback: ((ImagePickerResult) -> Unit)? = null
     private var imagePickerMaxCount = MAX_IMAGE_SELECTION_COUNT
     private var drawerGestureCallback: ((String) -> Unit)? = null
+    private var backRequestCallback: (() -> Unit)? = null
     private var drawerGestureStartX = 0f
     private var drawerGestureStartY = 0f
 
@@ -72,6 +74,21 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
         hrContainerView = findViewById(R.id.hr_container)
         loadingView = findViewById(R.id.hr_loading)
         errorView = findViewById(R.id.hr_error)
+        onBackPressedDispatcher.addCallback(
+            this,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    val callback = backRequestCallback
+                    if (callback != null) {
+                        callback()
+                        return
+                    }
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                    isEnabled = true
+                }
+            },
+        )
         kuiklyRenderViewDelegator.onAttach(hrContainerView, "", pageName, createPageData())
     }
 
@@ -79,6 +96,7 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
         microphonePermissionCallback = null
         imagePickerCallback = null
         drawerGestureCallback = null
+        backRequestCallback = null
         kuiklyRenderViewDelegator.onDetach()
         super.onDestroy()
     }
@@ -297,6 +315,10 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
 
     internal fun setDrawerGestureCallback(callback: ((String) -> Unit)?) {
         drawerGestureCallback = callback
+    }
+
+    internal fun setBackRequestCallback(callback: (() -> Unit)?) {
+        backRequestCallback = callback
     }
 
     private fun trackDrawerGesture(event: MotionEvent) {

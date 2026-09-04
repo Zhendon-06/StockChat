@@ -143,6 +143,14 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
                 stopObservingDrawerGestures()
             }
 
+            "observeBackRequests" -> {
+                observeBackRequests(callback)
+            }
+
+            "stopObservingBackRequests" -> {
+                stopObservingBackRequests()
+            }
+
             else -> callback?.invoke(
                 mapOf(
                     "code" to -1,
@@ -155,6 +163,7 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
     override fun onDestroy() {
         destroyed = true
         stopObservingDrawerGestures()
+        stopObservingBackRequests()
         val recording = synchronized(recordingLock) {
             startRequestSequence += 1
             startRequestPending = false
@@ -573,11 +582,17 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
     ) {
         val payload = runCatching { JSONObject(params ?: "{}") }.getOrNull()
         val apiKey = payload?.optString("apiKey")?.trim().orEmpty()
+        val requestUrl = payload?.optString("url")?.trim().orEmpty()
         val requestBody = payload?.optString("requestBody").orEmpty()
-        if (apiKey.isEmpty() || requestBody.isEmpty()) {
+        val providerDisplayName = payload?.optString("providerDisplayName")?.trim().orEmpty()
+            .ifBlank { "模型服务" }
+        val requestHeaders = runCatching {
+            payload?.optString("headers")?.takeIf { it.isNotBlank() }?.let(::JSONObject)
+        }.getOrNull()
+        if (apiKey.isEmpty() || requestUrl.isEmpty() || requestBody.isEmpty()) {
             deliverCallback(
                 callback,
-                failureResult("INVALID_STREAM_REQUEST", "阿里云流式请求参数不完整。"),
+                failureResult("INVALID_STREAM_REQUEST", "$providerDisplayName 流式请求参数不完整。"),
             )
             return
         }
@@ -585,7 +600,7 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
             {
                 var connection: HttpURLConnection? = null
                 try {
-                    connection = (URL(ALIYUN_CHAT_COMPLETIONS_URL).openConnection() as HttpURLConnection).apply {
+                    connection = (URL(requestUrl).openConnection() as HttpURLConnection).apply {
                         requestMethod = "POST"
                         doInput = true
                         doOutput = true
@@ -593,7 +608,19 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
                         readTimeout = STREAM_READ_TIMEOUT_MS
                         setRequestProperty("Content-Type", "application/json")
                         setRequestProperty("Accept", "text/event-stream")
-                        setRequestProperty("Authorization", "Bearer $apiKey")
+                        var hasAuthorization = false
+                        requestHeaders?.keys()?.forEach { key ->
+                            val value = requestHeaders.optString(key).trim()
+                            if (key.isNotBlank() && value.isNotBlank()) {
+                                setRequestProperty(key, value)
+                                if (key.equals("Authorization", ignoreCase = true)) {
+                                    hasAuthorization = true
+                                }
+                            }
+                        }
+                        if (!hasAuthorization) {
+                            setRequestProperty("Authorization", "Bearer $apiKey")
+                        }
                     }
                     connection.outputStream.use { output ->
                         output.write(requestBody.toByteArray(Charsets.UTF_8))
@@ -607,8 +634,12 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
                     val responseText = responseStream.bufferedReader(Charsets.UTF_8).use { reader ->
                         if (statusCode !in 200..299) {
                             reader.readText()
-                        } else {
+                        } else if (connection.contentType.orEmpty().contains("text/event-stream", ignoreCase = true)) {
                             readSseResponse(reader, callback)
+                            ""
+                        } else {
+                            val body = reader.readText()
+                            deliverJsonStreamResponse(body, providerDisplayName, callback)
                             ""
                         }
                     }
@@ -616,23 +647,23 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
                         val message = runCatching {
                             JSONObject(responseText).optJSONObject("error")?.optString("message")
                         }.getOrNull().orEmpty().ifBlank {
-                            "阿里云请求失败（HTTP $statusCode）。"
+                            "$providerDisplayName 请求失败（HTTP $statusCode）。"
                         }
-                        deliverCallback(callback, failureResult("ALIYUN_HTTP_$statusCode", message))
+                        deliverCallback(callback, failureResult("STREAM_HTTP_$statusCode", message))
                     }
                 } catch (throwable: Throwable) {
                     deliverCallback(
                         callback,
                         failureResult(
-                            "ALIYUN_STREAM_FAILED",
-                            throwable.message ?: "阿里云流式请求失败，请稍后重试。",
+                            "STREAM_FAILED",
+                            throwable.message ?: "$providerDisplayName 流式请求失败，请稍后重试。",
                         ),
                     )
                 } finally {
                     connection?.disconnect()
                 }
             },
-            "StockChatAliyunStream",
+            "StockChatModelStream",
         ).start()
     }
 
@@ -640,35 +671,176 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
         reader: BufferedReader,
         callback: KuiklyRenderCallback?,
     ) {
-        var receivedDone = false
+        var terminalEventReceived = false
+        var eventName = ""
         reader.forEachLine { line ->
-            if (receivedDone || !line.startsWith("data:")) {
+            if (terminalEventReceived) {
                 return@forEachLine
             }
-            val data = line.removePrefix("data:").trim()
-            if (data == "[DONE]") {
-                receivedDone = true
-                deliverCallback(callback, mapOf("success" to 1, "event" to "end"))
+            val normalizedLine = line.removePrefix("\uFEFF").trimStart()
+            if (normalizedLine.isBlank()) {
+                eventName = ""
                 return@forEachLine
             }
-            val delta = runCatching {
-                JSONObject(data)
-                    .optJSONArray("choices")
-                    ?.optJSONObject(0)
-                    ?.optJSONObject("delta")
-                    ?.optString("content")
-                    .orEmpty()
-            }.getOrNull().orEmpty()
-            if (delta.isNotEmpty()) {
-                deliverCallback(
-                    callback,
-                    mapOf("success" to 1, "event" to "delta", "content" to delta),
-                )
+            val separatorIndex = normalizedLine.indexOf(':')
+            if (separatorIndex <= 0) {
+                return@forEachLine
+            }
+            val field = normalizedLine.substring(0, separatorIndex).trim()
+            var value = normalizedLine.substring(separatorIndex + 1)
+            if (value.startsWith(' ')) {
+                value = value.substring(1)
+            }
+            when (field) {
+                "event" -> {
+                    eventName = value.trim()
+                }
+                "data" -> {
+                    val data = value.trim()
+                    if (data.isEmpty()) {
+                        return@forEachLine
+                    }
+                    if (data.equals("[DONE]", ignoreCase = true)) {
+                        terminalEventReceived = true
+                        deliverCallback(callback, mapOf("success" to 1, "event" to "end"))
+                        return@forEachLine
+                    }
+                    val payload = runCatching { JSONObject(data) }.getOrNull()
+                    if (payload == null) {
+                        return@forEachLine
+                    }
+                    val providerError = streamErrorMessage(payload)
+                    if (eventName.equals("error", ignoreCase = true) || providerError != null) {
+                        terminalEventReceived = true
+                        deliverCallback(
+                            callback,
+                            failureResult(
+                                "STREAM_PROVIDER_ERROR",
+                                providerError ?: "模型服务返回了流式错误。",
+                            ),
+                        )
+                        return@forEachLine
+                    }
+                    val delta = streamDeltaContent(payload)
+                    if (delta.isNotEmpty()) {
+                        deliverCallback(
+                            callback,
+                            mapOf("success" to 1, "event" to "delta", "content" to delta),
+                        )
+                    }
+                    eventName = ""
+                }
             }
         }
-        if (!receivedDone) {
+        if (!terminalEventReceived) {
             deliverCallback(callback, mapOf("success" to 1, "event" to "end"))
         }
+    }
+
+    private fun deliverJsonStreamResponse(
+        responseText: String,
+        providerDisplayName: String,
+        callback: KuiklyRenderCallback?,
+    ) {
+        val payload = runCatching { JSONObject(responseText) }.getOrNull()
+        if (payload == null) {
+            deliverCallback(
+                callback,
+                failureResult("STREAM_INVALID_RESPONSE", "$providerDisplayName 返回了无法解析的响应。"),
+            )
+            return
+        }
+        val errorMessage = streamErrorMessage(payload)
+        if (errorMessage != null) {
+            deliverCallback(callback, failureResult("STREAM_PROVIDER_ERROR", errorMessage))
+            return
+        }
+        val content = streamCompletionContent(payload)
+        if (content.isBlank()) {
+            deliverCallback(
+                callback,
+                failureResult("STREAM_EMPTY_RESPONSE", "$providerDisplayName 没有返回可展示的回答。"),
+            )
+            return
+        }
+        deliverCallback(
+            callback,
+            mapOf("success" to 1, "event" to "delta", "content" to content),
+        )
+        deliverCallback(callback, mapOf("success" to 1, "event" to "end"))
+    }
+
+    private fun streamCompletionContent(payload: JSONObject): String {
+        val choice = payload.optJSONArray("choices")?.optJSONObject(0)
+        return listOf(
+            choice?.optJSONObject("message")?.opt("content"),
+            choice?.optJSONObject("delta")?.opt("content"),
+            payload.optJSONObject("output")
+                ?.optJSONArray("choices")
+                ?.optJSONObject(0)
+                ?.optJSONObject("message")
+                ?.opt("content"),
+            payload.optJSONObject("output")
+                ?.optJSONArray("choices")
+                ?.optJSONObject(0)
+                ?.optJSONObject("delta")
+                ?.opt("content"),
+            payload.opt("content"),
+        )
+            .asSequence()
+            .map(::streamContentText)
+            .firstOrNull(String::isNotBlank)
+            .orEmpty()
+    }
+
+    private fun streamContentText(value: Any?): String {
+        return when (value) {
+            is String -> value
+            is JSONArray -> buildString {
+                for (index in 0 until value.length()) {
+                    val part = streamContentText(value.opt(index))
+                    if (part.isNotEmpty()) {
+                        append(part)
+                    }
+                }
+            }
+            is JSONObject -> listOf(value.opt("text"), value.opt("content"))
+                .asSequence()
+                .map(::streamContentText)
+                .firstOrNull(String::isNotBlank)
+                .orEmpty()
+            else -> ""
+        }
+    }
+
+    private fun streamDeltaContent(payload: JSONObject): String {
+        val choice = payload.optJSONArray("choices")?.optJSONObject(0)
+        val delta = choice?.optJSONObject("delta")
+        val deltaContent = streamContentText(delta?.opt("content"))
+        if (deltaContent.isNotEmpty()) {
+            return deltaContent
+        }
+        val messageContent = streamContentText(choice?.optJSONObject("message")?.opt("content"))
+        if (messageContent.isNotEmpty()) {
+            return messageContent
+        }
+        val outputChoice = payload.optJSONObject("output")
+            ?.optJSONArray("choices")
+            ?.optJSONObject(0)
+        val outputDelta = streamContentText(outputChoice?.optJSONObject("delta")?.opt("content"))
+        if (outputDelta.isNotEmpty()) {
+            return outputDelta
+        }
+        return streamContentText(outputChoice?.optJSONObject("message")?.opt("content"))
+    }
+
+    private fun streamErrorMessage(payload: JSONObject): String? {
+        val objectMessage = payload.optJSONObject("error")?.optString("message").orEmpty().trim()
+        if (objectMessage.isNotEmpty()) {
+            return objectMessage
+        }
+        val directError = payload.optString("error").trim()
+        return directError.takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
     }
 
     private fun observeDrawerGestures(callback: KuiklyRenderCallback?) {
@@ -685,6 +857,20 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
     private fun stopObservingDrawerGestures() {
         runOnMain {
             (activity as? KuiklyRenderActivity)?.setDrawerGestureCallback(null)
+        }
+    }
+
+    private fun observeBackRequests(callback: KuiklyRenderCallback?) {
+        runOnMain {
+            (activity as? KuiklyRenderActivity)?.setBackRequestCallback {
+                deliverCallback(callback, mapOf("success" to 1))
+            }
+        }
+    }
+
+    private fun stopObservingBackRequests() {
+        runOnMain {
+            (activity as? KuiklyRenderActivity)?.setBackRequestCallback(null)
         }
     }
 
@@ -1253,8 +1439,6 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
         private const val TTS_BYTES_PER_FRAME = 2
         private const val STREAM_PLAYBACK_POLL_INTERVAL_MS = 20L
         private const val STREAM_PLAYBACK_DRAIN_TIMEOUT_MS = 10_000L
-        private const val ALIYUN_CHAT_COMPLETIONS_URL =
-            "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
         private const val STREAM_CONNECT_TIMEOUT_MS = 30_000
         private const val STREAM_READ_TIMEOUT_MS = 90_000
     }

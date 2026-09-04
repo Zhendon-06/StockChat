@@ -225,23 +225,10 @@ internal class InMemorySettingsRepository(
             .filterNot(SharedChatRecord::isDemo)
             .distinctBy(SharedChatRecord::id)
             .sortedByDescending(SharedChatRecord::sharedAtEpochMillis)
-        val apiKeysByProviderId = modelConfiguration.providers.associate { provider ->
-            provider.id to provider.apiKey
-        }
         val restoredModelConfiguration = storedState.modelConfiguration
             .withBuiltInDefaultProvider()
             .normalized()
-        modelConfiguration = restoredModelConfiguration.copy(
-            providers = restoredModelConfiguration.providers.map { provider ->
-                val apiKey = apiKeysByProviderId[provider.id].orEmpty()
-                val canRestoreModels = provider.kind == ModelProviderKind.DEFAULT || apiKey.isNotBlank()
-                provider.copy(
-                    apiKey = apiKey,
-                    models = provider.models.takeIf { canRestoreModels }.orEmpty(),
-                    selectedModelId = provider.selectedModelId.takeIf { canRestoreModels }.orEmpty(),
-                )
-            }
-        )
+        modelConfiguration = restoredModelConfiguration
         mutableSnapshot.value = createSnapshot()
     }
 
@@ -323,6 +310,7 @@ internal class InMemorySettingsRepository(
             provider.kind == ModelProviderKind.DEFAULT
         }
         val restoredDefault = builtInDefault.copy(
+            apiKey = existingDefault?.apiKey.orEmpty(),
             selectedModelId = existingDefault?.selectedModelId
                 ?.takeIf { modelId -> builtInDefault.models.any { model -> model.id == modelId } }
                 ?: builtInDefault.selectedModelId,

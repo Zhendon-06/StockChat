@@ -137,10 +137,27 @@
     });
 }
 
+- (void)streamChatCompletion:(NSDictionary *)args {
+    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    if (callback) {
+        callback(@{
+            @"success": @0,
+            @"errorCode": @"STREAM_UNAVAILABLE",
+            @"errorMessage": @"当前平台暂不支持原生流式请求，将使用兼容网络请求。",
+        });
+    }
+}
+
 - (void)observeDrawerGestures:(NSDictionary *)args {
 }
 
 - (void)stopObservingDrawerGestures:(NSDictionary *)args {
+}
+
+- (void)observeBackRequests:(NSDictionary *)args {
+}
+
+- (void)stopObservingBackRequests:(NSDictionary *)args {
 }
 
 - (NSString *)dateFormatter:(NSDictionary *)args {
