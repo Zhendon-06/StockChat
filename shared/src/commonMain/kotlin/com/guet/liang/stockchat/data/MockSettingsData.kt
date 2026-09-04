@@ -60,19 +60,19 @@ internal object MockSettingsData {
                 models = listOf(
                     model(
                         "qwen3-vl-flash",
-                        "千问视觉·极速",
+                        "千问·快速",
                         setOf(ModelCapability.CHAT, ModelCapability.VISION, ModelCapability.STREAMING),
                         "256K",
                     ),
                     model(
                         "qwen3-vl-plus",
-                        "千问视觉·增强",
+                        "千问·深度",
                         setOf(ModelCapability.CHAT, ModelCapability.VISION, ModelCapability.STREAMING),
                         "256K",
                     ),
                     model(
                         "qwen-vl-plus",
-                        "千问视觉·经典",
+                        "千问·增强",
                         setOf(ModelCapability.CHAT, ModelCapability.VISION, ModelCapability.STREAMING),
                         "32K",
                     ),

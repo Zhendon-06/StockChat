@@ -717,6 +717,9 @@ internal class ConversationTableArtifactPage : BasePager() {
         }
         val params = JSONObject()
         params.put(STOCK_DETAIL_SYMBOL_PARAM, symbol)
+        pageData.params.optString("qwenApiKey").trim()
+            .takeIf(String::isNotBlank)
+            ?.let { params.put("qwenApiKey", it) }
         acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
             STOCK_DETAIL_PAGE_NAME,
             params,

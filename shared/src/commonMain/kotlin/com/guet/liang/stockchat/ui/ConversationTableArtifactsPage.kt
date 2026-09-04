@@ -412,6 +412,9 @@ internal class ConversationTableArtifactsPage : BasePager() {
     private fun openArtifact(artifactId: Long) {
         val params = JSONObject()
         params.put(CONVERSATION_TABLE_ARTIFACT_ID_PARAM, artifactId.toString())
+        pageData.params.optString("qwenApiKey").trim()
+            .takeIf(String::isNotBlank)
+            ?.let { params.put("qwenApiKey", it) }
         acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
             CONVERSATION_TABLE_ARTIFACT_PAGE_NAME,
             params,

@@ -89,6 +89,205 @@ class TencentMarketResponseParserTest {
     }
 
     @Test
+    fun parsesHistoricalPointsWithDatesAndSamplesToRequestedCount() {
+        val rows = JSONArray().apply {
+            repeat(150) { index ->
+                val month = index / 30 + 1
+                val day = index % 30 + 1
+                put(
+                    JSONArray().apply {
+                        put("2026-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}")
+                        put("${100 + index}.00")
+                        put("${1000 + index}.50")
+                    }
+                )
+            }
+        }
+        val response = JSONObject().apply {
+            put("code", 0)
+            put(
+                "data",
+                JSONObject().apply {
+                    put(
+                        "sh600519",
+                        JSONObject().apply { put("qfqday", rows) },
+                    )
+                },
+            )
+        }
+
+        val points = TencentMarketResponseParser.parseHistoricalPoints(
+            response = response,
+            providerSymbol = "sh600519",
+            maxCount = 60,
+        )
+
+        assertEquals(60, points.size)
+        assertEquals(TencentHistoricalPoint("2026-01-01", 1000.5f), points.first())
+        assertEquals(TencentHistoricalPoint("2026-05-30", 1149.5f), points.last())
+        assertTrue(points.zipWithNext().all { (previous, current) -> previous.date != current.date })
+    }
+
+    @Test
+    fun parsesHistoricalPointsFromDayAndSkipsMalformedRows() {
+        val rows = JSONArray().apply {
+            put(JSONArray().apply {
+                put("2026-08-27")
+                put("10.00")
+                put("10.50")
+            })
+            put(JSONArray().apply {
+                put("2026-08-28")
+                put("10.50")
+                put("not-a-price")
+            })
+            put(JSONArray().apply {
+                put("")
+                put("10.75")
+                put("11.00")
+            })
+            put(JSONArray().apply {
+                put("2026-08-29")
+                put("11.00")
+                put("11.25")
+            })
+        }
+        val response = JSONObject().apply {
+            put("code", 0)
+            put(
+                "data",
+                JSONObject().apply {
+                    put(
+                        "sh000300",
+                        JSONObject().apply { put("day", rows) },
+                    )
+                },
+            )
+        }
+
+        val points = TencentMarketResponseParser.parseHistoricalPoints(
+            response = response,
+            providerSymbol = "sh000300",
+            maxCount = 20,
+        )
+
+        assertEquals(
+            listOf(
+                TencentHistoricalPoint("2026-08-27", 10.5f),
+                TencentHistoricalPoint("2026-08-29", 11.25f),
+            ),
+            points,
+        )
+    }
+
+    @Test
+    fun ordersHistoricalPointsAscendingAndRemovesDuplicateDates() {
+        val rows = JSONArray().apply {
+            put(JSONArray().apply {
+                put("2026/08/29")
+                put("11.00")
+                put("11.25")
+            })
+            put(JSONArray().apply {
+                put("2026-08-28")
+                put("10.50")
+                put("10.75")
+            })
+            put(JSONArray().apply {
+                put("2026-08-29")
+                put("11.00")
+                put("11.30")
+            })
+        }
+        val response = JSONObject().apply {
+            put("code", 0)
+            put(
+                "data",
+                JSONObject().apply {
+                    put(
+                        "sh600519",
+                        JSONObject().apply { put("qfqday", rows) },
+                    )
+                },
+            )
+        }
+
+        val points = TencentMarketResponseParser.parseHistoricalPoints(
+            response = response,
+            providerSymbol = "sh600519",
+            maxCount = 20,
+        )
+
+        assertEquals(
+            listOf(
+                TencentHistoricalPoint("2026-08-28", 10.75f),
+                TencentHistoricalPoint("2026-08-29", 11.25f),
+            ),
+            points,
+        )
+    }
+
+    @Test
+    fun fallsBackToDayWhenQfqdayIsEmptyAndSkipsNonPositiveOrNonFinitePrices() {
+        val dayRows = JSONArray().apply {
+            put(JSONArray().apply {
+                put("2026-08-27")
+                put("10.00")
+                put("10.50")
+            })
+            put(JSONArray().apply {
+                put("2026-08-28")
+                put("10.50")
+                put("0")
+            })
+            put(JSONArray().apply {
+                put("2026-08-29")
+                put("10.50")
+                put("-1")
+            })
+            put(JSONArray().apply {
+                put("2026-08-30")
+                put("10.50")
+                put("NaN")
+            })
+            put(JSONArray().apply {
+                put("2026-08-31")
+                put("10.50")
+                put("11.25")
+            })
+        }
+        val response = JSONObject().apply {
+            put("code", 0)
+            put(
+                "data",
+                JSONObject().apply {
+                    put(
+                        "sh600519",
+                        JSONObject().apply {
+                            put("qfqday", JSONArray())
+                            put("day", dayRows)
+                        },
+                    )
+                },
+            )
+        }
+
+        val points = TencentMarketResponseParser.parseHistoricalPoints(
+            response = response,
+            providerSymbol = "sh600519",
+            maxCount = 20,
+        )
+
+        assertEquals(
+            listOf(
+                TencentHistoricalPoint("2026-08-27", 10.5f),
+                TencentHistoricalPoint("2026-08-31", 11.25f),
+            ),
+            points,
+        )
+    }
+
+    @Test
     fun decodesSearchResponse() {
         val response = "v_hint=\"sh~600519~\\u8d35\\u5dde\\u8305\\u53f0~gzmt~GP-A\";"
 
