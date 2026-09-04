@@ -194,11 +194,14 @@ internal class InMemorySettingsRepository(
             return false
         }
         val provider = modelConfiguration.providers[providerIndex]
-        if (provider.models.none { model -> model.id == modelId }) {
-            return false
-        }
         val updatedProviders = modelConfiguration.providers.toMutableList().apply {
-            this[providerIndex] = provider.copy(selectedModelId = modelId)
+            // 模型不在列表内时保留原选中模型，但仍切换当前 Provider，
+            // 避免「保存并设为当前 Provider」后 activeProviderId 不生效。
+            this[providerIndex] = if (provider.models.any { model -> model.id == modelId }) {
+                provider.copy(selectedModelId = modelId)
+            } else {
+                provider
+            }
         }
         modelConfiguration = ModelConfiguration(
             activeProviderId = providerId,
@@ -307,10 +310,11 @@ internal class InMemorySettingsRepository(
         val normalizedModels = models
             .filter { model -> model.id.isNotBlank() }
             .distinctBy(ModelOption::id)
-        require(normalizedModels.isNotEmpty()) { "Model provider must contain at least one model." }
+        // 模型列表允许为空：内置 Provider 初始不预置任何模型，
+        // 需要通过「获取可用模型」从 /models 接口拉取后再写入。
         val normalizedSelectedModelId = selectedModelId.takeIf { selectedId ->
             normalizedModels.any { model -> model.id == selectedId }
-        } ?: normalizedModels.first().id
+        } ?: normalizedModels.firstOrNull()?.id.orEmpty()
         return copy(
             displayName = displayName.trim().ifBlank { kind.displayName },
             baseUrl = baseUrl.trim().trimEnd('/'),

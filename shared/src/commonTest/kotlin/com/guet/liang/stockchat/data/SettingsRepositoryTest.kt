@@ -2,6 +2,7 @@ package com.guet.liang.stockchat.data
 
 import com.guet.liang.stockchat.model.ChatBackgroundSettings
 import com.guet.liang.stockchat.model.FontSizeSettings
+import com.guet.liang.stockchat.model.ModelOption
 import com.guet.liang.stockchat.model.ModelProviderKind
 import com.guet.liang.stockchat.model.ShareContent
 import com.guet.liang.stockchat.model.SharedChatRecord
@@ -31,6 +32,7 @@ class SettingsRepositoryTest {
                 ModelProviderKind.GLM,
                 ModelProviderKind.KIMI,
                 ModelProviderKind.MIMO,
+                ModelProviderKind.DEFAULT,
             ),
             providers.map { provider -> provider.kind }.toSet(),
         )
@@ -74,6 +76,21 @@ class SettingsRepositoryTest {
     @Test
     fun selectingModelAlsoActivatesItsProvider() {
         val repository = InMemorySettingsRepository()
+        // 内置 Provider 初始不预置模型，先写入一组真实拉取的模型再验证选择逻辑
+        val deepseek = repository.loadSnapshot().modelConfiguration.providers
+            .first { provider -> provider.kind == ModelProviderKind.DEEPSEEK }
+        repository.saveModelProvider(
+            deepseek.copy(
+                models = listOf(
+                    ModelOption(id = "deepseek-chat", displayName = "DeepSeek Chat", contextWindowLabel = "64K"),
+                    ModelOption(
+                        id = "deepseek-reasoner",
+                        displayName = "DeepSeek Reasoner",
+                        contextWindowLabel = "64K",
+                    ),
+                ),
+            ),
+        )
 
         assertTrue(repository.selectModel("deepseek", "deepseek-reasoner"))
 
@@ -83,7 +100,23 @@ class SettingsRepositoryTest {
             "deepseek-reasoner",
             configuration.providers.first { provider -> provider.id == "deepseek" }.selectedModelId,
         )
-        assertFalse(repository.selectModel("deepseek", "missing-model"))
+        // 模型不存在时仍会激活 Provider，并保留原有的选中模型
+        assertTrue(repository.selectModel("kimi", "missing-model"))
+        val reactivated = repository.loadSnapshot().modelConfiguration
+        assertEquals("kimi", reactivated.activeProviderId)
+        assertFalse(repository.selectModel("missing-provider", "deepseek-reasoner"))
+    }
+
+    @Test
+    fun builtInProvidersStartWithEmptyModelCatalogs() {
+        val providers = InMemorySettingsRepository()
+            .loadSnapshot()
+            .modelConfiguration
+            .providers
+
+        assertTrue(providers.filter { provider -> provider.kind != ModelProviderKind.DEFAULT }
+            .all { provider -> provider.models.isEmpty() })
+        assertEquals(3, providers.first { provider -> provider.kind == ModelProviderKind.DEFAULT }.models.size)
     }
 
     @Test

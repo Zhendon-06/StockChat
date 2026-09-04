@@ -16,6 +16,8 @@ import com.guet.liang.stockchat.data.ConversationTableArtifactRepository
 import com.guet.liang.stockchat.data.MimoSpeechRecognitionService
 import com.guet.liang.stockchat.data.MimoSpeechSynthesisService
 import com.guet.liang.stockchat.data.MimoVoiceApiConfig
+import com.guet.liang.stockchat.data.ModelCatalogResult
+import com.guet.liang.stockchat.data.ModelCatalogService
 import com.guet.liang.stockchat.data.StockChatDataSource
 import com.guet.liang.stockchat.data.StockChatShareContentBuilder
 import com.guet.liang.stockchat.data.StockChatSettingsStore
@@ -37,6 +39,7 @@ import com.guet.liang.stockchat.model.SpeechSynthesisResult
 import com.guet.liang.stockchat.model.StockQuote
 import com.guet.liang.stockchat.model.TodayMarketUiState
 import com.guet.liang.stockchat.model.VoiceInputState
+import com.guet.liang.stockchat.ui.settings.MODEL_CONFIGURATION_PAGE_NAME
 import com.guet.liang.stockchat.ui.settings.SETTINGS_PAGE_NAME
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.base.Animation
@@ -118,7 +121,10 @@ private data class ChatModelOption(
     val multiplier: String,
     val capabilities: Set<ModelCapability> = setOf(ModelCapability.CHAT),
     val iconAsset: String = "tongyi-qianwen.png",
+    val isLocked: Boolean = false,
 )
+
+private const val DEFAULT_CHAT_MODEL_ICON_ASSET = "tongyi-qianwen.png"
 
 private val CHAT_MODEL_OPTIONS = listOf(
     ChatModelOption(
@@ -127,6 +133,7 @@ private val CHAT_MODEL_OPTIONS = listOf(
         description = "均衡，适合股票问答与综合分析",
         badge = "默认",
         multiplier = "1.00x",
+        isLocked = true,
     ),
     ChatModelOption(
         id = "qwen-max",
@@ -205,6 +212,10 @@ internal class StockChatPage : BasePager() {
     private var selectedModelId by observable(DEFAULT_CHAT_MODEL_ID)
     private var activeModelProviderId by observable("")
     private var chatModelOptions by observable(CHAT_MODEL_OPTIONS)
+    // drawer 打开时从当前 Provider 拉取真实模型列表的状态
+    private var drawerModelsLoading by observable(false)
+    private var drawerModelsError by observable("")
+    private var lastDrawerModelFetch = ""
     private var imagePickerOpen by observable(false)
     private var selectedImageCount by observable(0)
     private var messages by observableList<ChatMessage>()
@@ -241,6 +252,7 @@ internal class StockChatPage : BasePager() {
     private lateinit var tableArtifactRepository: ConversationTableArtifactRepository
     private lateinit var mindMapArtifactRepository: ConversationMindMapArtifactRepository
     private lateinit var todayMarketDataSource: TodayMarketDataSource
+    private lateinit var modelCatalogService: ModelCatalogService
 
     private lateinit var inputRef: ViewRef<TextAreaView>
     private lateinit var renameInputRef: ViewRef<TextAreaView>
@@ -256,6 +268,7 @@ internal class StockChatPage : BasePager() {
             apiKey = pageData.params.optString("mimoVoiceApiKey").trim(),
         )
         networkModule = acquireModule(NetworkModule.MODULE_NAME)
+        modelCatalogService = ModelCatalogService(networkModule)
         chatHistoryRepository = ChatHistoryDatabase.repository()
         tableArtifactRepository = ChatHistoryDatabase.artifactRepository()
         mindMapArtifactRepository = ChatHistoryDatabase.mindMapArtifactRepository()
@@ -2317,16 +2330,24 @@ internal class StockChatPage : BasePager() {
                                 attr {
                                     size(metrics.dp(18f), metrics.dp(18f))
                                     resizeContain()
-                                    src(ImageUri.commonAssets(ctx.selectedModel().iconAsset))
+                                    src(ImageUri.commonAssets(ctx.composerModelIconAsset()))
                                 }
                             }
                         }
-                        Text {
+                        View {
                             attr {
-                                text(ctx.selectedModel().displayName)
-                                fontSize(metrics.dp(14f))
-                                fontWeightBold()
-                                color(StockChatTheme.textPrimary)
+                                flex(1f)
+                                flexDirectionRow()
+                                alignItemsCenter()
+                            }
+                            Text {
+                                attr {
+                                    text(ctx.composerModelDisplayName())
+                                    fontSize(metrics.dp(14f))
+                                    fontWeightBold()
+                                    color(StockChatTheme.textPrimary)
+                                    lines(1)
+                                }
                             }
                         }
                     }
@@ -2673,16 +2694,167 @@ internal class StockChatPage : BasePager() {
                         marginBottom(metrics.dp(10f))
                     }
                 }
-                ctx.chatModelOptions.forEach { option ->
-                    ctx.ModelMenuItem(this, option)
+                Scroller {
+                    attr {
+                        flex(1f)
+                        showScrollerIndicator(false)
+                        bouncesEnable(true)
+                    }
+                    vif({ ctx.drawerModelsLoading }) {
+                        ctx.DrawerModelNotice(
+                            this,
+                            message = "正在从 Provider 拉取可用模型…",
+                        )
+                    }
+                    vif({
+                        !ctx.drawerModelsLoading && ctx.drawerModelsError.isNotBlank()
+                    }) {
+                        ctx.DrawerModelNotice(
+                            this,
+                            message = ctx.drawerModelsError,
+                            actionText = "重试",
+                            onAction = { ctx.retryDrawerModels() },
+                        )
+                    }
+                    vif({
+                        !ctx.drawerModelsLoading &&
+                            ctx.drawerModelsError.isBlank() &&
+                            ctx.chatModelOptions.isEmpty()
+                    }) {
+                        ctx.DrawerModelEmptyState(this)
+                    }
+                    ctx.chatModelOptions.forEach { option ->
+                        ctx.ModelMenuItem(this, option)
+                    }
+                    Text {
+                        attr {
+                            text("模型选择会同步到设置，并影响后续回答")
+                            fontSize(metrics.dp(11f))
+                            color(StockChatTheme.textTertiary)
+                            textAlignCenter()
+                            marginTop(metrics.dp(8f))
+                            marginBottom(metrics.dp(8f))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 模型面板内的状态条：拉取中 / 拉取失败（可重试）
+    private fun DrawerModelNotice(
+        container: ViewContainer<*, *>,
+        message: String,
+        actionText: String = "",
+        onAction: (() -> Unit)? = null,
+    ) {
+        val ctx = this
+        val metrics = ctx.layoutMetrics
+        with(container) {
+            View {
+                attr {
+                    marginTop(metrics.dp(6f))
+                    marginBottom(metrics.dp(6f))
+                    borderRadius(metrics.dp(14f))
+                    backgroundColor(StockChatTheme.surfaceSoft)
+                    padding(
+                        top = metrics.dp(12f),
+                        left = metrics.dp(14f),
+                        right = metrics.dp(14f),
+                        bottom = metrics.dp(12f),
+                    )
+                    flexDirectionRow()
+                    alignItemsCenter()
                 }
                 Text {
                     attr {
-                        text("模型选择会同步到设置，并影响后续回答")
-                        fontSize(metrics.dp(11f))
-                        color(StockChatTheme.textTertiary)
+                        text(message)
+                        fontSize(metrics.dp(12f))
+                        lineHeight(metrics.dp(18f))
+                        color(StockChatTheme.textSecondary)
+                        flex(1f)
+                    }
+                }
+                if (onAction != null) {
+                    View {
+                        attr {
+                            marginLeft(metrics.dp(10f))
+                            height(metrics.dp(30f))
+                            paddingLeft(metrics.dp(12f))
+                            paddingRight(metrics.dp(12f))
+                            borderRadius(metrics.dp(15f))
+                            backgroundColor(StockChatTheme.accentSoft)
+                            allCenter()
+                        }
+                        event {
+                            click { onAction() }
+                        }
+                        Text {
+                            attr {
+                                text(actionText)
+                                fontSize(metrics.dp(12f))
+                                fontWeightBold()
+                                color(StockChatTheme.accent)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 模型面板空态：当前 Provider 还没有拉取到任何模型时引导去模型配置页
+    private fun DrawerModelEmptyState(container: ViewContainer<*, *>) {
+        val ctx = this
+        val metrics = ctx.layoutMetrics
+        with(container) {
+            View {
+                attr {
+                    marginTop(metrics.dp(6f))
+                    borderRadius(metrics.dp(18f))
+                    backgroundColor(StockChatTheme.surfaceSoft)
+                    padding(all = metrics.dp(18f))
+                    alignItemsCenter()
+                }
+                Text {
+                    attr {
+                        text("该 Provider 暂无可用模型列表")
+                        fontSize(metrics.dp(15f))
+                        fontWeightBold()
+                        color(StockChatTheme.textPrimary)
                         textAlignCenter()
-                        marginTop(metrics.dp(8f))
+                    }
+                }
+                Text {
+                    attr {
+                        text("在「模型配置」页填写 API Key 并获取可用模型后，会同步显示在这里")
+                        fontSize(metrics.dp(12f))
+                        lineHeight(metrics.dp(18f))
+                        color(StockChatTheme.textSecondary)
+                        textAlignCenter()
+                        marginTop(metrics.dp(6f))
+                    }
+                }
+                View {
+                    attr {
+                        marginTop(metrics.dp(12f))
+                        height(metrics.dp(36f))
+                        paddingLeft(metrics.dp(16f))
+                        paddingRight(metrics.dp(16f))
+                        borderRadius(metrics.dp(18f))
+                        backgroundColor(StockChatTheme.accent)
+                        allCenter()
+                    }
+                    event {
+                        click { ctx.openModelConfiguration() }
+                    }
+                    Text {
+                        attr {
+                            text("前往模型配置")
+                            fontSize(metrics.dp(13f))
+                            fontWeightBold()
+                            color(Color.WHITE)
+                        }
                     }
                 }
             }
@@ -2906,6 +3078,15 @@ internal class StockChatPage : BasePager() {
                                 color(StockChatTheme.textPrimary)
                             }
                         }
+                        vif({ option.isLocked }) {
+                            Text {
+                                attr {
+                                    text("🔒")
+                                    fontSize(metrics.dp(12f))
+                                    marginLeft(metrics.dp(6f))
+                                }
+                            }
+                        }
                         View {
                             attr {
                                 backgroundColor(Color(0xFFDDF5EC))
@@ -2924,14 +3105,6 @@ internal class StockChatPage : BasePager() {
                                     fontSize(metrics.dp(11f))
                                     color(StockChatTheme.accent)
                                 }
-                            }
-                        }
-                        Text {
-                            attr {
-                                text(option.multiplier)
-                                fontSize(metrics.dp(13f))
-                                color(StockChatTheme.textTertiary)
-                                marginLeft(metrics.dp(7f))
                             }
                         }
                     }
@@ -3070,6 +3243,9 @@ internal class StockChatPage : BasePager() {
         // 每次打开面板前都从最新 settings 重新构建 provider / model 选项，
         // 即便用户在「模型配置」页里切换了当前 provider 也能即时同步
         configureChatProvider()
+        // 面板展示的模型必须与设置中拉取到的数据一致：
+        // 有 Key 时实时从 Provider 的 /models 接口拉取，列表为空时强制重试
+        fetchDrawerModels(force = currentProviderHasNoModels())
         modelMenuOpen = true
     }
 
@@ -3095,17 +3271,43 @@ internal class StockChatPage : BasePager() {
             ?: CHAT_MODEL_OPTIONS.first()
     }
 
+    // composer 上的模型展示：未拉取到模型时显示当前 Provider 名称，
+    // 避免向用户展示内置演示模型名
+    private fun composerModelDisplayName(): String {
+        chatModelOptions.firstOrNull { it.id == selectedModelId }?.let { return it.displayName }
+        chatModelOptions.firstOrNull()?.let { return it.displayName }
+        val configuration = StockChatSettingsStore.repository.loadSnapshot().modelConfiguration
+        return configuration.providers
+            .firstOrNull { provider -> provider.id == activeModelProviderId }
+            ?.displayName
+            ?: "选择模型"
+    }
+
+    private fun composerModelIconAsset(): String {
+        chatModelOptions.firstOrNull { it.id == selectedModelId }?.let { return it.iconAsset }
+        chatModelOptions.firstOrNull()?.let { return it.iconAsset }
+        val configuration = StockChatSettingsStore.repository.loadSnapshot().modelConfiguration
+        val kind = configuration.providers
+            .firstOrNull { provider -> provider.id == activeModelProviderId }
+            ?.kind
+        return kind?.let { providerIconAsset(it) } ?: DEFAULT_CHAT_MODEL_ICON_ASSET
+    }
+
     private fun configureChatProvider() {
         val configuration = StockChatSettingsStore.repository.loadSnapshot().modelConfiguration
         val provider = configuration.providers.firstOrNull { candidate ->
             candidate.id == configuration.activeProviderId
         }
-        val options = provider?.toChatModelOptions().orEmpty()
-        chatModelOptions = options.ifEmpty { CHAT_MODEL_OPTIONS }
+        // 内置模型始终可用；Provider 模型在用户配置并拉取后追加展示。
+        val options = buildList {
+            addAll(CHAT_MODEL_OPTIONS.take(1))
+            addAll(provider?.toChatModelOptions().orEmpty())
+        }.distinctBy(ChatModelOption::id)
+        chatModelOptions = options
         activeModelProviderId = provider?.id.orEmpty()
         selectedModelId = provider?.selectedModelId
             ?.takeIf { modelId -> chatModelOptions.any { option -> option.id == modelId } }
-            ?: chatModelOptions.first().id
+            ?: DEFAULT_CHAT_MODEL_ID
 
         val routeApiKey = pageData.params.optString("qwenApiKey").trim()
         val providerApiKey = when {
@@ -3138,6 +3340,90 @@ internal class StockChatPage : BasePager() {
         )
     }
 
+    private fun currentProviderHasNoModels(): Boolean {
+        val configuration = StockChatSettingsStore.repository.loadSnapshot().modelConfiguration
+        return configuration.providers
+            .firstOrNull { provider -> provider.id == configuration.activeProviderId }
+            ?.models
+            .isNullOrEmpty()
+    }
+
+    /**
+     * 打开模型面板时从当前 Provider 的 /models 接口拉取真实模型列表，
+     * 成功后写回设置存储并刷新面板选项，保证 drawer 与「模型配置」页拉取到的数据一致。
+     */
+    private fun fetchDrawerModels(force: Boolean = false) {
+        if (!::modelCatalogService.isInitialized) {
+            return
+        }
+        drawerModelsError = ""
+        val configuration = StockChatSettingsStore.repository.loadSnapshot().modelConfiguration
+        val provider = configuration.providers.firstOrNull { candidate ->
+            candidate.id == configuration.activeProviderId
+        }
+        if (provider == null) {
+            drawerModelsLoading = false
+            return
+        }
+        val routeApiKey = pageData.params.optString("qwenApiKey").trim()
+        val requestKey = when {
+            provider.apiKey.isNotBlank() -> provider.apiKey
+            provider.kind == ModelProviderKind.ALIYUN -> routeApiKey
+            else -> ""
+        }
+        val requestBaseUrl = provider.baseUrl.trim().trimEnd('/')
+        if (requestKey.isBlank() || requestBaseUrl.isBlank()) {
+            // 无 Key / 无地址时不发起请求，由面板的空态提示引导去模型配置页
+            drawerModelsLoading = false
+            return
+        }
+        val fingerprint = "${provider.id}|$requestBaseUrl|$requestKey"
+        if (drawerModelsLoading || (!force && fingerprint == lastDrawerModelFetch)) {
+            return
+        }
+        lastDrawerModelFetch = fingerprint
+        drawerModelsLoading = true
+        modelCatalogService.load(requestBaseUrl, requestKey) { result ->
+            drawerModelsLoading = false
+            when (result) {
+                is ModelCatalogResult.Failure -> {
+                    // 允许下次打开面板时重试
+                    lastDrawerModelFetch = ""
+                    drawerModelsError = result.message
+                }
+                is ModelCatalogResult.Success -> {
+                    if (result.models.isNotEmpty()) {
+                        val nextSelectedModelId = result.models
+                            .firstOrNull { model -> model.id == provider.selectedModelId }
+                            ?.id
+                            .orEmpty()
+                        StockChatSettingsStore.repository.saveModelProvider(
+                            provider.copy(
+                                models = result.models,
+                                selectedModelId = nextSelectedModelId,
+                            ),
+                        )
+                        // 重新从设置构建面板选项与聊天数据源
+                        configureChatProvider()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun retryDrawerModels() {
+        lastDrawerModelFetch = ""
+        fetchDrawerModels(force = true)
+    }
+
+    private fun openModelConfiguration() {
+        closeModelMenu()
+        acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
+            MODEL_CONFIGURATION_PAGE_NAME,
+            JSONObject(),
+        )
+    }
+
     private fun applySavedAppearance() {
         StockChatTheme.applyAppearance(
             appearance = StockChatSettingsStore.repository.loadSnapshot().appearance,
@@ -3167,6 +3453,7 @@ internal class StockChatPage : BasePager() {
     }
 
     private fun providerIconAsset(kind: ModelProviderKind): String = when (kind) {
+        ModelProviderKind.DEFAULT -> "stockchat_app_icon.png"
         ModelProviderKind.ALIYUN -> "tongyi-qianwen.png"
         ModelProviderKind.DEEPSEEK -> "deepseek.png"
         ModelProviderKind.GLM -> "glm.png"
