@@ -917,6 +917,23 @@ internal fun ViewContainer<*, *>.MarketQuoteCard(
             }
             TrendSparkline(quote, 102f * scale, 48f * scale)
         }
+        View {
+            attr {
+                marginTop(11f * scale)
+                padding(top = 9f * scale, left = 10f * scale, bottom = 9f * scale, right = 10f * scale)
+                borderRadius(11f * scale)
+                backgroundColor(StockChatTheme.accentSoft)
+            }
+            Text {
+                attr {
+                    text("AI 观察 · ${quote.aiInsight.ifBlank { quote.summary }}")
+                    fontSize(11f * scale)
+                    lineHeight(16f * scale)
+                    color(StockChatTheme.textSecondary)
+                    lines(2)
+                }
+            }
+        }
         Text {
             attr {
                 text(quote.updatedAt)

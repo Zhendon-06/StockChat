@@ -164,6 +164,7 @@ internal class StockChatPage : BasePager() {
     // 回落任务代次：键盘在回落窗口内再次弹起又收起时，作废旧定时器防止提前解冻
     private var dockSettleGeneration = 0
     private var inputText by observable("")
+    private var prefillQuestionConsumed = false
     // 输入内容折行后的行数（估算，封顶 MAX_INPUT_LINES），驱动输入框与面板同步增高；
     // 超出封顶后 TextArea 自身高度不再增长，交由原生多行输入框的内部滚动查看之前内容
     private var inputLineCount by observable(1)
@@ -287,6 +288,26 @@ internal class StockChatPage : BasePager() {
         observeBackRequests()
         configureChatProvider()
         refreshRecentSessions()
+        applyPrefillQuestionIfNeeded()
+    }
+
+    private fun applyPrefillQuestionIfNeeded() {
+        if (prefillQuestionConsumed) {
+            return
+        }
+        val prefillQuestion = pageData.params.optString("prefillQuestion").trim()
+        if (prefillQuestion.isBlank()) {
+            return
+        }
+        prefillQuestionConsumed = true
+        inputText = prefillQuestion.take(300)
+        composerExpanded = true
+        updateInputLineMetrics(inputText)
+        setTimeout(0) {
+            if (::inputRef.isInitialized) {
+                inputRef.view?.setText(inputText)
+            }
+        }
     }
 
     private fun observeBackRequests() {
@@ -3651,7 +3672,7 @@ internal class StockChatPage : BasePager() {
 
     private fun providerIconAsset(kind: ModelProviderKind): String = when (kind) {
         ModelProviderKind.DEFAULT -> "stockchat_app_icon.png"
-        ModelProviderKind.ALIYUN -> "stockchat_app_icon.png"
+        ModelProviderKind.ALIYUN -> "tongyi-qianwen.png"
         ModelProviderKind.DEEPSEEK -> "deepseek.png"
         ModelProviderKind.GLM -> "glm.png"
         ModelProviderKind.KIMI -> "kimi.png"

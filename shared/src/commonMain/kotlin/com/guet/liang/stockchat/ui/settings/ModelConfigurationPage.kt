@@ -1254,7 +1254,7 @@ internal class ModelConfigurationPage : BasePager() {
 
     private fun providerAsset(kind: ModelProviderKind): String = when (kind) {
         ModelProviderKind.DEFAULT -> "stockchat_app_icon.png"
-        ModelProviderKind.ALIYUN -> "stockchat_app_icon.png"
+        ModelProviderKind.ALIYUN -> "tongyi-qianwen.png"
         ModelProviderKind.DEEPSEEK -> "deepseek.png"
         ModelProviderKind.GLM -> "glm.png"
         ModelProviderKind.KIMI -> "kimi.png"

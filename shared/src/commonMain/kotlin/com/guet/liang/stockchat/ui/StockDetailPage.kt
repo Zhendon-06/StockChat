@@ -55,6 +55,14 @@ private const val PREDICTION_HISTORY_COUNT = 120
 private const val DEFAULT_CHAT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 private const val STOCK_PREDICTION_LOG_TAG = "StockPrediction"
 
+private enum class DetailInsightFocus(
+    val label: String,
+) {
+    TREND("走势解读"),
+    PREDICTION("预测依据"),
+    RISK("风险提醒"),
+}
+
 private fun scaledFontSize(baseSize: Float): Float = baseSize * StockChatTheme.fontScale
 
 private fun axisLabel(value: Float): String {
@@ -87,6 +95,8 @@ internal class StockDetailPage : BasePager() {
     private var chartShowingPrediction by observable(false)
     private var chartScale by observable(1f)
     private var chartOffset by observable(0f)
+    private var selectedChartPointIndex by observable(-1)
+    private var insightFocus by observable(DetailInsightFocus.TREND)
     private var symbol = ""
     private var loadToken = 0
     private var predictionToken = 0
@@ -561,15 +571,9 @@ internal class StockDetailPage : BasePager() {
                     }
                 }
             }
-            ctx.PredictionStatusCard(this, quote)
-            ctx.InsightCard(this, "行情摘要", quote.summary, false)
             val prediction = (ctx.predictionState as? PredictionUiState.Content)?.prediction
-            ctx.InsightCard(
-                this,
-                if (prediction == null) "行情规则摘要" else "AI 预测解读",
-                prediction?.rationale ?: quote.aiInsight,
-                prediction != null,
-            )
+            ctx.LinkedInsightCard(this, quote, prediction)
+            ctx.PredictionStatusCard(this, quote)
             View {
                 attr {
                     width(pagerData.pageViewWidth - 36f)
@@ -616,6 +620,7 @@ internal class StockDetailPage : BasePager() {
                 capture(CaptureRule.pan(CaptureRuleDirection.HORIZONTAL))
             }
             event {
+                click { params -> ctx.handleChartTap(params.x, quote) }
                 pan { params -> ctx.handleChartPan(params) }
             }
             Canvas({
@@ -844,10 +849,63 @@ internal class StockDetailPage : BasePager() {
                     color = if (quote.isPositive) StockChatTheme.positive else StockChatTheme.negative,
                 )
             }
+            val selectedIndex = ctx.selectedChartPointIndex
+            if (selectedIndex in points.indices) {
+                val selectedX = xFor(selectedIndex)
+                val selectedY = yFor(points[selectedIndex])
+                context.beginPath()
+                context.moveTo(selectedX, plotTop)
+                context.lineTo(selectedX, plotBottom)
+                context.lineWidth(1f)
+                context.strokeStyle(Color(0x668A9C95))
+                context.stroke()
+                context.beginPath()
+                context.arc(selectedX, selectedY, 5f, 0f, 6.2831855f, false)
+                context.fillStyle(StockChatTheme.accent)
+                context.fill()
+                context.beginPath()
+                context.arc(selectedX, selectedY, 7f, 0f, 6.2831855f, false)
+                context.lineWidth(2f)
+                context.strokeStyle(Color.WHITE)
+                context.stroke()
+            }
             context.restore()
             }
         }
         }
+    }
+
+    private fun handleChartTap(x: Float, quote: StockQuote) {
+        val points = chartPoints(quote)
+        val viewport = chartViewportWidth
+        if (points.size < 2 || viewport <= 0f) {
+            return
+        }
+        val plotWidth = (viewport - CHART_AXIS_WIDTH - CHART_RIGHT_INSET).coerceAtLeast(1f)
+        val contentWidth = plotWidth * chartScale
+        val position = ((x - CHART_AXIS_WIDTH - chartOffset) / contentWidth)
+            .coerceIn(0f, 1f)
+        selectedChartPointIndex = round(position * points.lastIndex).toInt()
+        insightFocus = DetailInsightFocus.TREND
+    }
+
+    private fun chartPoints(quote: StockQuote): List<Float> {
+        val predictionContent = predictionState as? PredictionUiState.Content
+        val showingPrediction = chartShowingPrediction && predictionContent != null
+        val history = if (showingPrediction) {
+            predictionContent?.history.orEmpty().map(StockPredictionHistoryPoint::close)
+                .ifEmpty { quote.trendPoints }
+        } else {
+            quote.trendPoints
+        }
+        val predicted = if (showingPrediction) {
+            predictionContent?.prediction?.forecastPoints
+                ?.map(StockPredictionPoint::predictedPrice)
+                .orEmpty()
+        } else {
+            emptyList()
+        }
+        return history + predicted
     }
 
     private fun isShowingPrediction(): Boolean {
@@ -873,12 +931,14 @@ internal class StockDetailPage : BasePager() {
             chartShowingPrediction = false
             chartOffset = 0f
             chartScale = 1f
+            selectedChartPointIndex = -1
             return
         }
         if (predictionState is PredictionUiState.Content) {
             chartShowingPrediction = true
             chartOffset = 0f
             chartScale = 1f
+            selectedChartPointIndex = -1
             return
         }
         requestPrediction(quote)
@@ -1149,6 +1209,7 @@ internal class StockDetailPage : BasePager() {
         chartShowingPrediction = false
         chartScale = 1f
         chartOffset = 0f
+        selectedChartPointIndex = -1
         stockPredictionUiLog(
             "ui_request_started symbol=$symbol quoteName=${quote.name} " +
                 "quotePrice=${quote.price} quoteUpdatedAt=${quote.updatedAt}"
@@ -1310,12 +1371,19 @@ internal class StockDetailPage : BasePager() {
         }
     }
 
-    private fun InsightCard(
+    private data class SelectedChartPoint(
+        val label: String,
+        val price: String,
+        val value: Float,
+        val index: Int,
+    )
+
+    private fun LinkedInsightCard(
         container: ViewContainer<*, *>,
-        title: String,
-        content: String,
-        highlighted: Boolean,
+        quote: StockQuote,
+        prediction: StockPrediction?,
     ) {
+        val ctx = this
         with(container) {
         View {
             attr {
@@ -1324,14 +1392,8 @@ internal class StockDetailPage : BasePager() {
                 marginTop(14f)
                 padding(top = 17f, left = 16f, bottom = 17f, right = 16f)
                 borderRadius(20f)
-                backgroundColor(if (highlighted) StockChatTheme.accentSoft else StockChatTheme.surface)
-                border(
-                    Border(
-                        1f,
-                        BorderStyle.SOLID,
-                        if (highlighted) Color(0xFFC8EBDD) else StockChatTheme.border,
-                    )
-                )
+                backgroundColor(StockChatTheme.accentSoft)
+                border(Border(1f, BorderStyle.SOLID, Color(0xFFC8EBDD)))
             }
             View {
                 attr {
@@ -1342,13 +1404,13 @@ internal class StockDetailPage : BasePager() {
                     attr {
                         size(8f, 8f)
                         borderRadius(4f)
-                        backgroundColor(if (highlighted) StockChatTheme.accent else StockChatTheme.textTertiary)
+                        backgroundColor(StockChatTheme.accent)
                         marginRight(9f)
                     }
                 }
                 Text {
                     attr {
-                        text(title)
+                        text("AI 联动解读")
                         fontSize(scaledFontSize(16f))
                         fontWeightBold()
                         color(StockChatTheme.textPrimary)
@@ -1357,15 +1419,175 @@ internal class StockDetailPage : BasePager() {
             }
             Text {
                 attr {
-                    text(content)
+                    val selectedPoint = ctx.selectedChartPoint(quote)
+                    text(
+                        if (selectedPoint == null) {
+                            "点击走势图选中节点，AI 会把该点位与整体行情放在一起解释。"
+                        } else {
+                            "已选 ${selectedPoint.label} · ${selectedPoint.price}"
+                        }
+                    )
+                    fontSize(scaledFontSize(12f))
+                    color(StockChatTheme.textSecondary)
+                    marginTop(7f)
+                }
+            }
+            View {
+                attr {
+                    flexDirectionRow()
+                    marginTop(12f)
+                }
+                DetailInsightFocus.values().forEach { focus ->
+                    View {
+                        attr {
+                            height(30f)
+                            borderRadius(15f)
+                            padding(left = 11f, right = 11f)
+                            marginRight(if (focus == DetailInsightFocus.RISK) 0f else 7f)
+                            backgroundColor(
+                                if (ctx.insightFocus == focus) {
+                                    StockChatTheme.accent
+                                } else {
+                                    StockChatTheme.surface
+                                }
+                            )
+                            allCenter()
+                        }
+                        event {
+                            click { ctx.insightFocus = focus }
+                        }
+                        Text {
+                            attr {
+                                text(focus.label)
+                                fontSize(scaledFontSize(12f))
+                                fontWeightMedium()
+                                color(
+                                    if (ctx.insightFocus == focus) {
+                                        Color.WHITE
+                                    } else {
+                                        StockChatTheme.textSecondary
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            Text {
+                attr {
+                    text(
+                        ctx.linkedInsightText(
+                            quote,
+                            prediction,
+                            ctx.selectedChartPoint(quote),
+                        )
+                    )
                     fontSize(scaledFontSize(14f))
                     lineHeight(scaledFontSize(22f))
                     color(StockChatTheme.textSecondary)
                     marginTop(11f)
                 }
             }
+            View {
+                attr {
+                    height(36f)
+                    borderRadius(18f)
+                    padding(left = 14f, right = 14f)
+                    marginTop(13f)
+                    backgroundColor(StockChatTheme.surface)
+                    border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
+                    allCenter()
+                    alignSelfFlexStart()
+                }
+                event { click { ctx.openChatWithStock(quote, ctx.selectedChartPoint(quote)) } }
+                Text {
+                    attr {
+                        text("围绕此标的继续追问 AI  ›")
+                        fontSize(scaledFontSize(12f))
+                        fontWeightMedium()
+                        color(StockChatTheme.accent)
+                    }
+                }
+            }
         }
         }
+    }
+
+    private fun selectedChartPoint(quote: StockQuote): SelectedChartPoint? {
+        val index = selectedChartPointIndex
+        val points = chartPoints(quote)
+        if (index !in points.indices) {
+            return null
+        }
+        val predictionContent = predictionState as? PredictionUiState.Content
+        val historyCount = predictionContent?.history?.size ?: quote.trendPoints.size
+        val label = if (chartShowingPrediction && index >= historyCount) {
+            "模型区间 ${index - historyCount + 1}"
+        } else {
+            "历史节点 ${index + 1}"
+        }
+        return SelectedChartPoint(
+            label = label,
+            price = axisLabel(points[index]),
+            value = points[index],
+            index = index,
+        )
+    }
+
+    private fun linkedInsightText(
+        quote: StockQuote,
+        prediction: StockPrediction?,
+        selectedPoint: SelectedChartPoint?,
+    ): String {
+        return when (insightFocus) {
+            DetailInsightFocus.TREND -> {
+                if (selectedPoint == null) {
+                    "当前行情${if (quote.isPositive) "偏强" else "偏弱"}，${quote.change}（${quote.changePercent}）。先点击走势图中的节点，查看该位置相对近期高低点的变化，再结合成交量、基本面和消息面验证。"
+                } else {
+                    val points = chartPoints(quote)
+                    val minimum = points.minOrNull() ?: selectedPoint.value
+                    val maximum = points.maxOrNull() ?: selectedPoint.value
+                    val range = (maximum - minimum).takeIf { it > 0f } ?: 1f
+                    val position = when {
+                        selectedPoint.value >= minimum + range * 0.66f -> "高位"
+                        selectedPoint.value <= minimum + range * 0.34f -> "低位"
+                        else -> "中部"
+                    }
+                    val neighbor = points.getOrNull(selectedPoint.index - 1)
+                    val movement = when {
+                        neighbor == null -> "位于走势起点"
+                        selectedPoint.value > neighbor -> "较前一点上行"
+                        selectedPoint.value < neighbor -> "较前一点回落"
+                        else -> "与前一点基本持平"
+                    }
+                    "选中${selectedPoint.label}，价格约 ${selectedPoint.price}，处于近段走势${position}，${movement}。结合当前涨跌${quote.changePercent}，这个节点更适合用来观察趋势是否延续，不宜只凭单点下结论。"
+                }
+            }
+            DetailInsightFocus.PREDICTION -> prediction?.rationale
+                ?: "点击走势图右上角“AI 预测”，模型会先读取真实历史行情；只有成功返回并通过校验后，才会显示虚线预测区间。"
+            DetailInsightFocus.RISK -> {
+                val base = quote.summary.ifBlank { quote.aiInsight }
+                "$base\n\n风险提醒：这是基于当前快照的演示解读，价格和结论会随数据更新；请同时核对估值、公告和自身风险承受能力。"
+            }
+        }
+    }
+
+    private fun openChatWithStock(
+        quote: StockQuote,
+        selectedPoint: SelectedChartPoint?,
+    ) {
+        val pointContext = selectedPoint?.let {
+            "我在走势图中选中了${it.label}，价格约 ${it.price}。"
+        }.orEmpty()
+        val params = JSONObject()
+        params.put(
+            "prefillQuestion",
+            "请结合${quote.name}（${quote.symbol}）当前价格 ${quote.price}（${quote.change}，${quote.changePercent}，数据时间 ${quote.updatedAt}）、走势图和 AI 解读，${pointContext}说明关键观察点、风险与后续验证条件。",
+        )
+        pageData.params.optString("qwenApiKey").trim()
+            .takeIf(String::isNotBlank)
+            ?.let { params.put("qwenApiKey", it) }
+        acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage("router", params)
     }
 
     private fun loadDetail() {
@@ -1375,6 +1597,8 @@ internal class StockDetailPage : BasePager() {
         chartShowingPrediction = false
         chartScale = 1f
         chartOffset = 0f
+        selectedChartPointIndex = -1
+        insightFocus = DetailInsightFocus.TREND
         loadToken += 1
         val currentLoadToken = loadToken
         marketDataService.loadDetail(symbol) result@{ result ->
