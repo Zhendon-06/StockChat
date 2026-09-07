@@ -27,6 +27,7 @@ import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.base.attr.CaptureRule
 import com.tencent.kuikly.core.base.attr.CaptureRuleDirection
 import com.tencent.kuikly.core.directives.vif
+import com.tencent.kuikly.core.directives.velse
 import com.tencent.kuikly.core.base.event.PanGestureParams
 import com.tencent.kuikly.core.base.event.PinchGestureParams
 import com.tencent.kuikly.core.log.KLog
@@ -39,6 +40,7 @@ import com.tencent.kuikly.core.views.TextAlign
 import com.tencent.kuikly.core.views.Scroller
 import com.tencent.kuikly.core.views.Text
 import com.tencent.kuikly.core.views.View
+import com.tencent.kuikly.core.timer.Timer
 import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.round
@@ -51,6 +53,8 @@ private const val CHART_PLOT_TOP = 10f
 private const val CHART_PLOT_BOTTOM = 16f
 private const val CHART_MIN_SCALE = 1f
 private const val CHART_MAX_SCALE = 4f
+private const val CHART_TRANSITION_DURATION_MS = 420
+private const val CHART_TRANSITION_INTERVAL_MS = 16
 private const val PREDICTION_HISTORY_COUNT = 120
 private const val DEFAULT_CHAT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 private const val STOCK_PREDICTION_LOG_TAG = "StockPrediction"
@@ -92,7 +96,9 @@ private sealed class PredictionUiState {
 internal class StockDetailPage : BasePager() {
     private var detailState by observable<DetailUiState>(DetailUiState.Loading)
     private var predictionState by observable<PredictionUiState>(PredictionUiState.NotRequested)
+    private var predictionRenderRevision by observable(0)
     private var chartShowingPrediction by observable(false)
+    private var chartPredictionProgress by observable(0f)
     private var chartScale by observable(1f)
     private var chartOffset by observable(0f)
     private var selectedChartPointIndex by observable(-1)
@@ -105,6 +111,8 @@ internal class StockDetailPage : BasePager() {
     private var chartPanStartOffset = 0f
     private var chartPinchStartScale = 1f
     private var chartViewportWidth = 0f
+    private var chartTransitionTimer: Timer? = null
+    private var chartTransitionToken = 0
     private lateinit var marketDataService: TencentMarketDataService
 
     override fun created() {
@@ -130,6 +138,7 @@ internal class StockDetailPage : BasePager() {
     override fun pageWillDestroy() {
         loadToken += 1
         predictionToken += 1
+        stopChartTransition()
         super.pageWillDestroy()
     }
 
@@ -571,9 +580,12 @@ internal class StockDetailPage : BasePager() {
                     }
                 }
             }
-            val prediction = (ctx.predictionState as? PredictionUiState.Content)?.prediction
-            ctx.LinkedInsightCard(this, quote, prediction)
-            ctx.PredictionStatusCard(this, quote)
+            vif({ ctx.predictionRenderRevision % 2 == 0 }) {
+                ctx.PredictionCards(this, quote)
+            }
+            velse {
+                ctx.PredictionCards(this, quote)
+            }
             View {
                 attr {
                     width(pagerData.pageViewWidth - 36f)
@@ -609,6 +621,15 @@ internal class StockDetailPage : BasePager() {
         }
     }
 
+    private fun PredictionCards(
+        container: ViewContainer<*, *>,
+        quote: StockQuote,
+    ) {
+        val prediction = (predictionState as? PredictionUiState.Content)?.prediction
+        LinkedInsightCard(container, quote, prediction)
+        PredictionStatusCard(container, quote)
+    }
+
     private fun LargeTrendChart(container: ViewContainer<*, *>, quote: StockQuote) {
         val ctx = this
         with(container) {
@@ -633,20 +654,32 @@ internal class StockDetailPage : BasePager() {
             }) { context, width, height ->
             ctx.chartViewportWidth = width
             val predictionContent = ctx.predictionState as? PredictionUiState.Content
-            val showingPrediction = ctx.chartShowingPrediction && predictionContent != null
-            val actualPoints = if (showingPrediction) {
-                predictionContent?.history.orEmpty().map(StockPredictionHistoryPoint::close)
-                    .ifEmpty { quote.trendPoints }
+            val predictionProgress = ctx.chartPredictionProgress
+            val hasPredictionData = predictionContent != null &&
+                (ctx.chartShowingPrediction || predictionProgress > 0f)
+            val predictionHistory = predictionContent?.history
+                ?.map(StockPredictionHistoryPoint::close)
+                .orEmpty()
+                .ifEmpty { quote.trendPoints }
+            val actualPoints = if (hasPredictionData) {
+                ctx.interpolateSeries(
+                    startPoints = quote.trendPoints,
+                    endPoints = predictionHistory,
+                    progress = predictionProgress,
+                )
             } else {
                 quote.trendPoints
             }
-            val predictedPoints = if (showingPrediction) {
+            val predictedPoints = if (hasPredictionData) {
                 predictionContent?.prediction?.forecastPoints
                     ?.map(StockPredictionPoint::predictedPrice)
                     .orEmpty()
             } else {
                 emptyList()
             }
+            val visiblePredictionCount = (predictedPoints.size * predictionProgress)
+                .toInt()
+                .coerceIn(0, predictedPoints.size)
             val points = actualPoints + predictedPoints
             val axisWidth = CHART_AXIS_WIDTH
             val rightInset = CHART_RIGHT_INSET
@@ -801,45 +834,49 @@ internal class StockDetailPage : BasePager() {
                 }
             }
 
-            if (showingPrediction && actualPoints.size >= 2 && predictedPoints.size >= 2) {
+            if (hasPredictionData && actualPoints.size >= 2) {
                 drawSolidPath(
                     startIndex = 0,
                     endIndex = actualPoints.lastIndex,
                     color = if (quote.isPositive) StockChatTheme.positive else StockChatTheme.negative,
                 )
-                drawDashedPath(
-                    startIndex = actualPoints.lastIndex,
-                    endIndex = points.lastIndex,
-                    color = StockChatTheme.accent,
-                    pattern = listOf(7f, 5f),
-                )
-                val boundaryIndex = actualPoints.lastIndex
-                val boundaryX = plotLeft + boundaryIndex.toFloat() /
-                    (points.size - 1).toFloat() * contentWidth + offset
-                context.beginPath()
-                context.moveTo(boundaryX, plotTop)
-                context.lineTo(boundaryX, plotBottom)
-                context.lineWidth(1f)
-                context.strokeStyle(Color(0x668A9C95))
-                val boundaryPattern = listOf(4f, 4f)
-                var boundaryY = plotTop
-                var boundaryPatternIndex = 0
-                var boundaryDrawSegment = true
-                var boundaryPatternRemaining = boundaryPattern.first()
-                while (boundaryY < plotBottom) {
-                    val segmentLength = min(boundaryPatternRemaining, plotBottom - boundaryY)
-                    if (boundaryDrawSegment && segmentLength > 0f) {
-                        context.beginPath()
-                        context.moveTo(boundaryX, boundaryY)
-                        context.lineTo(boundaryX, boundaryY + segmentLength)
-                        context.stroke()
-                    }
-                    boundaryY += segmentLength
-                    boundaryPatternRemaining -= segmentLength
-                    if (boundaryPatternRemaining <= 0.0001f) {
-                        boundaryPatternIndex = (boundaryPatternIndex + 1) % boundaryPattern.size
-                        boundaryDrawSegment = !boundaryDrawSegment
-                        boundaryPatternRemaining = boundaryPattern[boundaryPatternIndex]
+                if (visiblePredictionCount > 0) {
+                    drawDashedPath(
+                        startIndex = actualPoints.lastIndex,
+                        endIndex = actualPoints.lastIndex + visiblePredictionCount,
+                        color = StockChatTheme.accent,
+                        pattern = listOf(7f, 5f),
+                    )
+                }
+                if (predictionProgress > 0f && predictedPoints.isNotEmpty()) {
+                    val boundaryIndex = actualPoints.lastIndex
+                    val boundaryX = plotLeft + boundaryIndex.toFloat() /
+                        (points.size - 1).toFloat() * contentWidth + offset
+                    context.beginPath()
+                    context.moveTo(boundaryX, plotTop)
+                    context.lineTo(boundaryX, plotBottom)
+                    context.lineWidth(1f)
+                    context.strokeStyle(Color(0x668A9C95))
+                    val boundaryPattern = listOf(4f, 4f)
+                    var boundaryY = plotTop
+                    var boundaryPatternIndex = 0
+                    var boundaryDrawSegment = true
+                    var boundaryPatternRemaining = boundaryPattern.first()
+                    while (boundaryY < plotBottom) {
+                        val segmentLength = min(boundaryPatternRemaining, plotBottom - boundaryY)
+                        if (boundaryDrawSegment && segmentLength > 0f) {
+                            context.beginPath()
+                            context.moveTo(boundaryX, boundaryY)
+                            context.lineTo(boundaryX, boundaryY + segmentLength)
+                            context.stroke()
+                        }
+                        boundaryY += segmentLength
+                        boundaryPatternRemaining -= segmentLength
+                        if (boundaryPatternRemaining <= 0.0001f) {
+                            boundaryPatternIndex = (boundaryPatternIndex + 1) % boundaryPattern.size
+                            boundaryDrawSegment = !boundaryDrawSegment
+                            boundaryPatternRemaining = boundaryPattern[boundaryPatternIndex]
+                        }
                     }
                 }
             } else {
@@ -891,14 +928,22 @@ internal class StockDetailPage : BasePager() {
 
     private fun chartPoints(quote: StockQuote): List<Float> {
         val predictionContent = predictionState as? PredictionUiState.Content
-        val showingPrediction = chartShowingPrediction && predictionContent != null
-        val history = if (showingPrediction) {
-            predictionContent?.history.orEmpty().map(StockPredictionHistoryPoint::close)
-                .ifEmpty { quote.trendPoints }
+        val hasPredictionData = predictionContent != null &&
+            (chartShowingPrediction || chartPredictionProgress > 0f)
+        val predictionHistory = predictionContent?.history
+            ?.map(StockPredictionHistoryPoint::close)
+            .orEmpty()
+            .ifEmpty { quote.trendPoints }
+        val history = if (hasPredictionData) {
+            interpolateSeries(
+                startPoints = quote.trendPoints,
+                endPoints = predictionHistory,
+                progress = chartPredictionProgress,
+            )
         } else {
             quote.trendPoints
         }
-        val predicted = if (showingPrediction) {
+        val predicted = if (hasPredictionData) {
             predictionContent?.prediction?.forecastPoints
                 ?.map(StockPredictionPoint::predictedPrice)
                 .orEmpty()
@@ -929,6 +974,7 @@ internal class StockDetailPage : BasePager() {
     private fun toggleChartPrediction(quote: StockQuote) {
         if (chartShowingPrediction) {
             chartShowingPrediction = false
+            animateChartPrediction(showPrediction = false)
             chartOffset = 0f
             chartScale = 1f
             selectedChartPointIndex = -1
@@ -936,6 +982,7 @@ internal class StockDetailPage : BasePager() {
         }
         if (predictionState is PredictionUiState.Content) {
             chartShowingPrediction = true
+            animateChartPrediction(showPrediction = true)
             chartOffset = 0f
             chartScale = 1f
             selectedChartPointIndex = -1
@@ -980,6 +1027,78 @@ internal class StockDetailPage : BasePager() {
                 clampChartOffset()
             }
         }
+    }
+
+    private fun interpolateSeries(
+        startPoints: List<Float>,
+        endPoints: List<Float>,
+        progress: Float,
+    ): List<Float> {
+        if (startPoints.isEmpty()) {
+            return endPoints
+        }
+        if (endPoints.isEmpty()) {
+            return startPoints
+        }
+        val sampleCount = maxOf(startPoints.size, endPoints.size)
+        val clampedProgress = progress.coerceIn(0f, 1f)
+        return List(sampleCount) { index ->
+            val position = if (sampleCount <= 1) 0f else {
+                index.toFloat() / (sampleCount - 1).toFloat()
+            }
+            val startValue = sampleSeries(startPoints, position)
+            val endValue = sampleSeries(endPoints, position)
+            startValue + (endValue - startValue) * clampedProgress
+        }
+    }
+
+    private fun sampleSeries(points: List<Float>, position: Float): Float {
+        if (points.size == 1) {
+            return points.first()
+        }
+        val scaledPosition = position.coerceIn(0f, 1f) * points.lastIndex
+        val lowerIndex = scaledPosition.toInt().coerceIn(0, points.lastIndex)
+        val upperIndex = (lowerIndex + 1).coerceAtMost(points.lastIndex)
+        val fraction = scaledPosition - lowerIndex
+        return points[lowerIndex] + (points[upperIndex] - points[lowerIndex]) * fraction
+    }
+
+    private fun animateChartPrediction(showPrediction: Boolean) {
+        val targetProgress = if (showPrediction) 1f else 0f
+        val currentProgress = chartPredictionProgress
+        if (abs(targetProgress - currentProgress) <= 0.001f) {
+            chartPredictionProgress = targetProgress
+            stopChartTransition()
+            return
+        }
+        stopChartTransition()
+        val transitionToken = chartTransitionToken
+        val step = CHART_TRANSITION_INTERVAL_MS.toFloat() / CHART_TRANSITION_DURATION_MS
+        chartTransitionTimer = Timer().also { timer ->
+            timer.schedule(0, CHART_TRANSITION_INTERVAL_MS) {
+                if (transitionToken != chartTransitionToken) {
+                    timer.cancel()
+                    return@schedule
+                }
+                val nextProgress = if (targetProgress > chartPredictionProgress) {
+                    (chartPredictionProgress + step).coerceAtMost(targetProgress)
+                } else {
+                    (chartPredictionProgress - step).coerceAtLeast(targetProgress)
+                }
+                chartPredictionProgress = nextProgress
+                if (abs(targetProgress - nextProgress) <= 0.001f) {
+                    chartPredictionProgress = targetProgress
+                    timer.cancel()
+                    chartTransitionTimer = null
+                }
+            }
+        }
+    }
+
+    private fun stopChartTransition() {
+        chartTransitionToken += 1
+        chartTransitionTimer?.cancel()
+        chartTransitionTimer = null
     }
 
     private fun clampChartOffset() {
@@ -1205,7 +1324,9 @@ internal class StockDetailPage : BasePager() {
         }
         predictionToken += 1
         val currentPredictionToken = predictionToken
-        predictionState = PredictionUiState.Loading
+        stopChartTransition()
+        chartPredictionProgress = 0f
+        updatePredictionState(PredictionUiState.Loading)
         chartShowingPrediction = false
         chartScale = 1f
         chartOffset = 0f
@@ -1252,18 +1373,18 @@ internal class StockDetailPage : BasePager() {
         if (config.apiKey.isBlank()) {
             stockPredictionUiLog("ui_request_rejected reason=missing_api_key")
             if (currentPredictionToken == predictionToken) {
-                predictionState = PredictionUiState.Unavailable(
+                updatePredictionState(PredictionUiState.Unavailable(
                     "当前 Provider 没有可用 API Key，请先在模型配置页面填写后重试。",
-                )
+                ))
             }
             return
         }
         if (config.model.isBlank()) {
             stockPredictionUiLog("ui_request_rejected reason=missing_model")
             if (currentPredictionToken == predictionToken) {
-                predictionState = PredictionUiState.Unavailable(
+                updatePredictionState(PredictionUiState.Unavailable(
                     "当前 Provider 没有可用模型，请先选择模型后重试。",
-                )
+                ))
             }
             return
         }
@@ -1280,15 +1401,15 @@ internal class StockDetailPage : BasePager() {
                     stockPredictionUiLog(
                         "history_empty symbol=$symbol requestedCount=$PREDICTION_HISTORY_COUNT"
                     )
-                    predictionState = PredictionUiState.Unavailable(
+                    updatePredictionState(PredictionUiState.Unavailable(
                         "腾讯行情没有返回足够的历史收盘数据，未生成预测曲线。",
-                    )
+                    ))
                 }
                 is HistoricalPointsResult.Failure -> {
                     stockPredictionUiLog(
                         "history_failed symbol=$symbol message=${historyResult.message.logSafe()}"
                     )
-                    predictionState = PredictionUiState.Error(historyResult.message)
+                    updatePredictionState(PredictionUiState.Error(historyResult.message))
                 }
                 is HistoricalPointsResult.Success -> {
                     stockPredictionUiLog(
@@ -1329,11 +1450,12 @@ internal class StockDetailPage : BasePager() {
                                             "direction=${predictionResult.prediction.direction} " +
                                             "confidence=${predictionResult.prediction.confidence}"
                                     )
-                                    predictionState = PredictionUiState.Content(
+                                    updatePredictionState(PredictionUiState.Content(
                                         prediction = predictionResult.prediction,
                                         history = history,
-                                    )
+                                    ))
                                     chartShowingPrediction = true
+                                    animateChartPrediction(showPrediction = true)
                                     chartScale = 1f
                                     chartOffset = 0f
                                 }
@@ -1342,18 +1464,18 @@ internal class StockDetailPage : BasePager() {
                                         "prediction_unavailable symbol=$symbol " +
                                             "message=${predictionResult.message.logSafe()}"
                                     )
-                                    predictionState = PredictionUiState.Unavailable(
+                                    updatePredictionState(PredictionUiState.Unavailable(
                                         predictionResult.message,
-                                    )
+                                    ))
                                 }
                                 is StockPredictionResult.Failure -> {
                                     stockPredictionUiLog(
                                         "prediction_failed symbol=$symbol status=${predictionResult.statusCode ?: "unknown"} " +
                                             "message=${predictionResult.message.logSafe()}"
                                     )
-                                    predictionState = PredictionUiState.Error(
+                                    updatePredictionState(PredictionUiState.Error(
                                         predictionResult.message,
-                                    )
+                                    ))
                                 }
                             }
                         }
@@ -1362,9 +1484,9 @@ internal class StockDetailPage : BasePager() {
                             "prediction_exception symbol=$symbol " +
                                 "type=${throwable::class.simpleName ?: "unknown"}"
                         )
-                        predictionState = PredictionUiState.Error(
+                        updatePredictionState(PredictionUiState.Error(
                             "AI 预测请求失败，请稍后重试；未生成预测曲线。",
-                        )
+                        ))
                     }
                 }
             }
@@ -1572,6 +1694,11 @@ internal class StockDetailPage : BasePager() {
         }
     }
 
+    private fun updatePredictionState(nextState: PredictionUiState) {
+        predictionState = nextState
+        predictionRenderRevision += 1
+    }
+
     private fun openChatWithStock(
         quote: StockQuote,
         selectedPoint: SelectedChartPoint?,
@@ -1593,7 +1720,9 @@ internal class StockDetailPage : BasePager() {
     private fun loadDetail() {
         detailState = DetailUiState.Loading
         predictionToken += 1
-        predictionState = PredictionUiState.NotRequested
+        stopChartTransition()
+        chartPredictionProgress = 0f
+        updatePredictionState(PredictionUiState.NotRequested)
         chartShowingPrediction = false
         chartScale = 1f
         chartOffset = 0f

@@ -108,7 +108,7 @@ private fun ViewContainer<*, *>.TodayMarketHeader(
             }
             Text {
                 attr {
-                    text("先看整体，再看具体标的")
+                    text("先看整体，再看具体")
                     fontSize(13f * scale)
                     color(StockChatTheme.textSecondary)
                     marginTop(5f * scale)

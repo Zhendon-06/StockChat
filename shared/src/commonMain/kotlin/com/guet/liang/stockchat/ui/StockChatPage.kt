@@ -301,13 +301,8 @@ internal class StockChatPage : BasePager() {
         }
         prefillQuestionConsumed = true
         inputText = prefillQuestion.take(300)
-        composerExpanded = true
         updateInputLineMetrics(inputText)
-        setTimeout(0) {
-            if (::inputRef.isInitialized) {
-                inputRef.view?.setText(inputText)
-            }
-        }
+        focusComposer()
     }
 
     private fun observeBackRequests() {
