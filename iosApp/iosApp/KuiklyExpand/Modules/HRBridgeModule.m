@@ -1,4 +1,5 @@
 #import "HRBridgeModule.h"
+#import "StockChatStreamRequest.h"
 
 #import "KuiklyRenderViewController.h"
 #import <AVFoundation/AVFoundation.h>
@@ -23,6 +24,8 @@
 @property (nonatomic, assign) BOOL pendingImageReadFailed;
 @property (nonatomic, assign) BOOL pendingImageTruncated;
 @property (nonatomic, assign) NSUInteger imagePickerRequestID;
+@property (nonatomic, strong) StockChatStreamRequest *chatStreamRequest;
+@property (nonatomic, weak) UIView *toastView;
 
 @end
 
@@ -41,6 +44,54 @@
     NSDictionary *params = [args[KR_PARAM_KEY] hr_stringToDictionary];
     NSString *content = params[@"content"];
     NSLog(@"KuiklyRender:%@", content);
+}
+
+- (void)toast:(NSDictionary *)args {
+    NSDictionary *params = [args[KR_PARAM_KEY] hr_stringToDictionary];
+    NSString *content = params[@"content"];
+    if (![content isKindOfClass:NSString.class] || !content.length) {
+        return;
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIView *hostView = (UIView *)self.hr_rootView;
+        if (!hostView.window) {
+            return;
+        }
+        [self.toastView removeFromSuperview];
+        UIView *toast = [UIView new];
+        toast.translatesAutoresizingMaskIntoConstraints = NO;
+        toast.userInteractionEnabled = NO;
+        toast.backgroundColor = [UIColor.labelColor colorWithAlphaComponent:0.9];
+        toast.layer.cornerRadius = 12;
+        toast.accessibilityIdentifier = @"stockchat.toast";
+
+        UILabel *label = [UILabel new];
+        label.translatesAutoresizingMaskIntoConstraints = NO;
+        label.text = content;
+        label.numberOfLines = 0;
+        label.textAlignment = NSTextAlignmentCenter;
+        label.font = [UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline];
+        label.adjustsFontForContentSizeCategory = YES;
+        label.textColor = UIColor.systemBackgroundColor;
+        [toast addSubview:label];
+        [hostView addSubview:toast];
+        [NSLayoutConstraint activateConstraints:@[
+            [toast.centerXAnchor constraintEqualToAnchor:hostView.safeAreaLayoutGuide.centerXAnchor],
+            [toast.widthAnchor constraintLessThanOrEqualToAnchor:hostView.safeAreaLayoutGuide.widthAnchor constant:-48],
+            [toast.bottomAnchor constraintEqualToAnchor:hostView.safeAreaLayoutGuide.bottomAnchor constant:-24],
+            [label.leadingAnchor constraintEqualToAnchor:toast.leadingAnchor constant:16],
+            [label.trailingAnchor constraintEqualToAnchor:toast.trailingAnchor constant:-16],
+            [label.topAnchor constraintEqualToAnchor:toast.topAnchor constant:10],
+            [label.bottomAnchor constraintEqualToAnchor:toast.bottomAnchor constant:-10],
+        ]];
+        self.toastView = toast;
+        UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification, content);
+        // Each timer removes only its own view, so rapid toggles keep the latest
+        // feedback visible. A toast never captures touches or blocks navigation.
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+            [toast removeFromSuperview];
+        });
+    });
 }
 
 - (void)startVoiceRecording:(NSDictionary *)args {
@@ -139,13 +190,17 @@
 
 - (void)streamChatCompletion:(NSDictionary *)args {
     KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
-    if (callback) {
-        callback(@{
-            @"success": @0,
-            @"errorCode": @"STREAM_UNAVAILABLE",
-            @"errorMessage": @"当前平台暂不支持原生流式请求，将使用兼容网络请求。",
-        });
-    }
+    NSDictionary *params = [args[KR_PARAM_KEY] hr_stringToDictionary] ?: @{};
+    if (!callback) return;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self.chatStreamRequest cancel];
+        self.chatStreamRequest = [[StockChatStreamRequest alloc] initWithParameters:params callback:callback];
+        [self.chatStreamRequest start];
+    });
+}
+
+- (void)dealloc {
+    [_chatStreamRequest cancel];
 }
 
 - (void)observeDrawerGestures:(NSDictionary *)args {

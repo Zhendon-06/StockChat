@@ -98,9 +98,28 @@
 }
 
 - (NSDictionary<NSString *, NSObject *> *)contextPageData {
-    return @{
-        @"isNightMode": @([self stockChatIsNightMode])
-    };
+    NSMutableDictionary *params = [@{
+        @"isNightMode": @([self stockChatIsNightMode]),
+        @"aliyunNativeStreaming": @1,
+    } mutableCopy];
+#if DEBUG
+    // Match Android's local development configuration without putting keys in source.
+    NSURL *configURL = [[NSBundle mainBundle] URLForResource:@"StockChatLocalConfig" withExtension:@"plist"];
+    NSDictionary *config = configURL ? [NSDictionary dictionaryWithContentsOfURL:configURL] : nil;
+    NSDictionary *environment = NSProcessInfo.processInfo.environment;
+    NSDictionary *keys = @{@"QWEN_API_KEY": @"qwenApiKey", @"MIMO_VOICE_API_KEY": @"mimoVoiceApiKey"};
+    for (NSString *key in keys) {
+        NSString *value = [environment[key] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if (!value.length) {
+            value = config[key];
+        }
+        // A route may already carry a provider-specific configuration.
+        if ([value isKindOfClass:NSString.class] && value.length && ![_pageData[keys[key]] length]) {
+            params[keys[key]] = value;
+        }
+    }
+#endif
+    return params;
 }
 
 - (void)fetchContextCodeWithPageName:(NSString *)pageName resultCallback:(KuiklyContextCodeCallback)callback {

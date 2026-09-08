@@ -19,6 +19,9 @@
 		FF6B715229A2B174009349F1 /* HRShareModule.m in Sources */ = {isa = PBXBuildFile; fileRef = FF6B715129A2B173009349F1 /* HRShareModule.m */; };
 		FF6B714729A2A315009349F1 /* KuiklyRenderViewPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF6B714629A2A315009349F1 /* KuiklyRenderViewPage.swift */; };
 		FF6B715029A2A6FF009349F1 /* KuiklyRenderComponentExpandHandler.m in Sources */ = {isa = PBXBuildFile; fileRef = FF6B714F29A2A6FF009349F1 /* KuiklyRenderComponentExpandHandler.m */; };
+		A817A0010000000000000001 /* StockChatTextAreaAdapter.m in Sources */ = {isa = PBXBuildFile; fileRef = A817A0010000000000000002 /* StockChatTextAreaAdapter.m */; };
+		A817A0010000000000000005 /* StockChatGradientAdapter.m in Sources */ = {isa = PBXBuildFile; fileRef = A817A0010000000000000004 /* StockChatGradientAdapter.m */; };
+		A817A0010000000000000007 /* StockChatStreamRequest.m in Sources */ = {isa = PBXBuildFile; fileRef = A817A0010000000000000006 /* StockChatStreamRequest.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -45,6 +48,10 @@
 		FF6B714C29A2A45D009349F1 /* iosApp-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "iosApp-Bridging-Header.h"; sourceTree = "<group>"; };
 		FF6B714E29A2A6FF009349F1 /* KuiklyRenderComponentExpandHandler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KuiklyRenderComponentExpandHandler.h; sourceTree = "<group>"; };
 		FF6B714F29A2A6FF009349F1 /* KuiklyRenderComponentExpandHandler.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = KuiklyRenderComponentExpandHandler.m; sourceTree = "<group>"; };
+		A817A0010000000000000002 /* StockChatTextAreaAdapter.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = StockChatTextAreaAdapter.m; sourceTree = "<group>"; };
+		A817A0010000000000000004 /* StockChatGradientAdapter.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = StockChatGradientAdapter.m; sourceTree = "<group>"; };
+		A817A0010000000000000006 /* StockChatStreamRequest.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = StockChatStreamRequest.m; sourceTree = "<group>"; };
+		A817A0010000000000000008 /* StockChatStreamRequest.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = StockChatStreamRequest.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -140,6 +147,8 @@
 			children = (
 				FF6B714D29A2A6BA009349F1 /* Handler */,
 				FF6B714329A2A174009349F1 /* KuiklyRenderViewController.h */,
+				A817A0010000000000000002 /* StockChatTextAreaAdapter.m */,
+				A817A0010000000000000004 /* StockChatGradientAdapter.m */,
 				FF6B713F29A2A173009349F1 /* KuiklyRenderViewController.m */,
 				FF6B714029A2A173009349F1 /* Modules */,
 			);
@@ -150,7 +159,9 @@
 			isa = PBXGroup;
 			children = (
 				FF6B714129A2A173009349F1 /* HRBridgeModule.m */,
+				A817A0010000000000000006 /* StockChatStreamRequest.m */,
 				FF6B714229A2A173009349F1 /* HRBridgeModule.h */,
+				A817A0010000000000000008 /* StockChatStreamRequest.h */,
 				FF6B715129A2B173009349F1 /* HRShareModule.m */,
 				FF6B715329A2B173009349F1 /* HRShareModule.h */,
 			);
@@ -181,6 +192,7 @@
 				412082966DD7AFE0B53032CB /* Frameworks */,
 				6715C2D1184DF4DA5556ABE1 /* [CP] Embed Pods Frameworks */,
 				CC6E82616A0AF8DD12878395 /* [CP] Copy Pods Resources */,
+				A817A0010000000000000003 /* Generate iOS Local Config */,
 			);
 			buildRules = (
 			);
@@ -293,6 +305,19 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-iosApp/Pods-iosApp-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
+		A817A0010000000000000003 /* Generate iOS Local Config */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = ();
+			inputPaths = ();
+			name = "Generate iOS Local Config";
+			outputPaths = ("$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/StockChatLocalConfig.plist");
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "/usr/bin/python3 \"$SRCROOT/scripts/generate_local_config.py\"";
+			showEnvVarsInLog = 0;
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -300,6 +325,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A817A0010000000000000001 /* StockChatTextAreaAdapter.m in Sources */,
+				A817A0010000000000000007 /* StockChatStreamRequest.m in Sources */,
+				A817A0010000000000000005 /* StockChatGradientAdapter.m in Sources */,
 				FF6B714429A2A174009349F1 /* KuiklyRenderViewController.m in Sources */,
 				04E32B3E29F01975000A6BC5 /* KRRouterHandler.m in Sources */,
 				0474A3F329F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m in Sources */,
