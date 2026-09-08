@@ -8,6 +8,7 @@ import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -23,6 +24,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.recyclerview.widget.RecyclerView
 import com.tencent.kuikly.core.render.android.IKuiklyRenderExport
 import com.tencent.kuikly.core.render.android.adapter.KuiklyRenderAdapterManager
 import com.tencent.kuikly.core.render.android.css.ktx.toMap
@@ -55,6 +57,7 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
     private var backRequestCallback: (() -> Unit)? = null
     private var drawerGestureStartX = 0f
     private var drawerGestureStartY = 0f
+    private var drawerGestureTracking = false
 
     private val pageName: String
         get() {
@@ -315,6 +318,7 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
 
     internal fun setDrawerGestureCallback(callback: ((String) -> Unit)?) {
         drawerGestureCallback = callback
+        drawerGestureTracking = false
     }
 
     internal fun setBackRequestCallback(callback: (() -> Unit)?) {
@@ -329,8 +333,20 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
             MotionEvent.ACTION_DOWN -> {
                 drawerGestureStartX = event.rawX
                 drawerGestureStartY = event.rawY
+                drawerGestureTracking = !isTouchInsideHorizontalScroller(
+                    hrContainerView,
+                    event.rawX.toInt(),
+                    event.rawY.toInt(),
+                )
+            }
+            MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN -> {
+                drawerGestureTracking = false
             }
             MotionEvent.ACTION_UP -> {
+                if (!drawerGestureTracking) {
+                    return
+                }
+                drawerGestureTracking = false
                 val deltaX = event.rawX - drawerGestureStartX
                 val deltaY = event.rawY - drawerGestureStartY
                 val threshold = DRAWER_SWIPE_DISTANCE_DP * resources.displayMetrics.density
@@ -341,6 +357,27 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
                 }
             }
         }
+    }
+
+    private fun isTouchInsideHorizontalScroller(view: View, screenX: Int, screenY: Int): Boolean {
+        if (view.visibility != View.VISIBLE || view.alpha <= 0f) {
+            return false
+        }
+        val visibleBounds = Rect()
+        if (!view.getGlobalVisibleRect(visibleBounds) || !visibleBounds.contains(screenX, screenY)) {
+            return false
+        }
+        if (view is RecyclerView && view.layoutManager?.canScrollHorizontally() == true) {
+            return true
+        }
+        if (view is ViewGroup) {
+            for (childIndex in view.childCount - 1 downTo 0) {
+                if (isTouchInsideHorizontalScroller(view.getChildAt(childIndex), screenX, screenY)) {
+                    return true
+                }
+            }
+        }
+        return false
     }
 
     private fun argsToMap(): MutableMap<String, Any> {

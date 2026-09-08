@@ -23,10 +23,29 @@ internal data class TencentMarketSnapshot(
     val turnoverRate: String,
     val priceEarningsRatio: String,
     val amplitude: String,
+    val dailyCandles: List<TencentHistoricalCandle> = emptyList(),
+    val orderBook: List<MarketOrderLevel> = emptyList(),
+    val totalMarketValue: String = "",
+    val floatMarketValue: String = "",
+    val priceBookRatio: String = "",
+    val volumeRatio: String = "",
+
+)
+
+internal data class TencentHistoricalCandle(
+    val date: String,
+    val open: Float,
+    val close: Float,
+    val high: Float,
+    val low: Float,
+    val volume: Float,
 )
 
 internal sealed class MarketDataResult {
-    data class Success(val snapshots: List<TencentMarketSnapshot>) : MarketDataResult()
+    data class Success(
+        val snapshots: List<TencentMarketSnapshot>,
+        val notices: List<String> = emptyList(),
+    ) : MarketDataResult()
     data object Empty : MarketDataResult()
     data class Failure(val message: String) : MarketDataResult()
 }
@@ -53,19 +72,11 @@ internal class TencentMarketDataService(
         plan: SecuritiesQueryPlan,
         callback: (MarketDataResult) -> Unit,
     ) {
-        resolveTargets(plan.targets, plan.unresolvedTerms) { targetResult ->
-            when (targetResult) {
-                is TargetResolutionResult.Success -> loadSnapshots(
-                    targets = targetResult.targets,
-                    needsIntraday = plan.needsIntraday,
-                    callback = callback,
-                )
-                TargetResolutionResult.Empty -> callback(MarketDataResult.Empty)
-                is TargetResolutionResult.Failure -> callback(
-                    MarketDataResult.Failure(targetResult.message)
-                )
-            }
-        }
+        loadSnapshots(
+            targets = plan.targets.distinctBy(SecurityTarget::providerSymbol),
+            needsIntraday = plan.needsIntraday,
+            callback = callback,
+        )
     }
 
     fun loadDetail(
@@ -125,99 +136,21 @@ internal class TencentMarketDataService(
         }
     }
 
-    private fun resolveTargets(
-        initialTargets: List<SecurityTarget>,
-        searchTerms: List<String>,
-        callback: (TargetResolutionResult) -> Unit,
-    ) {
-        if (searchTerms.isEmpty()) {
-            callback(
-                if (initialTargets.isEmpty()) {
-                    TargetResolutionResult.Empty
-                } else {
-                    TargetResolutionResult.Success(initialTargets.distinctBy(SecurityTarget::providerSymbol))
-                }
-            )
-            return
-        }
-        val targets = initialTargets.toMutableList()
-        fun resolveAt(index: Int) {
-            if (index >= searchTerms.size) {
-                callback(
-                    if (targets.isEmpty()) {
-                        TargetResolutionResult.Empty
-                    } else {
-                        TargetResolutionResult.Success(targets.distinctBy(SecurityTarget::providerSymbol))
-                    }
-                )
-                return
-            }
-            search(searchTerms[index]) { result ->
-                when (result) {
-                    is SearchResult.Success -> {
-                        targets += result.target
-                        resolveAt(index + 1)
-                    }
-                    SearchResult.Empty -> callback(TargetResolutionResult.Empty)
-                    is SearchResult.Failure -> callback(TargetResolutionResult.Failure(result.message))
-                }
-            }
-        }
-        resolveAt(0)
-    }
-
-    private fun search(
-        term: String,
-        callback: (SearchResult) -> Unit,
-    ) {
-        val params = JSONObject().apply {
-            put("t", "all")
-            put("q", term)
-        }
-        networkModule.requestGet(SEARCH_URL, params) { data, success, errorMessage, response ->
-            if (!isSuccessful(success, response.statusCode)) {
-                callback(
-                    SearchResult.Failure(
-                        errorMessage.ifBlank { "证券搜索服务暂时不可用，请输入六位代码后重试。" }
-                    )
-                )
-                return@requestGet
-            }
-            val matches = TencentMarketResponseParser.parseSearch(data.optString("data"))
-            val normalizedTerm = term.trim()
-            val exactMatches = matches.filter { match ->
-                match.code.equals(normalizedTerm, ignoreCase = true) ||
-                    match.name.equals(normalizedTerm, ignoreCase = true)
-            }
-            val selected = (exactMatches.ifEmpty { matches }).firstOrNull()
-            if (selected == null) {
-                callback(SearchResult.Empty)
-            } else {
-                callback(
-                    SearchResult.Success(
-                        SecurityTarget(
-                            providerSymbol = selected.providerSymbol,
-                            displayName = selected.name,
-                        )
-                    )
-                )
-            }
-        }
-    }
-
     private fun loadSnapshots(
         targets: List<SecurityTarget>,
         needsIntraday: Boolean,
         callback: (MarketDataResult) -> Unit,
     ) {
         val snapshots = mutableListOf<TencentMarketSnapshot>()
+        val notices = mutableListOf<String>()
         fun loadAt(index: Int) {
             if (index >= targets.size) {
                 callback(
                     if (snapshots.isEmpty()) {
-                        MarketDataResult.Empty
+                        if (notices.isEmpty()) MarketDataResult.Empty
+                        else MarketDataResult.Failure(notices.joinToString("\n"))
                     } else {
-                        MarketDataResult.Success(snapshots)
+                        MarketDataResult.Success(snapshots, notices)
                     }
                 )
                 return
@@ -228,8 +161,14 @@ internal class TencentMarketDataService(
                         snapshots += result.snapshot
                         loadAt(index + 1)
                     }
-                    SnapshotResult.Empty -> callback(MarketDataResult.Empty)
-                    is SnapshotResult.Failure -> callback(MarketDataResult.Failure(result.message))
+                    SnapshotResult.Empty -> {
+                        notices += "${targets[index].displayName.ifBlank { targets[index].providerSymbol }}：行情暂无数据。"
+                        loadAt(index + 1)
+                    }
+                    is SnapshotResult.Failure -> {
+                        notices += "${targets[index].displayName.ifBlank { targets[index].providerSymbol }}：${result.message}"
+                        loadAt(index + 1)
+                    }
                 }
             }
         }
@@ -300,18 +239,6 @@ internal class TencentMarketDataService(
         return success && (statusCode == null || statusCode in 200..299)
     }
 
-    private sealed class TargetResolutionResult {
-        data class Success(val targets: List<SecurityTarget>) : TargetResolutionResult()
-        data object Empty : TargetResolutionResult()
-        data class Failure(val message: String) : TargetResolutionResult()
-    }
-
-    private sealed class SearchResult {
-        data class Success(val target: SecurityTarget) : SearchResult()
-        data object Empty : SearchResult()
-        data class Failure(val message: String) : SearchResult()
-    }
-
     private sealed class SnapshotResult {
         data class Success(val snapshot: TencentMarketSnapshot) : SnapshotResult()
         data object Empty : SnapshotResult()
@@ -319,7 +246,6 @@ internal class TencentMarketDataService(
     }
 
     companion object {
-        private const val SEARCH_URL = "https://smartbox.gtimg.cn/s3/"
         private const val KLINE_URL =
             "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get"
         private const val MINUTE_URL =
@@ -361,11 +287,11 @@ internal object TencentMarketResponseParser {
         val priceEarningsRatio = quoteData.optString(39).orEmpty().trim()
         val amplitude = quoteData.optString(43).orEmpty().trim()
         val isHongKong = providerSymbol.startsWith("hk")
-        val isIndex = !isHongKong && securityData.optJSONArray("qfqday") == null &&
-            securityData.optJSONArray("day") != null
+        val isIndex = isMarketIndex(providerSymbol)
         val volumeUnit = if (isHongKong) "股" else "手"
         val amountUnit = if (isHongKong) "港元" else "万元"
         val trendPoints = parseKlinePoints(securityData)
+        val dailyCandles = parseKlineCandles(securityData)
         val numericChange = rawChange.toDoubleOrNull() ?: 0.0
         val change = signedValue(rawChange, numericChange)
         val changePercent = signedValue(rawChangePercent, numericChange) + "%"
@@ -412,6 +338,22 @@ internal object TencentMarketResponseParser {
             turnoverRate = turnoverRate,
             priceEarningsRatio = priceEarningsRatio,
             amplitude = amplitude,
+            dailyCandles = dailyCandles,
+            orderBook = if (!isIndex && (providerSymbol.startsWith("sh") || providerSymbol.startsWith("sz"))) buildList {
+                for (level in 1..5) {
+                    for ((side, offset) in listOf("买" to 9, "卖" to 19)) {
+                        val priceValue = quoteData.optString(offset + (level - 1) * 2).orEmpty().toFloatOrNull()
+                        val size = quoteData.optString(offset + (level - 1) * 2 + 1).orEmpty().toFloatOrNull()
+                        if (priceValue != null && priceValue.isFinite() && priceValue > 0 && size != null && size.isFinite() && size >= 0) {
+                            add(MarketOrderLevel(side, level, priceValue, size))
+                        }
+                    }
+                }
+            } else emptyList(),
+            totalMarketValue = quoteData.optString(45).orEmpty(),
+            floatMarketValue = quoteData.optString(44).orEmpty(),
+            priceBookRatio = quoteData.optString(46).orEmpty(),
+            volumeRatio = quoteData.optString(49).orEmpty(),
         )
     }
 
@@ -513,6 +455,38 @@ internal object TencentMarketResponseParser {
                     ?.optString(2)
                     ?.toFloatOrNull()
                     ?.let(::add)
+            }
+        }
+    }
+
+    private fun parseKlineCandles(securityData: JSONObject): List<TencentHistoricalCandle> {
+        val rows = securityData.optJSONArray("qfqday")
+            ?: securityData.optJSONArray("day")
+            ?: return emptyList()
+        return buildList {
+            for (index in 0 until rows.length()) {
+                val row = rows.optJSONArray(index) ?: continue
+                val date = row.optString(0).orEmpty().trim().replace('/', '-')
+                val open = row.optString(1).orEmpty().trim().toFloatOrNull()
+                val close = row.optString(2).orEmpty().trim().toFloatOrNull()
+                val high = row.optString(3).orEmpty().trim().toFloatOrNull()
+                val low = row.optString(4).orEmpty().trim().toFloatOrNull()
+                val volume = row.optString(5).orEmpty().trim().toFloatOrNull()
+                if (date.isNotEmpty() && open != null && close != null &&
+                    high != null && low != null && volume != null &&
+                    listOf(open, close, high, low, volume).all(Float::isFinite)
+                ) {
+                    add(
+                        TencentHistoricalCandle(
+                            date = date,
+                            open = open,
+                            close = close,
+                            high = high,
+                            low = low,
+                            volume = volume,
+                        )
+                    )
+                }
             }
         }
     }

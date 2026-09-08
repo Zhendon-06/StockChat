@@ -46,6 +46,7 @@ kotlin {
         val commonMain by getting {
             dependencies {
                 implementation(project(":table-core"))
+                implementation(project(":kuikly-chart"))
                 implementation("com.tencent.kuikly-open:core:${Version.getKuiklyOhosVersion()}")
                 implementation("com.tencent.kuikly-open:core-annotations:${Version.getKuiklyOhosVersion()}")
                 implementation("com.tencent.kuiklybase:KuiklyMarkdown:1.0.6-2.0.21-ohos")

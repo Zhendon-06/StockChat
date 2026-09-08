@@ -323,6 +323,7 @@ internal object StockPredictionRequestBuilder {
             put("changePercent", input.quote.changePercent)
             put("sourceUpdatedAt", input.sourceUpdatedAt)
             put("history", history)
+            put("period", "day")
             put("forecastHorizon", input.forecastHorizon)
         }
         val messages = JSONArray().apply {
@@ -368,6 +369,10 @@ internal object StockPredictionRequestBuilder {
             "JSON 必须包含 forecastPoints 数组（恰好按要求的 horizon 个点），" +
             "每个点包含 timestamp、predictedPrice，并可包含 lowerBound、upperBound；" +
             "还必须包含 horizon、direction、confidence（0 到 1）、rationale、generatedAt、sourceUpdatedAt、historyPointCount。" +
+            "还必须包含 conclusions 数组（1 至 3 条）：每条包含 text 和 reference。" +
+            "reference 包含 symbol（原样回显）、period（day）、startDate、endDate、metric（close）、sourceUpdatedAt（原样回显）。" +
+            "结论须描述可由历史收盘价核验的变化；引用起止日期必须原样取自 history.timestamp，按先后排列且包含两端，不能引用未来预测点。" +
+            "没有可核验的历史依据时 conclusions 返回空数组；禁止从结论文本推测或编造日期、成交量等未提供的指标。" +
             "所有 forecastPoints.timestamp 与 generatedAt 必须使用 YYYY-MM-DD 或 ISO 8601 日期时间格式，不能使用‘明天’等相对日期；" +
             "sourceUpdatedAt 必须原样回显输入 JSON 中的 sourceUpdatedAt，historyPointCount 必须等于输入样本数；" +
             "timestamp 必须是预测目标时间且按从旧到新排列；价格必须为正数且有限；" +
@@ -464,6 +469,7 @@ internal object StockPredictionResponseParser {
             generatedAt = generatedAt,
             sourceUpdatedAt = effectiveSourceTime,
             historyPointCount = effectiveHistoryPointCount,
+            conclusions = parseChartConclusions(payload.optJSONArray("conclusions")),
         )
     }
 
@@ -857,12 +863,17 @@ private fun daysInMonth(year: Int, month: Int): Int {
     }
 }
 
-private fun sanitizePredictionError(
+internal fun sanitizePredictionError(
     rawMessage: String,
     apiKey: String,
     providerName: String,
 ): String {
     val message = rawMessage.trim()
+    val normalized = message.lowercase()
+    if ("arrearage" in normalized || "overdue-payment" in normalized) {
+        return "$providerName 账户欠费或余额不足，请在服务商控制台处理账单，或切换可用模型后重试。"
+    }
+    if ("insufficient_quota" in normalized) return "$providerName 可用额度不足，请检查服务额度或切换模型后重试。"
     if (message.isBlank()) return "$providerName 预测请求失败，请稍后重试。"
     var sanitized = message
     val normalizedKey = apiKey.trim()

@@ -58,7 +58,6 @@ internal class TencentTodayMarketDataSource(
         val plan = SecuritiesQueryPlan(
             intent = SecuritiesIntent.QUOTE,
             targets = targets,
-            unresolvedTerms = emptyList(),
             needsTrend = true,
             needsIntraday = false,
             needsAi = false,

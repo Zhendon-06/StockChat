@@ -11,7 +11,7 @@ StockChat 是一个基于 Kotlin Multiplatform 与 Kuikly 构建的 AI 股票问
 - **行情与大盘**：可识别股票、指数、六位代码及交易所代码；行情请求使用腾讯证券接口，并提供今日市场概览、板块观察和降级提示。
 - **股票详情页**：展示核心行情、历史走势和 AI 联动解读；点击走势节点可同步切换点位说明、预测依据和风险提醒，并可把当前标的与选中节点带回聊天继续追问。走势支持缩放与横向浏览，AI 预测仅在真实模型请求成功并通过校验后绘制。
 - **语音与图片**：支持图片提问、MiMo 语音输入和回答朗读；平台能力不可用时保留明确的降级提示。
-- **会话工具**：支持会话表格对比、脑图产物、会话归档/分享，以及模型、字体、背景和表格样式设置。
+- **会话工具**：支持会话表格对比、Mermaid mindmap 脑图产物、会话归档/分享，以及模型、字体、背景和表格样式设置。
 
 ## 页面与路由
 
@@ -23,7 +23,7 @@ StockChat 是一个基于 Kotlin Multiplatform 与 Kuikly 构建的 AI 股票问
 | 股票详情 | `stock_detail` | 行情、走势图、摘要和 AI 预测 |
 | 今日市场 | 聊天主页内的市场 Tab | 指数、样本股和板块概览 |
 | 会话表格 | `conversation_table_artifacts` / `conversation_table_artifact` | 汇总当前会话中识别到的证券并横向比较 |
-| 会话脑图 | `conversation_mind_map_artifacts` / `conversation_mind_map_artifact` | 查看会话生成的结构化脑图 |
+| 会话脑图 | `conversation_mind_map_artifacts` / `conversation_mind_map_artifact` | 输出 Mermaid `mindmap` 语法并查看渲染后的会话脑图 |
 | 设置 | `stock_settings*` | 模型、字体、背景、表格样式和会话管理 |
 
 ## 技术结构
@@ -47,10 +47,10 @@ static_server/  Web 静态资源本地服务
 用户问题/图片
       │
       ▼
-StockChatPage ──► 意图识别与证券路由
+StockChatPage ──► LLM 联网研究企业 ──► 腾讯名称搜索 ──► LLM 确认候选
       │                    │
       │                    ├─ 行情问题 ─► TencentMarketDataService
-      │                    └─ 普通/分析问题 ─► DashScope AI
+      │                    └─ 普通/分析问题 ─► 当前 Provider AI
       ▼
 AnswerBlock（Markdown / MarketQuote / ImageGallery）
       │
@@ -83,7 +83,7 @@ export QWEN_API_KEY="你的百炼_API_Key"
 export MIMO_VOICE_API_KEY="你的_MiMo_API_Key"
 ```
 
-`QWEN_API_KEY` 用于 DashScope 文本/视觉问答、意图识别和 AI 预测；`MIMO_VOICE_API_KEY` 仅用于 MiMo 语音识别与合成。未配置千问 Key 时，项目会对部分入门问题使用本地教学模板；行情请求仍可独立访问腾讯行情服务。API Key 会进入当前 Android 构建产物，因此该方式只适合本地 Demo，正式环境应改为服务端代理或短期凭证。
+`QWEN_API_KEY` 用于 DashScope 文本/视觉问答、意图识别和 AI 预测；`MIMO_VOICE_API_KEY` 仅用于 MiMo 语音识别与合成。聊天中的企业识别使用同一百炼 Key 下支持联网搜索的 `qwen-plus`，再通过腾讯证券名称搜索与当前模型确认候选；未配置模型 Key 时提示配置，不再通过本地名称匹配生成卡片。详情页与今日行情等固定入口仍可独立访问腾讯行情服务。API Key 会进入当前 Android 构建产物，因此该方式只适合本地 Demo，正式环境应改为服务端代理或短期凭证。
 
 ## 构建与测试
 
@@ -128,11 +128,11 @@ open iosApp.xcworkspace
 
 ## 数据与降级策略
 
-- 纯行情问题优先走腾讯证券行情接口；名称搜索失败时提示输入完整名称、六位代码或带交易所的代码。
-- 分析类问题会把带时间戳的行情快照注入 AI 上下文，避免模型脱离当前行情回答。
+- 聊天请求由 LLM 联网研究企业和查询意图，再逐个调用腾讯证券名称搜索，经 LLM 确认候选后读取腾讯行情；不使用本地名称匹配或直接取搜索首条结果。未上市和待确认企业单独说明，识别失败可重新生成。
+- 分析类问题会把带时间戳的行情快照注入 AI 上下文，避免模型脱离当前行情回答。联网研究当前接入百炼 `qwen-plus`；未接入联网搜索的 Provider 会提示切换，不以离线推断回退。
 - 网络行情不可用时，今日市场页面可对缺失项使用明确标记的本地演示数据；不会把 Mock 价格伪装成实时行情。
 - AI 预测失败、Key 缺失、历史数据不足或返回结构非法时，只展示错误/不可用状态，不绘制本地伪造预测曲线。
-- Web 端的腾讯 `smartbox` 名称搜索存在 CORS 限制，正式部署应配置同域服务端代理；当前仓库未提供独立的 `h5App`/`miniApp` 工程目录。
+- 聊天使用腾讯 `smartbox` 名称搜索；Web 端受 CORS 限制，正式部署应配置同域代理。当前仓库未提供独立的 `h5App`/`miniApp` 工程目录。
 
 ## 开发约束
 

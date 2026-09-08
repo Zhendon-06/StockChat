@@ -1,14 +1,25 @@
 package com.guet.liang.stockchat.ui
 
+import com.guet.liang.kuiklychart.finance.FinancialChart
+import com.guet.liang.kuiklychart.finance.FinancialChartMode
+import com.guet.liang.kuiklychart.finance.FinancialChartView
+import com.guet.liang.kuiklychart.finance.financialNumber
 import com.guet.liang.stockchat.base.BasePager
 import com.guet.liang.stockchat.base.ShareModule
 import com.guet.liang.stockchat.base.bridgeModule
+import com.guet.liang.stockchat.data.ChartEvidenceResolver
+import com.guet.liang.stockchat.data.ChartEvidenceResolution
+import com.guet.liang.stockchat.data.MarketPeriod
+import com.guet.liang.stockchat.model.ChartEvidenceReference
+import com.guet.liang.kuiklychart.finance.FinancialPoint
 import com.guet.liang.stockchat.data.MarketDataResult
 import com.guet.liang.stockchat.data.HistoricalPointsResult
+import com.guet.liang.stockchat.data.FavoriteCardsStore
 import com.guet.liang.stockchat.data.StockChatShareContentBuilder
 import com.guet.liang.stockchat.data.StockChatSettingsStore
 import com.guet.liang.stockchat.data.StockPredictionService
 import com.guet.liang.stockchat.data.TencentMarketDataService
+import com.guet.liang.stockchat.data.TencentMarketSnapshot
 import com.guet.liang.stockchat.model.ShareResult
 import com.guet.liang.stockchat.model.StockQuote
 import com.guet.liang.stockchat.model.StockPrediction
@@ -19,42 +30,31 @@ import com.guet.liang.stockchat.model.StockPredictionPoint
 import com.guet.liang.stockchat.model.StockPredictionResult
 import com.guet.liang.stockchat.model.ModelProviderKind
 import com.tencent.kuikly.core.annotations.Page
+import com.tencent.kuikly.core.base.Animation
 import com.tencent.kuikly.core.base.Border
 import com.tencent.kuikly.core.base.BorderStyle
+import com.tencent.kuikly.core.base.BoxShadow
 import com.tencent.kuikly.core.base.Color
+import com.tencent.kuikly.core.base.Translate
+import com.tencent.kuikly.core.base.ViewRef
+import com.tencent.kuikly.core.views.ScrollerView
 import com.tencent.kuikly.core.base.ViewBuilder
 import com.tencent.kuikly.core.base.ViewContainer
-import com.tencent.kuikly.core.base.attr.CaptureRule
-import com.tencent.kuikly.core.base.attr.CaptureRuleDirection
 import com.tencent.kuikly.core.directives.vif
 import com.tencent.kuikly.core.directives.velse
-import com.tencent.kuikly.core.base.event.PanGestureParams
-import com.tencent.kuikly.core.base.event.PinchGestureParams
 import com.tencent.kuikly.core.log.KLog
 import com.tencent.kuikly.core.module.NetworkModule
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.reactive.handler.observable
-import com.tencent.kuikly.core.views.Canvas
-import com.tencent.kuikly.core.views.TextAlign
 import com.tencent.kuikly.core.views.Scroller
 import com.tencent.kuikly.core.views.Text
 import com.tencent.kuikly.core.views.View
-import com.tencent.kuikly.core.timer.Timer
-import kotlin.math.abs
-import kotlin.math.min
 import kotlin.math.round
-import kotlin.math.sqrt
+import kotlin.math.abs
 
 private const val DETAIL_PAGE_NAME = "stock_detail"
-private const val CHART_AXIS_WIDTH = 44f
-private const val CHART_RIGHT_INSET = 4f
-private const val CHART_PLOT_TOP = 10f
-private const val CHART_PLOT_BOTTOM = 16f
-private const val CHART_MIN_SCALE = 1f
-private const val CHART_MAX_SCALE = 4f
-private const val CHART_TRANSITION_DURATION_MS = 420
-private const val CHART_TRANSITION_INTERVAL_MS = 16
 private const val PREDICTION_HISTORY_COUNT = 120
 private const val DEFAULT_CHAT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 private const val STOCK_PREDICTION_LOG_TAG = "StockPrediction"
@@ -67,16 +67,18 @@ private enum class DetailInsightFocus(
     RISK("风险提醒"),
 }
 
-private fun scaledFontSize(baseSize: Float): Float = baseSize * StockChatTheme.fontScale
-
-private fun axisLabel(value: Float): String {
-    val rounded = round(value * 100f) / 100f
-    return rounded.toString()
+private enum class DetailTab(
+    val label: String,
+) {
+    MARKET("行情展示"),
+    PREDICTION("AI 走势"),
 }
+
+private fun scaledFontSize(baseSize: Float): Float = baseSize * StockChatTheme.fontScale
 
 private sealed class DetailUiState {
     data object Loading : DetailUiState()
-    data class Content(val quote: StockQuote) : DetailUiState()
+    data class Content(val snapshot: TencentMarketSnapshot) : DetailUiState()
     data object Empty : DetailUiState()
     data class Error(val message: String) : DetailUiState()
 }
@@ -95,24 +97,20 @@ private sealed class PredictionUiState {
 @Page(DETAIL_PAGE_NAME, supportInLocal = true)
 internal class StockDetailPage : BasePager() {
     private var detailState by observable<DetailUiState>(DetailUiState.Loading)
+    private var selectedDetailTab by observable(DetailTab.MARKET)
     private var predictionState by observable<PredictionUiState>(PredictionUiState.NotRequested)
     private var predictionRenderRevision by observable(0)
     private var chartShowingPrediction by observable(false)
-    private var chartPredictionProgress by observable(0f)
-    private var chartScale by observable(1f)
-    private var chartOffset by observable(0f)
+    private var predictionHistoryCache: List<StockPredictionHistoryPoint> = emptyList()
+    private var detailScroller: ViewRef<ScrollerView<*, *>>? = null
+    private var pendingMarketEvidence: ChartEvidenceReference? = null
+    private var predictionChartView: FinancialChartView? = null
     private var selectedChartPointIndex by observable(-1)
+    private var favoriteCardsRevision by observable(0)
     private var insightFocus by observable(DetailInsightFocus.TREND)
     private var symbol = ""
     private var loadToken = 0
     private var predictionToken = 0
-    private var chartPanStartX = 0f
-    private var chartPanStartY = 0f
-    private var chartPanStartOffset = 0f
-    private var chartPinchStartScale = 1f
-    private var chartViewportWidth = 0f
-    private var chartTransitionTimer: Timer? = null
-    private var chartTransitionToken = 0
     private lateinit var marketDataService: TencentMarketDataService
 
     override fun created() {
@@ -138,7 +136,6 @@ internal class StockDetailPage : BasePager() {
     override fun pageWillDestroy() {
         loadToken += 1
         predictionToken += 1
-        stopChartTransition()
         super.pageWillDestroy()
     }
 
@@ -168,8 +165,8 @@ internal class StockDetailPage : BasePager() {
                     ctx.ErrorState(this)
                 }
                 vif({ ctx.detailState is DetailUiState.Content }) {
-                    val quote = (ctx.detailState as DetailUiState.Content).quote
-                    ctx.DetailContent(this, quote)
+                    val snapshot = (ctx.detailState as DetailUiState.Content).snapshot
+                    ctx.DetailContent(this, snapshot)
                 }
             }
         }
@@ -178,72 +175,103 @@ internal class StockDetailPage : BasePager() {
     private fun DetailHeader(container: ViewContainer<*, *>) {
         val ctx = this
         with(container) {
-        View {
-            attr {
-                height(pagerData.statusBarHeight + 68f)
-                padding(
-                    top = pagerData.statusBarHeight + 12f,
-                    left = 18f,
-                    right = 18f,
-                )
-                backgroundColor(StockChatTheme.background)
-                flexDirectionRow()
-                alignItemsCenter()
-            }
             View {
                 attr {
-                    size(44f, 44f)
-                    borderRadius(22f)
-                    backgroundColor(StockChatTheme.surface)
-                    border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
-                    allCenter()
+                    height(pagerData.statusBarHeight + 68f)
+                    padding(
+                        top = pagerData.statusBarHeight + 12f,
+                        left = 18f,
+                        right = 18f,
+                    )
+                    backgroundColor(StockChatTheme.background)
+                    flexDirectionRow()
+                    alignItemsCenter()
                 }
-                event {
-                    click {
-                        ctx.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
-                    }
-                }
-                Text {
+                View {
                     attr {
-                        text("‹")
-                        fontSize(34f)
-                        color(StockChatTheme.textPrimary)
-                        marginBottom(3f)
+                        size(44f, 44f)
+                        borderRadius(22f)
+                        backgroundColor(StockChatTheme.surface)
+                        border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
+                        allCenter()
+                    }
+                    event {
+                        click {
+                            ctx.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+                        }
+                    }
+                    Text {
+                        attr {
+                            text("‹")
+                            fontSize(34f)
+                            color(StockChatTheme.textPrimary)
+                            marginBottom(3f)
+                        }
                     }
                 }
-            }
-            Text {
-                attr {
-                    text("行情详情")
-                    fontSize(scaledFontSize(18f))
-                    fontWeightBold()
-                    color(StockChatTheme.textPrimary)
-                    marginLeft(14f)
-                    flex(1f)
-                }
-            }
-            View {
-                attr {
-                    height(38f)
-                    borderRadius(19f)
-                    padding(left = 15f, right = 15f)
-                    backgroundColor(StockChatTheme.surface)
-                    border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
-                    allCenter()
-                }
-                event {
-                    click { ctx.shareQuote() }
-                }
-                Text {
+                ctx.DetailTabSwitcher(this)
+                View {
                     attr {
-                        text("分享")
-                        fontSize(scaledFontSize(14f))
-                        fontWeightMedium()
-                        color(StockChatTheme.textPrimary)
+                        size(36f, 36f)
+                        borderRadius(18f)
+                        marginLeft(8f)
+                        backgroundColor(
+                            if (ctx.currentDetailQuote()?.let(ctx::isFavorite) == true) {
+                                StockChatTheme.warningSoft
+                            } else {
+                                StockChatTheme.surface
+                            },
+                        )
+                        border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
+                        allCenter()
+                        touchEnable(ctx.currentDetailQuote() != null)
+                    }
+                    event {
+                        click { ctx.currentDetailQuote()?.let(ctx::toggleFavorite) }
+                    }
+                    Text {
+                        attr {
+                            text(
+                                if (ctx.currentDetailQuote()?.let(ctx::isFavorite) == true) {
+                                    "★"
+                                } else {
+                                    "☆"
+                                },
+                            )
+                            fontSize(21f)
+                            color(
+                                if (ctx.currentDetailQuote()?.let(ctx::isFavorite) == true) {
+                                    StockChatTheme.warning
+                                } else {
+                                    StockChatTheme.accent
+                                },
+                            )
+                        }
+                    }
+                }
+                View {
+                    attr {
+                        height(36f)
+                        borderRadius(18f)
+                        padding(left = 13f, right = 13f)
+                        marginLeft(8f)
+                        backgroundColor(StockChatTheme.surface)
+                        border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
+                        allCenter()
+                    }
+                    event {
+                        click { ctx.shareQuote() }
+                    }
+                    Text {
+                        attr {
+                            text("分享")
+                            fontSize(scaledFontSize(13f))
+                            fontWeightMedium()
+                            color(StockChatTheme.textPrimary)
+                        }
                     }
                 }
             }
-        }
         }
     }
 
@@ -363,10 +391,12 @@ internal class StockDetailPage : BasePager() {
         }
     }
 
-    private fun DetailContent(container: ViewContainer<*, *>, quote: StockQuote) {
+    private fun DetailContent(container: ViewContainer<*, *>, snapshot: TencentMarketSnapshot) {
         val ctx = this
+        val quote = snapshot.quote
         with(container) {
-        Scroller {
+            Scroller {
+            ref { ctx.detailScroller = it }
             attr {
                 absolutePositionAllZero()
                 showScrollerIndicator(false)
@@ -377,82 +407,147 @@ internal class StockDetailPage : BasePager() {
                     bottom = pagerData.safeAreaInsets.bottom + 28f,
                 )
             }
+            vif({ ctx.selectedDetailTab == DetailTab.MARKET }) {
+                ctx.MarketDisplayContent(this, snapshot)
+            }
+            vif({ ctx.selectedDetailTab == DetailTab.PREDICTION }) {
+                ctx.AiPredictionContent(this, quote)
+            }
             View {
                 attr {
                     width(pagerData.pageViewWidth - 36f)
                     alignSelfCenter()
-                    padding(top = 20f, left = 18f, bottom = 18f, right = 18f)
-                    borderRadius(22f)
-                    backgroundColor(StockChatTheme.surface)
-                    border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
-                }
-                View {
-                    attr {
-                        flexDirectionRow()
-                        alignItemsCenter()
-                    }
-                    View {
-                        attr { flex(1f) }
-                        Text {
-                            attr {
-                                text(quote.name)
-                                fontSize(scaledFontSize(22f))
-                                fontWeightBold()
-                                color(StockChatTheme.textPrimary)
-                            }
-                        }
-                        Text {
-                            attr {
-                                text("${quote.marketLabel} · ${quote.symbol}")
-                                fontSize(scaledFontSize(13f))
-                                color(StockChatTheme.textSecondary)
-                                marginTop(4f)
-                            }
-                        }
-                    }
-                    View {
-                        attr {
-                            size(40f, 40f)
-                            borderRadius(20f)
-                            backgroundColor(StockChatTheme.accentSoft)
-                            allCenter()
-                        }
-                        Text {
-                            attr {
-                                text("☆")
-                                fontSize(23f)
-                                color(StockChatTheme.accent)
-                            }
-                        }
-                    }
+                    marginTop(14f)
+                    padding(top = 13f, left = 14f, bottom = 13f, right = 14f)
+                    borderRadius(16f)
+                    backgroundColor(StockChatTheme.warningSoft)
+                    border(Border(1f, BorderStyle.SOLID, StockChatTheme.warningBorder))
+                    flexDirectionRow()
+                    alignItemsFlexStart()
                 }
                 Text {
                     attr {
-                        text(quote.price)
-                        fontSize(scaledFontSize(38f))
+                        text("!")
+                        fontSize(13f)
                         fontWeightBold()
-                        color(StockChatTheme.textPrimary)
-                        marginTop(22f)
+                        color(StockChatTheme.warning)
+                        marginRight(9f)
                     }
                 }
                 Text {
                     attr {
-                        text("${quote.change}   ${quote.changePercent}")
-                        fontSize(scaledFontSize(16f))
-                        fontWeightBold()
-                        color(if (quote.isPositive) StockChatTheme.positive else StockChatTheme.negative)
-                        marginTop(5f)
-                    }
-                }
-                Text {
-                    attr {
-                        text(quote.updatedAt)
-                        fontSize(scaledFontSize(11f))
-                        color(StockChatTheme.textTertiary)
-                        marginTop(8f)
+                        text("StockChat Demo 信息，仅供参考，不构成投资建议。")
+                        fontSize(scaledFontSize(12f))
+                        lineHeight(scaledFontSize(18f))
+                        color(StockChatTheme.warning)
+                        flex(1f)
                     }
                 }
             }
+        }
+        }
+    }
+
+    private fun DetailTabSwitcher(container: ViewContainer<*, *>) {
+        val ctx = this
+        with(container) {
+            View {
+                attr {
+                    flex(1f)
+                    height(40f)
+                    marginLeft(10f)
+                    padding(all = 3f)
+                    borderRadius(20f)
+                    backgroundColor(StockChatTheme.recessed)
+                    border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
+                    flexDirectionRow()
+                }
+                View {
+                    attr {
+                        flex(1f)
+                        height(34f)
+                        borderRadius(17f)
+                        backgroundColor(StockChatTheme.surface)
+                        boxShadow(
+                            BoxShadow(
+                                0f,
+                                2f,
+                                8f,
+                                Color(0x1F000000),
+                            )
+                        )
+                        transform(
+                            Translate(
+                                if (ctx.selectedDetailTab == DetailTab.PREDICTION) 1f else 0f,
+                            )
+                        )
+                        animate(
+                            Animation.springEaseOut(0.34f, 0.9f, 0.12f),
+                            ctx.selectedDetailTab,
+                        )
+                        touchEnable(false)
+                    }
+                }
+                View {
+                    attr {
+                        flex(1f)
+                        height(34f)
+                        touchEnable(false)
+                    }
+                }
+                View {
+                    attr {
+                        absolutePosition(top = 3f, left = 3f, right = 3f, bottom = 3f)
+                        flexDirectionRow()
+                        alignItemsCenter()
+                        zIndex(1)
+                    }
+                    DetailTab.values().forEach { tab ->
+                        View {
+                            attr {
+                                flex(1f)
+                                height(34f)
+                                alignItemsCenter()
+                                justifyContentCenter()
+                            }
+                            event {
+                                click {
+                                    if (tab == DetailTab.MARKET) {
+                                        ctx.selectedChartPointIndex = -1
+                                    }
+                                    if (ctx.selectedDetailTab != tab) ctx.detailScroller?.view?.setContentOffset(0f, 0f, false)
+                                    ctx.selectedDetailTab = tab
+                                }
+                            }
+                            Text {
+                                attr {
+                                    text(tab.label)
+                                    fontSize(scaledFontSize(13f))
+                                    if (ctx.selectedDetailTab == tab) {
+                                        fontWeightBold()
+                                    }
+                                    color(
+                                        if (ctx.selectedDetailTab == tab) {
+                                            StockChatTheme.textPrimary
+                                        } else {
+                                            StockChatTheme.textSecondary
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun AiPredictionContent(
+        container: ViewContainer<*, *>,
+        quote: StockQuote,
+    ) {
+        val ctx = this
+        with(container) {
             View {
                 attr {
                     width(pagerData.pageViewWidth - 36f)
@@ -489,7 +584,7 @@ internal class StockDetailPage : BasePager() {
                         }
                         Text {
                             attr {
-                                text("分时")
+                                text("日线")
                                 fontSize(scaledFontSize(12f))
                                 fontWeightMedium()
                                 color(StockChatTheme.textPrimary)
@@ -542,35 +637,7 @@ internal class StockDetailPage : BasePager() {
                         }
                     }
                 }
-                ctx.LargeTrendChart(this, quote)
-                View {
-                    attr {
-                        flexDirectionRow()
-                        justifyContentSpaceBetween()
-                        marginTop(7f)
-                    }
-                    Text {
-                        attr {
-                            text(if (ctx.isShowingPrediction()) "历史" else "09:30")
-                            fontSize(scaledFontSize(10f))
-                            color(StockChatTheme.textTertiary)
-                        }
-                    }
-                    Text {
-                        attr {
-                            text(if (ctx.isShowingPrediction()) "预测起点" else "11:30")
-                            fontSize(scaledFontSize(10f))
-                            color(StockChatTheme.textTertiary)
-                        }
-                    }
-                    Text {
-                        attr {
-                            text(if (ctx.isShowingPrediction()) "模型区间" else "15:00")
-                            fontSize(scaledFontSize(10f))
-                            color(StockChatTheme.textTertiary)
-                        }
-                    }
-                }
+                ctx.PredictionTrendChart(this)
                 Text {
                     attr {
                         text(ctx.chartHint())
@@ -586,38 +653,35 @@ internal class StockDetailPage : BasePager() {
             velse {
                 ctx.PredictionCards(this, quote)
             }
-            View {
-                attr {
-                    width(pagerData.pageViewWidth - 36f)
-                    alignSelfCenter()
-                    marginTop(14f)
-                    padding(top = 13f, left = 14f, bottom = 13f, right = 14f)
-                    borderRadius(16f)
-                    backgroundColor(StockChatTheme.warningSoft)
-                    border(Border(1f, BorderStyle.SOLID, StockChatTheme.warningBorder))
-                    flexDirectionRow()
-                    alignItemsFlexStart()
-                }
-                Text {
-                    attr {
-                        text("!")
-                        fontSize(13f)
-                        fontWeightBold()
-                        color(StockChatTheme.warning)
-                        marginRight(9f)
-                    }
-                }
-                Text {
-                    attr {
-                        text("StockChat Demo 信息，仅供参考，不构成投资建议。")
-                        fontSize(scaledFontSize(12f))
-                        lineHeight(scaledFontSize(18f))
-                        color(StockChatTheme.warning)
-                        flex(1f)
-                    }
-                }
-            }
         }
+        }
+
+    private fun isFavorite(quote: StockQuote): Boolean {
+        val revision = favoriteCardsRevision
+        return revision >= 0 && FavoriteCardsStore.contains(quote)
+    }
+
+    private fun currentDetailQuote(): StockQuote? {
+        return (detailState as? DetailUiState.Content)?.snapshot?.quote
+    }
+
+    private fun toggleFavorite(quote: StockQuote) {
+        val isFavorite = FavoriteCardsStore.toggle(quote)
+        favoriteCardsRevision += 1
+        bridgeModule.toast(if (isFavorite) "已收藏行情卡片" else "已取消收藏")
+    }
+
+    private fun MarketDisplayContent(
+        container: ViewContainer<*, *>,
+        snapshot: TencentMarketSnapshot,
+    ) {
+        val ctx = this
+        val reference = pendingMarketEvidence
+        pendingMarketEvidence = null
+        with(container) {
+            StockMarket(snapshot, reference) { chartTop ->
+                ctx.detailScroller?.view?.setContentOffset(0f, chartTop, false)
+            }
         }
     }
 
@@ -630,328 +694,69 @@ internal class StockDetailPage : BasePager() {
         PredictionStatusCard(container, quote)
     }
 
-    private fun LargeTrendChart(container: ViewContainer<*, *>, quote: StockQuote) {
+    private fun predictionHistory(): List<StockPredictionHistoryPoint> =
+        (predictionState as? PredictionUiState.Content)?.history
+            ?: predictionHistoryCache.ifEmpty {
+                (detailState as? DetailUiState.Content)?.snapshot?.dailyCandles.orEmpty().map {
+                    StockPredictionHistoryPoint(it.date, it.close)
+                }
+            }
+
+    private fun predictionPlot(): PredictionChartData = predictionChartData(
+        predictionHistory(),
+        if (isShowingPrediction()) (predictionState as? PredictionUiState.Content)?.prediction?.forecastPoints.orEmpty()
+        else emptyList(),
+    )
+
+    private fun PredictionTrendChart(container: ViewContainer<*, *>) {
         val ctx = this
         with(container) {
-        View {
-            attr {
-                height(188f)
-                marginTop(18f)
-                alignSelfStretch()
-                capture(CaptureRule.pan(CaptureRuleDirection.HORIZONTAL))
-            }
-            event {
-                click { params -> ctx.handleChartTap(params.x, quote) }
-                pan { params -> ctx.handleChartPan(params) }
-            }
-            Canvas({
-                attr {
-                    absolutePositionAllZero()
-                }
-                event {
-                    pinch { params -> ctx.handleChartPinch(params) }
-                }
-            }) { context, width, height ->
-            ctx.chartViewportWidth = width
-            val predictionContent = ctx.predictionState as? PredictionUiState.Content
-            val predictionProgress = ctx.chartPredictionProgress
-            val hasPredictionData = predictionContent != null &&
-                (ctx.chartShowingPrediction || predictionProgress > 0f)
-            val predictionHistory = predictionContent?.history
-                ?.map(StockPredictionHistoryPoint::close)
-                .orEmpty()
-                .ifEmpty { quote.trendPoints }
-            val actualPoints = if (hasPredictionData) {
-                ctx.interpolateSeries(
-                    startPoints = quote.trendPoints,
-                    endPoints = predictionHistory,
-                    progress = predictionProgress,
-                )
-            } else {
-                quote.trendPoints
-            }
-            val predictedPoints = if (hasPredictionData) {
-                predictionContent?.prediction?.forecastPoints
-                    ?.map(StockPredictionPoint::predictedPrice)
-                    .orEmpty()
-            } else {
-                emptyList()
-            }
-            val visiblePredictionCount = (predictedPoints.size * predictionProgress)
-                .toInt()
-                .coerceIn(0, predictedPoints.size)
-            val points = actualPoints + predictedPoints
-            val axisWidth = CHART_AXIS_WIDTH
-            val rightInset = CHART_RIGHT_INSET
-            val plotLeft = axisWidth
-            val plotRight = (width - rightInset).coerceAtLeast(plotLeft + 1f)
-            val plotTop = CHART_PLOT_TOP
-            val plotBottom = (height - CHART_PLOT_BOTTOM).coerceAtLeast(plotTop + 1f)
-            val plotHeight = plotBottom - plotTop
-            val plotWidth = plotRight - plotLeft
-            val contentWidth = plotWidth * ctx.chartScale
-            val minimumOffset = -(contentWidth - plotWidth).coerceAtLeast(0f)
-            val offset = ctx.chartOffset.coerceIn(minimumOffset, 0f)
-
-            val dataMin = points.minOrNull() ?: 0f
-            val dataMax = points.maxOrNull() ?: 1f
-            val dataRange = (dataMax - dataMin).takeIf { it > 0f } ?: 1f
-            val dataCenter = (dataMax + dataMin) / 2f
-            val visibleRange = (dataRange / ctx.chartScale).coerceAtLeast(0.0001f)
-            val visibleMin = dataCenter - visibleRange / 2f
-            val visibleMax = dataCenter + visibleRange / 2f
-            val gridColor = Color(0xFFE9EDEB)
-            val axisColor = Color(0xFFB7C4BF)
-            val labelColor = Color(0xFF7A8A84)
-            for (index in 0..4) {
-                val fraction = index / 4f
-                val y = plotTop + plotHeight * fraction
-                context.beginPath()
-                context.moveTo(plotLeft, y)
-                context.lineTo(plotRight, y)
-                context.lineWidth(1f)
-                context.strokeStyle(gridColor)
-                context.stroke()
-
-                context.font(10f)
-                context.fillStyle(labelColor)
-                context.textAlign(TextAlign.RIGHT)
-                context.fillText(axisLabel(visibleMax - visibleRange * fraction), plotLeft - 6f, y + 3f)
-            }
-
-            context.beginPath()
-            context.moveTo(plotLeft, plotTop)
-            context.lineTo(plotLeft, plotBottom)
-            context.lineWidth(1f)
-            context.strokeStyle(axisColor)
-            context.stroke()
-
-            if (points.size < 2) {
-                return@Canvas
-            }
-
-            context.save()
-            context.beginPath()
-            context.moveTo(plotLeft, plotTop)
-            context.lineTo(plotRight, plotTop)
-            context.lineTo(plotRight, plotBottom)
-            context.lineTo(plotLeft, plotBottom)
-            context.closePath()
-            context.clip()
-            fun xFor(index: Int): Float {
-                return plotLeft + index.toFloat() / (points.size - 1).toFloat() * contentWidth + offset
-            }
-
-            fun yFor(value: Float): Float {
-                val normalized = (value - visibleMin) / visibleRange
-                return plotTop + (1f - normalized) * plotHeight
-            }
-
-            fun drawSolidPath(
-                startIndex: Int,
-                endIndex: Int,
-                color: Color,
-            ) {
-                if (startIndex > endIndex || startIndex !in points.indices) {
-                    return
-                }
-                context.beginPath()
-                for (index in startIndex..endIndex) {
-                    val x = xFor(index)
-                    val y = yFor(points[index])
-                    if (index == startIndex) {
-                        context.moveTo(x, y)
+            // Recreate only when the data response or visibility changes, preserving point-selection updates.
+            for (showForecast in listOf(false, true)) {
+                vif({ ctx.isShowingPrediction() == showForecast }) {
+                    val plot = ctx.predictionPlot()
+                    if (plot.points.isEmpty()) {
+                        Text { attr { text("暂无日线历史数据，暂不能绘制预测图"); fontSize(12f); color(StockChatTheme.textSecondary); marginTop(20f) } }
                     } else {
-                        context.lineTo(x, y)
-                    }
-                }
-                context.lineWidth(3f)
-                context.lineCapRound()
-                context.strokeStyle(color)
-                context.stroke()
-            }
-
-            fun drawDashedPath(
-                startIndex: Int,
-                endIndex: Int,
-                color: Color,
-                pattern: List<Float>,
-            ) {
-                if (startIndex >= endIndex || startIndex !in points.indices) {
-                    return
-                }
-                val validPattern = pattern.filter { it.isFinite() && it > 0f }
-                if (validPattern.isEmpty()) {
-                    drawSolidPath(startIndex, endIndex, color)
-                    return
-                }
-                context.lineWidth(3f)
-                context.lineCapRound()
-                context.strokeStyle(color)
-                var patternIndex = 0
-                var drawSegment = true
-                var patternRemaining = validPattern.first()
-                var startX = xFor(startIndex)
-                var startY = yFor(points[startIndex])
-                for (index in startIndex until endIndex) {
-                    val endX = xFor(index + 1)
-                    val endY = yFor(points[index + 1])
-                    val deltaX = endX - startX
-                    val deltaY = endY - startY
-                    val lineLength = sqrt(deltaX * deltaX + deltaY * deltaY)
-                    if (lineLength <= 0f) {
-                        startX = endX
-                        startY = endY
-                        continue
-                    }
-                    val unitX = deltaX / lineLength
-                    val unitY = deltaY / lineLength
-                    var travelled = 0f
-                    while (travelled < lineLength) {
-                        val segmentLength = min(patternRemaining, lineLength - travelled)
-                        if (drawSegment && segmentLength > 0f) {
-                            context.beginPath()
-                            context.moveTo(
-                                startX + unitX * travelled,
-                                startY + unitY * travelled,
-                            )
-                            context.lineTo(
-                                startX + unitX * (travelled + segmentLength),
-                                startY + unitY * (travelled + segmentLength),
-                            )
-                            context.stroke()
+                        View {
+                            attr { flexDirectionRow(); alignItemsCenter(); marginTop(14f) }
+                            Text {
+                                attr { text(if (showForecast) "历史收盘 + 模型预测区间" else "日线收盘 · ${plot.points.size}个交易日"); fontSize(11f); color(StockChatTheme.textTertiary); flex(1f) }
+                            }
+                            for (label in listOf("−", "+", "复位")) View {
+                                attr { padding(8f); marginLeft(4f); borderRadius(6f); backgroundColor(StockChatTheme.surfaceSoft) }
+                                event { click { when (label) { "+" -> ctx.predictionChartView?.zoom(1.4f); "−" -> ctx.predictionChartView?.zoom(0.75f); else -> ctx.predictionChartView?.resetViewport() } } }
+                                Text { attr { text(label); fontSize(12f); color(StockChatTheme.textPrimary) } }
+                            }
                         }
-                        travelled += segmentLength
-                        patternRemaining -= segmentLength
-                        if (patternRemaining <= 0.0001f) {
-                            patternIndex = (patternIndex + 1) % validPattern.size
-                            drawSegment = !drawSegment
-                            patternRemaining = validPattern[patternIndex]
+                        FinancialChart {
+                            ctx.predictionChartView = this
+                            attr { height(340f); marginTop(8f) }
+                            onSelectionChanged = { index -> ctx.selectedChartPointIndex = index ?: -1 }
+                            chart {
+                                points = plot.points
+                                mode = FinancialChartMode.CLOSE_LINE
+                                showVolume = false
+                                visibleCount = 48
+                                forecastRevealDurationMillis = if (showForecast) 800 else 0
+                                forecastStartIndex = plot.forecastStart
+                                forecastIntervals = plot.intervals
+                                backgroundColor = StockChatTheme.surface
+                                textColor = StockChatTheme.textPrimary
+                                mutedColor = StockChatTheme.textTertiary
+                                gridColor = StockChatTheme.border
+                            }
                         }
-                    }
-                    startX = endX
-                    startY = endY
-                }
-            }
-
-            if (hasPredictionData && actualPoints.size >= 2) {
-                drawSolidPath(
-                    startIndex = 0,
-                    endIndex = actualPoints.lastIndex,
-                    color = if (quote.isPositive) StockChatTheme.positive else StockChatTheme.negative,
-                )
-                if (visiblePredictionCount > 0) {
-                    drawDashedPath(
-                        startIndex = actualPoints.lastIndex,
-                        endIndex = actualPoints.lastIndex + visiblePredictionCount,
-                        color = StockChatTheme.accent,
-                        pattern = listOf(7f, 5f),
-                    )
-                }
-                if (predictionProgress > 0f && predictedPoints.isNotEmpty()) {
-                    val boundaryIndex = actualPoints.lastIndex
-                    val boundaryX = plotLeft + boundaryIndex.toFloat() /
-                        (points.size - 1).toFloat() * contentWidth + offset
-                    context.beginPath()
-                    context.moveTo(boundaryX, plotTop)
-                    context.lineTo(boundaryX, plotBottom)
-                    context.lineWidth(1f)
-                    context.strokeStyle(Color(0x668A9C95))
-                    val boundaryPattern = listOf(4f, 4f)
-                    var boundaryY = plotTop
-                    var boundaryPatternIndex = 0
-                    var boundaryDrawSegment = true
-                    var boundaryPatternRemaining = boundaryPattern.first()
-                    while (boundaryY < plotBottom) {
-                        val segmentLength = min(boundaryPatternRemaining, plotBottom - boundaryY)
-                        if (boundaryDrawSegment && segmentLength > 0f) {
-                            context.beginPath()
-                            context.moveTo(boundaryX, boundaryY)
-                            context.lineTo(boundaryX, boundaryY + segmentLength)
-                            context.stroke()
-                        }
-                        boundaryY += segmentLength
-                        boundaryPatternRemaining -= segmentLength
-                        if (boundaryPatternRemaining <= 0.0001f) {
-                            boundaryPatternIndex = (boundaryPatternIndex + 1) % boundaryPattern.size
-                            boundaryDrawSegment = !boundaryDrawSegment
-                            boundaryPatternRemaining = boundaryPattern[boundaryPatternIndex]
+                        if (showForecast) Text {
+                            attr { text("阴影仅表示模型返回的价格区间，不是收益保证；未返回上下界的节点不绘制区间。"); fontSize(10f); lineHeight(16f); color(StockChatTheme.textTertiary); marginTop(7f) }
                         }
                     }
                 }
-            } else {
-                drawSolidPath(
-                    startIndex = 0,
-                    endIndex = points.lastIndex,
-                    color = if (quote.isPositive) StockChatTheme.positive else StockChatTheme.negative,
-                )
             }
-            val selectedIndex = ctx.selectedChartPointIndex
-            if (selectedIndex in points.indices) {
-                val selectedX = xFor(selectedIndex)
-                val selectedY = yFor(points[selectedIndex])
-                context.beginPath()
-                context.moveTo(selectedX, plotTop)
-                context.lineTo(selectedX, plotBottom)
-                context.lineWidth(1f)
-                context.strokeStyle(Color(0x668A9C95))
-                context.stroke()
-                context.beginPath()
-                context.arc(selectedX, selectedY, 5f, 0f, 6.2831855f, false)
-                context.fillStyle(StockChatTheme.accent)
-                context.fill()
-                context.beginPath()
-                context.arc(selectedX, selectedY, 7f, 0f, 6.2831855f, false)
-                context.lineWidth(2f)
-                context.strokeStyle(Color.WHITE)
-                context.stroke()
-            }
-            context.restore()
-            }
-        }
         }
     }
 
-    private fun handleChartTap(x: Float, quote: StockQuote) {
-        val points = chartPoints(quote)
-        val viewport = chartViewportWidth
-        if (points.size < 2 || viewport <= 0f) {
-            return
-        }
-        val plotWidth = (viewport - CHART_AXIS_WIDTH - CHART_RIGHT_INSET).coerceAtLeast(1f)
-        val contentWidth = plotWidth * chartScale
-        val position = ((x - CHART_AXIS_WIDTH - chartOffset) / contentWidth)
-            .coerceIn(0f, 1f)
-        selectedChartPointIndex = round(position * points.lastIndex).toInt()
-        insightFocus = DetailInsightFocus.TREND
-    }
-
-    private fun chartPoints(quote: StockQuote): List<Float> {
-        val predictionContent = predictionState as? PredictionUiState.Content
-        val hasPredictionData = predictionContent != null &&
-            (chartShowingPrediction || chartPredictionProgress > 0f)
-        val predictionHistory = predictionContent?.history
-            ?.map(StockPredictionHistoryPoint::close)
-            .orEmpty()
-            .ifEmpty { quote.trendPoints }
-        val history = if (hasPredictionData) {
-            interpolateSeries(
-                startPoints = quote.trendPoints,
-                endPoints = predictionHistory,
-                progress = chartPredictionProgress,
-            )
-        } else {
-            quote.trendPoints
-        }
-        val predicted = if (hasPredictionData) {
-            predictionContent?.prediction?.forecastPoints
-                ?.map(StockPredictionPoint::predictedPrice)
-                .orEmpty()
-        } else {
-            emptyList()
-        }
-        return history + predicted
-    }
+    private fun chartPoints(quote: StockQuote): List<Float> = predictionPlot().points.map { it.close }
 
     private fun isShowingPrediction(): Boolean {
         return chartShowingPrediction && predictionState is PredictionUiState.Content
@@ -962,7 +767,7 @@ internal class StockDetailPage : BasePager() {
             PredictionUiState.NotRequested -> "双指缩放、左右滑动查看完整走势；点击 AI 预测请求模型分析"
             PredictionUiState.Loading -> "正在请求模型分析真实历史数据，不使用本地外推"
             is PredictionUiState.Content -> if (chartShowingPrediction) {
-                "实线为历史行情，虚线为 ${state.prediction.modelName} 返回的模型估计"
+                "实线为历史收盘，虚线为 ${state.prediction.modelName} 返回的模型估计；点选查看日期与价格"
             } else {
                 "双指缩放、左右滑动查看完整走势"
             }
@@ -974,142 +779,15 @@ internal class StockDetailPage : BasePager() {
     private fun toggleChartPrediction(quote: StockQuote) {
         if (chartShowingPrediction) {
             chartShowingPrediction = false
-            animateChartPrediction(showPrediction = false)
-            chartOffset = 0f
-            chartScale = 1f
             selectedChartPointIndex = -1
             return
         }
         if (predictionState is PredictionUiState.Content) {
             chartShowingPrediction = true
-            animateChartPrediction(showPrediction = true)
-            chartOffset = 0f
-            chartScale = 1f
             selectedChartPointIndex = -1
             return
         }
         requestPrediction(quote)
-    }
-
-    private fun handleChartPan(params: PanGestureParams) {
-        when (params.state) {
-            "start" -> {
-                chartPanStartX = params.pageX
-                chartPanStartY = params.pageY
-                chartPanStartOffset = chartOffset
-            }
-            "move" -> {
-                val deltaX = params.pageX - chartPanStartX
-                val deltaY = params.pageY - chartPanStartY
-                if (abs(deltaX) <= abs(deltaY)) {
-                    return
-                }
-                chartOffset = chartPanStartOffset + deltaX
-                clampChartOffset()
-            }
-            "end", "cancel" -> {
-                chartPanStartX = 0f
-                chartPanStartY = 0f
-                chartPanStartOffset = chartOffset
-            }
-        }
-    }
-
-    private fun handleChartPinch(params: PinchGestureParams) {
-        when (params.state) {
-            "start" -> chartPinchStartScale = chartScale
-            "move" -> {
-                val gestureScale = params.scale.takeIf { it > 0f } ?: 1f
-                chartScale = (chartPinchStartScale * gestureScale).coerceIn(
-                    CHART_MIN_SCALE,
-                    CHART_MAX_SCALE,
-                )
-                clampChartOffset()
-            }
-        }
-    }
-
-    private fun interpolateSeries(
-        startPoints: List<Float>,
-        endPoints: List<Float>,
-        progress: Float,
-    ): List<Float> {
-        if (startPoints.isEmpty()) {
-            return endPoints
-        }
-        if (endPoints.isEmpty()) {
-            return startPoints
-        }
-        val sampleCount = maxOf(startPoints.size, endPoints.size)
-        val clampedProgress = progress.coerceIn(0f, 1f)
-        return List(sampleCount) { index ->
-            val position = if (sampleCount <= 1) 0f else {
-                index.toFloat() / (sampleCount - 1).toFloat()
-            }
-            val startValue = sampleSeries(startPoints, position)
-            val endValue = sampleSeries(endPoints, position)
-            startValue + (endValue - startValue) * clampedProgress
-        }
-    }
-
-    private fun sampleSeries(points: List<Float>, position: Float): Float {
-        if (points.size == 1) {
-            return points.first()
-        }
-        val scaledPosition = position.coerceIn(0f, 1f) * points.lastIndex
-        val lowerIndex = scaledPosition.toInt().coerceIn(0, points.lastIndex)
-        val upperIndex = (lowerIndex + 1).coerceAtMost(points.lastIndex)
-        val fraction = scaledPosition - lowerIndex
-        return points[lowerIndex] + (points[upperIndex] - points[lowerIndex]) * fraction
-    }
-
-    private fun animateChartPrediction(showPrediction: Boolean) {
-        val targetProgress = if (showPrediction) 1f else 0f
-        val currentProgress = chartPredictionProgress
-        if (abs(targetProgress - currentProgress) <= 0.001f) {
-            chartPredictionProgress = targetProgress
-            stopChartTransition()
-            return
-        }
-        stopChartTransition()
-        val transitionToken = chartTransitionToken
-        val step = CHART_TRANSITION_INTERVAL_MS.toFloat() / CHART_TRANSITION_DURATION_MS
-        chartTransitionTimer = Timer().also { timer ->
-            timer.schedule(0, CHART_TRANSITION_INTERVAL_MS) {
-                if (transitionToken != chartTransitionToken) {
-                    timer.cancel()
-                    return@schedule
-                }
-                val nextProgress = if (targetProgress > chartPredictionProgress) {
-                    (chartPredictionProgress + step).coerceAtMost(targetProgress)
-                } else {
-                    (chartPredictionProgress - step).coerceAtLeast(targetProgress)
-                }
-                chartPredictionProgress = nextProgress
-                if (abs(targetProgress - nextProgress) <= 0.001f) {
-                    chartPredictionProgress = targetProgress
-                    timer.cancel()
-                    chartTransitionTimer = null
-                }
-            }
-        }
-    }
-
-    private fun stopChartTransition() {
-        chartTransitionToken += 1
-        chartTransitionTimer?.cancel()
-        chartTransitionTimer = null
-    }
-
-    private fun clampChartOffset() {
-        val viewport = chartViewportWidth
-        if (viewport <= 0f) {
-            chartOffset = 0f
-            return
-        }
-        val plotWidth = (viewport - CHART_AXIS_WIDTH - CHART_RIGHT_INSET).coerceAtLeast(1f)
-        val minimumOffset = -(plotWidth * chartScale - plotWidth).coerceAtLeast(0f)
-        chartOffset = chartOffset.coerceIn(minimumOffset, 0f)
     }
 
     private fun PredictionStatusCard(
@@ -1324,12 +1002,8 @@ internal class StockDetailPage : BasePager() {
         }
         predictionToken += 1
         val currentPredictionToken = predictionToken
-        stopChartTransition()
-        chartPredictionProgress = 0f
         updatePredictionState(PredictionUiState.Loading)
         chartShowingPrediction = false
-        chartScale = 1f
-        chartOffset = 0f
         selectedChartPointIndex = -1
         stockPredictionUiLog(
             "ui_request_started symbol=$symbol quoteName=${quote.name} " +
@@ -1455,9 +1129,6 @@ internal class StockDetailPage : BasePager() {
                                         history = history,
                                     ))
                                     chartShowingPrediction = true
-                                    animateChartPrediction(showPrediction = true)
-                                    chartScale = 1f
-                                    chartOffset = 0f
                                 }
                                 is StockPredictionResult.Unavailable -> {
                                     stockPredictionUiLog(
@@ -1610,6 +1281,31 @@ internal class StockDetailPage : BasePager() {
                     marginTop(11f)
                 }
             }
+            prediction?.conclusions?.forEach { conclusion ->
+                val history = ctx.predictionHistory().map {
+                    FinancialPoint(it.timestamp, it.close, it.close, it.close, it.close)
+                }
+                val resolution = ChartEvidenceResolver.resolve(conclusion.reference, quote.symbol,
+                    MarketPeriod.DAY, quote.updatedAt, history)
+                ChartConclusionCard(conclusion, resolution) {
+                    // Revalidate at click time; the market panel validates again against its OHLC series.
+                    val currentHistory = ctx.predictionHistory().map {
+                        FinancialPoint(it.timestamp, it.close, it.close, it.close, it.close)
+                    }
+                    val current = ChartEvidenceResolver.resolve(conclusion.reference, quote.symbol,
+                        MarketPeriod.DAY, quote.updatedAt, currentHistory)
+                    if (current is ChartEvidenceResolution.Valid) {
+                        ctx.pendingMarketEvidence = conclusion.reference
+                        ctx.selectedDetailTab = DetailTab.MARKET
+                        ctx.detailScroller?.view?.setContentOffset(0f, 0f, false)
+                    } else {
+                        ctx.bridgeModule.toast((current as ChartEvidenceResolution.Invalid).reason)
+                    }
+                }
+            }
+            if (prediction != null && prediction.conclusions.isEmpty()) {
+                Text { attr { text("模型未提供结构化依据，暂无可定位区间。"); fontSize(11f); color(StockChatTheme.textTertiary); marginTop(8f) } }
+            }
             View {
                 attr {
                     height(36f)
@@ -1642,15 +1338,15 @@ internal class StockDetailPage : BasePager() {
             return null
         }
         val predictionContent = predictionState as? PredictionUiState.Content
-        val historyCount = predictionContent?.history?.size ?: quote.trendPoints.size
+        val historyCount = predictionPlot().forecastStart ?: predictionPlot().points.size
         val label = if (chartShowingPrediction && index >= historyCount) {
-            "模型区间 ${index - historyCount + 1}"
+            "模型估计 ${predictionPlot().points[index].label}"
         } else {
-            "历史节点 ${index + 1}"
+            "历史收盘 ${predictionPlot().points[index].label}"
         }
         return SelectedChartPoint(
             label = label,
-            price = axisLabel(points[index]),
+            price = financialNumber(points[index]),
             value = points[index],
             index = index,
         )
@@ -1695,6 +1391,7 @@ internal class StockDetailPage : BasePager() {
     }
 
     private fun updatePredictionState(nextState: PredictionUiState) {
+        if (nextState is PredictionUiState.Content) predictionHistoryCache = nextState.history
         predictionState = nextState
         predictionRenderRevision += 1
     }
@@ -1707,10 +1404,27 @@ internal class StockDetailPage : BasePager() {
             "我在走势图中选中了${it.label}，价格约 ${it.price}。"
         }.orEmpty()
         val params = JSONObject()
+        val prediction = (predictionState as? PredictionUiState.Content)?.prediction
+        val selectedContext = selectedPoint?.let {
+            "选中节点=${it.label},价格=${it.price},序号=${it.index}"
+        }.orEmpty()
         params.put(
             "prefillQuestion",
             "请结合${quote.name}（${quote.symbol}）当前价格 ${quote.price}（${quote.change}，${quote.changePercent}，数据时间 ${quote.updatedAt}）、走势图和 AI 解读，${pointContext}说明关键观察点、风险与后续验证条件。",
         )
+        params.put("stockContext", JSONObject().apply {
+            put("name", quote.name)
+            put("symbol", quote.symbol)
+            put("price", quote.price)
+            put("change", quote.change)
+            put("changePercent", quote.changePercent)
+            put("updatedAt", quote.updatedAt)
+            put("selectedPoint", selectedContext)
+            put("insightFocus", insightFocus.label)
+            put("insight", linkedInsightText(quote, prediction, selectedPoint))
+            put("predictionRationale", prediction?.rationale.orEmpty())
+            put("chartPoints", JSONArray().apply { chartPoints(quote).forEach { put(it.toDouble()) } })
+        })
         pageData.params.optString("qwenApiKey").trim()
             .takeIf(String::isNotBlank)
             ?.let { params.put("qwenApiKey", it) }
@@ -1718,14 +1432,14 @@ internal class StockDetailPage : BasePager() {
     }
 
     private fun loadDetail() {
+        pendingMarketEvidence = null
+        predictionHistoryCache = emptyList()
+        predictionChartView = null
         detailState = DetailUiState.Loading
+        selectedDetailTab = DetailTab.MARKET
         predictionToken += 1
-        stopChartTransition()
-        chartPredictionProgress = 0f
         updatePredictionState(PredictionUiState.NotRequested)
         chartShowingPrediction = false
-        chartScale = 1f
-        chartOffset = 0f
         selectedChartPointIndex = -1
         insightFocus = DetailInsightFocus.TREND
         loadToken += 1
@@ -1735,7 +1449,7 @@ internal class StockDetailPage : BasePager() {
                 return@result
             }
             detailState = when (result) {
-                is MarketDataResult.Success -> result.snapshots.firstOrNull()?.quote
+                is MarketDataResult.Success -> result.snapshots.firstOrNull()
                     ?.let(DetailUiState::Content)
                     ?: DetailUiState.Empty
                 MarketDataResult.Empty -> DetailUiState.Empty
@@ -1745,7 +1459,7 @@ internal class StockDetailPage : BasePager() {
     }
 
     private fun shareQuote() {
-        val quote = (detailState as? DetailUiState.Content)?.quote
+        val quote = (detailState as? DetailUiState.Content)?.snapshot?.quote
         if (quote == null) {
             bridgeModule.toast(
                 if (detailState is DetailUiState.Loading) "行情加载中，请稍后" else "暂无可分享的行情"

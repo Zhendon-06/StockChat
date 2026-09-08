@@ -2,8 +2,9 @@ package com.guet.liang.stockchat.ui
 
 import com.guet.liang.stockchat.base.BasePager
 import com.guet.liang.stockchat.data.ChatHistoryDatabase
+import com.guet.liang.stockchat.data.MermaidMindMapNode
+import com.guet.liang.stockchat.data.MermaidMindMapParser
 import com.guet.liang.stockchat.model.ConversationMindMapArtifact
-import com.guet.liang.stockchat.model.ConversationMindMapBranch
 import com.guet.liang.stockchat.model.ConversationTableRowStatus
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.base.Border
@@ -245,6 +246,9 @@ internal class ConversationMindMapArtifactPage : BasePager() {
         artifact: ConversationMindMapArtifact,
     ) {
         val ctx = this
+        val mindMap = MermaidMindMapParser.parse(artifact.mermaidSource)
+            ?.takeIf { parsed -> parsed.children.isNotEmpty() || artifact.branches.isEmpty() }
+            ?: ctx.fallbackMindMap(artifact)
         with(container) {
             Scroller {
                 attr {
@@ -253,39 +257,20 @@ internal class ConversationMindMapArtifactPage : BasePager() {
                     bouncesEnable(true)
                     padding(top = 14f, left = 18f, right = 18f, bottom = 24f)
                 }
-                ctx.RootNode(this, artifact)
-                View {
-                    attr {
-                        width(pagerData.pageViewWidth - 36f)
-                        alignSelfCenter()
-                        height(28f)
-                        flexDirectionRow()
-                        alignItemsCenter()
-                        marginTop(14f)
-                    }
-                    View {
-                        attr {
-                            width(26f)
-                            height(1f)
-                            backgroundColor(StockChatTheme.borderStrong)
-                            marginLeft(19f)
-                            marginRight(10f)
-                        }
-                    }
-                    Text {
-                        attr {
-                            text("会话分支 ${artifact.branches.size} 个")
-                            fontSize(13f)
-                            color(StockChatTheme.textSecondary)
-                        }
-                    }
-                }
-                if (artifact.branches.isEmpty()) {
+                ctx.RootNode(this, artifact, mindMap)
+                if (mindMap.children.isEmpty()) {
                     ctx.EmptyBranches(this)
                 } else {
-                    artifact.branches.forEachIndexed { index, branch ->
-                        ctx.BranchNode(this, branch, index == artifact.branches.lastIndex)
+                    View {
+                        attr {
+                            width(2f)
+                            height(18f)
+                            alignSelfFlexStart()
+                            marginLeft(16f)
+                            backgroundColor(StockChatTheme.borderStrong)
+                        }
                     }
+                    ctx.MindMapTree(this, mindMap.children)
                 }
                 View {
                     attr {
@@ -309,9 +294,40 @@ internal class ConversationMindMapArtifactPage : BasePager() {
         }
     }
 
+    private fun MindMapTree(
+        container: ViewContainer<*, *>,
+        nodes: List<MermaidMindMapNode>,
+    ) {
+        val ctx = this
+        with(container) {
+            View {
+                attr {
+                    width(pagerData.pageViewWidth - 36f)
+                    alignSelfCenter()
+                    positionRelative()
+                }
+                View {
+                    attr {
+                        width(2f)
+                        absolutePosition(top = 0f, left = 16f, bottom = 20f)
+                        backgroundColor(StockChatTheme.borderStrong)
+                    }
+                }
+                nodes.forEach { node ->
+                    ctx.MindMapNode(
+                        container = this,
+                        node = node,
+                        depth = 0,
+                    )
+                }
+            }
+        }
+    }
+
     private fun RootNode(
         container: ViewContainer<*, *>,
         artifact: ConversationMindMapArtifact,
+        node: MermaidMindMapNode,
     ) {
         with(container) {
             View {
@@ -325,7 +341,7 @@ internal class ConversationMindMapArtifactPage : BasePager() {
                 }
                 Text {
                     attr {
-                        text(artifact.title.ifBlank { "当前会话 · 思维导图" })
+                        text(node.label.ifBlank { artifact.title.ifBlank { "当前会话" } })
                         fontSize(20f)
                         lineHeight(27f)
                         fontWeightBold()
@@ -343,7 +359,7 @@ internal class ConversationMindMapArtifactPage : BasePager() {
                 }
                 Text {
                     attr {
-                        text("中心主题")
+                        text("Mermaid mindmap · 树状分支 ${node.children.size} 个")
                         fontSize(11f)
                         color(StockChatTheme.accent)
                         marginTop(5f)
@@ -377,120 +393,147 @@ internal class ConversationMindMapArtifactPage : BasePager() {
         }
     }
 
-    private fun BranchNode(
+    private fun MindMapNode(
         container: ViewContainer<*, *>,
-        branch: ConversationMindMapBranch,
-        isLast: Boolean,
+        node: MermaidMindMapNode,
+        depth: Int,
     ) {
-        val statusLabel = statusLabel(branch.status)
-        val statusColor = statusColor(branch.status)
+        val ctx = this
+        val leftInset = (depth * NODE_INDENT).coerceAtMost(MAX_NODE_INDENT)
         with(container) {
             View {
                 attr {
-                    width(pagerData.pageViewWidth - 36f)
-                    alignSelfCenter()
+                    width((pagerData.pageViewWidth - 36f - leftInset).coerceAtLeast(1f))
+                    alignSelfFlexStart()
+                    marginLeft(leftInset)
                     flexDirectionRow()
                     alignItemsFlexStart()
-                    minHeight(112f)
-                    marginTop(10f)
+                    marginTop(8f)
                 }
                 View {
                     attr {
-                        width(46f)
+                        width(NODE_CONNECTOR_WIDTH)
                         alignSelfStretch()
                         positionRelative()
                     }
-                    if (!isLast) {
-                        View {
-                            attr {
-                                width(1f)
-                                absolutePosition(top = 30f, left = 22f, bottom = 0f)
-                                backgroundColor(StockChatTheme.borderStrong)
-                            }
+                    View {
+                        attr {
+                            absolutePosition(top = 14f, left = 10f)
+                            size(12f, 12f)
+                            borderRadius(6f)
+                            backgroundColor(if (depth == 0) StockChatTheme.accent else StockChatTheme.borderStrong)
+                            allCenter()
+                            zIndex(1)
                         }
                     }
                     View {
                         attr {
-                            absolutePosition(top = 10f, left = 6f)
-                            size(34f, 34f)
-                            borderRadius(17f)
-                            backgroundColor(StockChatTheme.accent)
-                            allCenter()
-                            zIndex(1)
-                        }
-                        Text {
-                            attr {
-                                text(branch.sequence.toString())
-                                fontSize(13f)
-                                fontWeightBold()
-                                color(Color.WHITE)
-                            }
+                            height(1f)
+                            flex(1f)
+                            marginTop(20f)
+                            backgroundColor(StockChatTheme.borderStrong)
                         }
                     }
                 }
                 View {
                     attr {
                         flex(1f)
-                        borderRadius(18f)
-                        backgroundColor(StockChatTheme.surface)
+                        borderRadius(if (depth == 0) 16f else 13f)
+                        backgroundColor(if (depth == 0) StockChatTheme.accentSoft else StockChatTheme.surface)
                         border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
-                        padding(top = 14f, left = 15f, right = 14f, bottom = 14f)
-                    }
-                    View {
-                        attr {
-                            flexDirectionRow()
-                            alignItemsCenter()
-                        }
-                        Text {
-                            attr {
-                                text("分支 ${branch.sequence}")
-                                fontSize(11f)
-                                color(StockChatTheme.accent)
-                            }
-                        }
-                        Text {
-                            attr {
-                                text(statusLabel)
-                                fontSize(11f)
-                                color(statusColor)
-                                marginLeft(9f)
-                            }
-                        }
+                        padding(top = 12f, left = 13f, right = 13f, bottom = 12f)
                     }
                     Text {
                         attr {
-                            text(branch.topic.ifBlank { "未命名问题" })
-                            fontSize(17f)
-                            lineHeight(23f)
-                            fontWeightBold()
-                            lines(4)
+                            text(node.label)
+                            fontSize(if (depth == 0) 16f else 13f)
+                            lineHeight(if (depth == 0) 22f else 19f)
+                            if (depth == 0) {
+                                fontWeightBold()
+                            }
+                            lines(if (depth == 0) 5 else 4)
                             color(StockChatTheme.textPrimary)
-                            marginTop(7f)
-                        }
-                    }
-                    Text {
-                        attr {
-                            text(branch.insight.ifBlank { "暂无 AI 摘要" })
-                            fontSize(14f)
-                            lineHeight(21f)
-                            lines(6)
-                            color(StockChatTheme.textSecondary)
-                            marginTop(8f)
-                        }
-                    }
-                    if (branch.relatedInstrument.isNotBlank() && branch.relatedInstrument != "未识别") {
-                        Text {
-                            attr {
-                                text("相关标的  ${branch.relatedInstrument}")
-                                fontSize(12f)
-                                color(StockChatTheme.textTertiary)
-                                marginTop(9f)
-                            }
                         }
                     }
                 }
             }
+            if (node.children.isNotEmpty()) {
+                ctx.ChildTree(
+                    container = this,
+                    nodes = node.children,
+                    depth = depth + 1,
+                )
+            }
         }
+    }
+
+    private fun ChildTree(
+        container: ViewContainer<*, *>,
+        nodes: List<MermaidMindMapNode>,
+        depth: Int,
+    ) {
+        val ctx = this
+        val connectorLeft = (depth * NODE_INDENT).coerceAtMost(MAX_NODE_INDENT) + 16f
+        val parentConnectorLeft = ((depth - 1) * NODE_INDENT).coerceAtLeast(0f)
+            .coerceAtMost(MAX_NODE_INDENT) + 16f
+        with(container) {
+            View {
+                attr {
+                    width(pagerData.pageViewWidth - 36f)
+                    alignSelfCenter()
+                    positionRelative()
+                }
+                View {
+                    attr {
+                        height(2f)
+                        width((connectorLeft - parentConnectorLeft).coerceAtLeast(1f))
+                        absolutePosition(top = 0f, left = parentConnectorLeft)
+                        backgroundColor(StockChatTheme.borderStrong)
+                    }
+                }
+                View {
+                    attr {
+                        width(2f)
+                        absolutePosition(top = 0f, left = connectorLeft, bottom = 20f)
+                        backgroundColor(StockChatTheme.borderStrong)
+                    }
+                }
+                nodes.forEach { child ->
+                    ctx.MindMapNode(
+                        container = this,
+                        node = child,
+                        depth = depth,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun fallbackMindMap(artifact: ConversationMindMapArtifact): MermaidMindMapNode {
+        return MermaidMindMapNode(
+            label = artifact.title.ifBlank { "当前会话" },
+            children = artifact.branches.map { branch ->
+                val details = mutableListOf<MermaidMindMapNode>()
+                details += MermaidMindMapNode(
+                    label = "洞察：${branch.insight.ifBlank { "暂无 AI 摘要" }}",
+                    children = emptyList(),
+                )
+                if (branch.relatedInstrument.isNotBlank() && branch.relatedInstrument != "未识别") {
+                    details += MermaidMindMapNode(
+                        label = "标的：${branch.relatedInstrument}",
+                        children = emptyList(),
+                    )
+                }
+                details += MermaidMindMapNode(
+                    label = "状态：${statusLabel(branch.status)}",
+                    children = emptyList(),
+                )
+                MermaidMindMapNode(
+                    label = "${branch.sequence}. ${branch.topic.ifBlank { "未命名问题" }}",
+                    children = details,
+                )
+            },
+        )
     }
 
     private fun statusLabel(status: ConversationTableRowStatus): String {
@@ -502,13 +545,11 @@ internal class ConversationMindMapArtifactPage : BasePager() {
         }
     }
 
-    private fun statusColor(status: ConversationTableRowStatus): Color {
-        return when (status) {
-            ConversationTableRowStatus.COMPLETED -> StockChatTheme.accent
-            ConversationTableRowStatus.GENERATING -> StockChatTheme.warning
-            ConversationTableRowStatus.FAILED -> StockChatTheme.positive
-            ConversationTableRowStatus.WAITING -> StockChatTheme.textSecondary
-        }
+    private companion object {
+        const val HEADER_HEIGHT = 68f
+        const val NODE_CONNECTOR_WIDTH = 34f
+        const val NODE_INDENT = 16f
+        const val MAX_NODE_INDENT = 64f
     }
 
     private fun loadArtifact() {
@@ -531,7 +572,4 @@ internal class ConversationMindMapArtifactPage : BasePager() {
         acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
     }
 
-    private companion object {
-        const val HEADER_HEIGHT = 68f
-    }
 }

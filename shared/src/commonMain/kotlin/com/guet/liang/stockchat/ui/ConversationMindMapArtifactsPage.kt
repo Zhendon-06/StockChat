@@ -193,7 +193,7 @@ internal class ConversationMindMapArtifactsPage : BasePager() {
                 }
                 Text {
                     attr {
-                        text("在聊天页右上角选择“思维导图”，即可把当前会话整理为可浏览的分支摘要。")
+                        text("在聊天页右上角选择“思维导图”，即可把当前会话输出为 Mermaid mindmap 并浏览分支摘要。")
                         fontSize(14f)
                         lineHeight(21f)
                         textAlignCenter()

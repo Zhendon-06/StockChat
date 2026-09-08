@@ -6,6 +6,7 @@ import com.guet.liang.stockchat.model.ChatRole
 import com.guet.liang.stockchat.model.ConversationTableRowStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class ConversationMindMapArtifactGeneratorTest {
 
@@ -30,6 +31,11 @@ class ConversationMindMapArtifactGeneratorTest {
 
         assertEquals("市场复盘 · 思维导图", snapshot.title)
         assertEquals(2, snapshot.sourceMessageCount)
+        assertTrue(snapshot.mermaidSource.startsWith("mindmap\n  root((市场复盘))"))
+        assertTrue(snapshot.mermaidSource.contains("    1. 分析 600519.SH"))
+        assertTrue(snapshot.mermaidSource.contains("      洞察：关注估值与现金流。"))
+        assertTrue(snapshot.mermaidSource.contains("      标的：600519.SH"))
+        assertTrue(snapshot.mermaidSource.contains("      状态：已完成"))
         assertEquals(1, snapshot.branches.size)
         with(snapshot.branches.single()) {
             assertEquals(1, sequence)
@@ -67,6 +73,34 @@ class ConversationMindMapArtifactGeneratorTest {
 
         assertEquals("会话复盘 · 思维导图", suffixed.title)
         assertEquals("当前会话 · 思维导图", blank.title)
+    }
+
+    @Test
+    fun sanitizesMermaidShapeDelimitersInConversationLabels() {
+        val source = ConversationMindMapArtifactGenerator.generate(
+            title = "估值 (PE)",
+            messages = listOf(
+                userMessage("question", "分析 [600519.SH]"),
+                ChatMessage(
+                    id = "answer",
+                    role = ChatRole.ASSISTANT,
+                    blocks = listOf(
+                        AnswerBlock.Markdown(
+                            source = "关注 {现金流}; 风险 | 波动。",
+                            fallbackText = "",
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        assertTrue(source.mermaidSource.contains("root((估值  PE))"))
+        assertTrue(source.mermaidSource.contains("分析  600519.SH"))
+        assertTrue(source.mermaidSource.contains("关注"))
+        assertTrue(source.mermaidSource.contains("现金流"))
+        assertTrue(source.mermaidSource.contains("风险"))
+        assertTrue(source.mermaidSource.contains("波动。"))
+        assertTrue(source.mermaidSource.none { it == '{' || it == '}' || it == ';' || it == '|' })
     }
 
     private fun userMessage(id: String, text: String): ChatMessage {

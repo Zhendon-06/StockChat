@@ -48,15 +48,21 @@ internal class StockChatLayoutMetrics(pageWidth: Float) {
     ): Float = composerPanelHeight(focused, voiceMode, hasAttachments, extraInputLines) +
         composerFooterHeight
 
-    // 安卓的键盘高度回调不含底部安全区，键盘态需额外余量，否则面板底部会压进键盘
+    // Android 某些系统/输入法会把 IME 高度暂时合并进 safeAreaInsets.bottom，
+    // 键盘收起后这个值还可能滞后一帧。先把安全区限制在导航栏的合理范围，
+    // 键盘态再扣除其中可能重复的部分，避免输入面板被重复上推。
     private val composerKeyboardClearance = dp(20f)
+    private val maxNavigationBarInset = dp(48f)
 
-    fun composerBottomInset(keyboardHeight: Float, safeAreaBottom: Float): Float =
-        if (keyboardHeight > 0f) {
-            keyboardHeight + composerKeyboardClearance
-        } else {
-            safeAreaBottom
+    fun composerBottomInset(keyboardHeight: Float, safeAreaBottom: Float): Float {
+        val navigationBarInset = safeAreaBottom.coerceIn(0f, maxNavigationBarInset)
+        if (keyboardHeight <= 0.5f) {
+            return navigationBarInset
         }
+        val duplicatedInset = (safeAreaBottom - navigationBarInset).coerceAtLeast(0f)
+        return (keyboardHeight - duplicatedInset).coerceAtLeast(0f) +
+            composerKeyboardClearance
+    }
 
     fun composerContentBottom(
         bottomInset: Float,

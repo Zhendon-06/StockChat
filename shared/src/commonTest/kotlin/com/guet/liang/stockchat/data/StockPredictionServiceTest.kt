@@ -13,6 +13,15 @@ import kotlin.test.assertTrue
 
 class StockPredictionServiceTest {
     @Test
+    fun billingFailuresHaveReadableMessagesWithoutRawPayload() {
+        val arrears = sanitizePredictionError("HTTP 400: {code: Arrearage, message: overdue-payment}", "", "阿里云")
+        assertTrue(arrears.startsWith("阿里云 账户欠费或余额不足"))
+        assertTrue(!arrears.contains("HTTP"))
+        val quota = sanitizePredictionError("{code: insufficient_quota}", "", "模型服务")
+        assertTrue(quota.startsWith("模型服务 可用额度不足"))
+    }
+
+    @Test
     fun parsesStrictJsonFromCodeFence() {
         val prediction = StockPredictionResponseParser.parse(
             content = """
@@ -26,6 +35,9 @@ class StockPredictionServiceTest {
                   "direction": "偏多",
                   "confidence": 0.72,
                   "rationale": "短期均线保持向上",
+                  "conclusions": [{"text":"近几个交易日价格回升","reference":{
+                    "symbol":"600519","period":"day","startDate":"2026-08-27","endDate":"2026-08-31",
+                    "metric":"close","sourceUpdatedAt":"2026-08-31 15:00:00"}}],
                   "generatedAt": "2026-08-31T16:00:00Z",
                   "sourceUpdatedAt": "2026-08-31 15:00:00",
                   "historyPointCount": 20
@@ -44,6 +56,8 @@ class StockPredictionServiceTest {
         assertEquals(101.5f, result.forecastPoints.first().predictedPrice)
         assertEquals(104f, result.forecastPoints.first().upperBound)
         assertEquals("demo-model", result.modelName)
+        assertEquals("近几个交易日价格回升", result.conclusions.single().text)
+        assertEquals("2026-08-27", result.conclusions.single().reference?.startDate)
     }
 
     @Test

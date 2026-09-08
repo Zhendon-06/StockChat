@@ -91,6 +91,7 @@ CREATE TABLE conversation_mind_map_artifact (
     title TEXT NOT NULL,
     source_message_count INTEGER NOT NULL,
     branch_count INTEGER NOT NULL,
+    mermaid_source TEXT NOT NULL,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     FOREIGN KEY (session_id) REFERENCES chat_session(id) ON DELETE CASCADE
@@ -308,11 +309,12 @@ INSERT OR IGNORE INTO conversation_mind_map_artifact(
     title,
     source_message_count,
     branch_count,
+    mermaid_source,
     created_at,
     updated_at
 )
 VALUES (
-    ?, ?, ?, ?,
+    ?, ?, ?, ?, ?,
     CAST(strftime('%s', 'now') AS INTEGER) * 1000 + CAST(substr(strftime('%f', 'now'), 4, 3) AS INTEGER),
     CAST(strftime('%s', 'now') AS INTEGER) * 1000 + CAST(substr(strftime('%f', 'now'), 4, 3) AS INTEGER)
 );
@@ -323,6 +325,7 @@ SET
     title = ?,
     source_message_count = ?,
     branch_count = ?,
+    mermaid_source = ?,
     updated_at =
         CAST(strftime('%s', 'now') AS INTEGER) * 1000 + CAST(substr(strftime('%f', 'now'), 4, 3) AS INTEGER)
 WHERE session_id = ?;

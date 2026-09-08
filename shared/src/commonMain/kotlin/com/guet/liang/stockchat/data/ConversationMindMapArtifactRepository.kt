@@ -32,11 +32,13 @@ internal class ConversationMindMapArtifactRepository(
                 title = normalizedTitle,
                 source_message_count = snapshot.sourceMessageCount.toLong(),
                 branch_count = snapshot.branches.size.toLong(),
+                mermaid_source = snapshot.mermaidSource,
             )
             queries.updateConversationMindMapArtifact(
                 title = normalizedTitle,
                 source_message_count = snapshot.sourceMessageCount.toLong(),
                 branch_count = snapshot.branches.size.toLong(),
+                mermaid_source = snapshot.mermaidSource,
                 session_id = sessionId,
             )
             artifactId = queries.selectConversationMindMapArtifactIdBySession(sessionId).executeAsOne()
@@ -67,6 +69,7 @@ internal class ConversationMindMapArtifactRepository(
             sessionId = storedArtifact.session_id,
             title = storedArtifact.title,
             sourceMessageCount = storedArtifact.source_message_count.toInt(),
+            mermaidSource = storedArtifact.mermaid_source,
             createdAt = storedArtifact.created_at,
             updatedAt = storedArtifact.updated_at,
             branches = loadBranches(storedArtifact.id),

@@ -1,109 +1,68 @@
 package com.guet.liang.stockchat.data
 
-import com.guet.liang.stockchat.model.ChatHistoryItem
-import com.guet.liang.stockchat.model.ChatRole
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SecuritiesQueryRouterTest {
     @Test
-    fun routesKnownSecurityQuoteWithoutAi() {
-        val plan = assertNotNull(SecuritiesQueryRouter.route("贵州茅台现在多少钱？"))
-
-        assertEquals(SecuritiesIntent.QUOTE, plan.intent)
-        assertEquals(listOf("sh600519"), plan.targets.map(SecurityTarget::providerSymbol))
-        assertFalse(plan.needsAi)
+    fun everyResearchedCompanyGoesToTencentSearchWithoutModelSuppliedCodes() {
+        val classification = assertNotNull(LlmIntentResponseParser.parse(mixedCompanyIntent))
+        val plan = assertNotNull(SecuritiesQueryRouter.route(classification))
+        assertTrue(plan.targets.isEmpty())
+        assertEquals(listOf("腾讯控股", "米哈游"), plan.searchEntities.map { it.value })
+        assertEquals(SecuritiesIntent.COMPARE, plan.intent)
+        assertTrue(plan.notices.isEmpty())
     }
 
     @Test
-    fun normalizesSpacesInKnownIndexName() {
-        val plan = assertNotNull(SecuritiesQueryRouter.route("看看沪深 300 指数"))
-
-        assertEquals("sh000300", plan.targets.single().providerSymbol)
-    }
-
-    @Test
-    fun normalizesHongKongSuffixCode() {
-        val plan = assertNotNull(SecuritiesQueryRouter.route("0700.HK"))
-
-        assertEquals(SecuritiesIntent.QUOTE, plan.intent)
-        assertEquals("hk00700", plan.targets.single().providerSymbol)
-    }
-
-    @Test
-    fun routesTencentAliasToHongKongQuote() {
-        val plan = assertNotNull(SecuritiesQueryRouter.route("看一下腾讯控股"))
-
-        assertEquals("hk00700", plan.targets.single().providerSymbol)
-    }
-
-    @Test
-    fun routesTrendAndProviderSymbol() {
-        val plan = assertNotNull(SecuritiesQueryRouter.route("sh600519 今天分时走势"))
-
-        assertEquals(SecuritiesIntent.TREND, plan.intent)
-        assertEquals("sh600519", plan.targets.single().providerSymbol)
+    fun preservesLlmSelectedEntitiesWithoutCatalogOrFourCardLimit() {
+        val classification = assertNotNull(LlmIntentResponseParser.parse(mixedCompanyIntent)).copy(
+            entities = (1..6).map {
+                IntentEntity("模型返回标的$it", ListingStatus.LISTED, "")
+            },
+            queryIntent = SecuritiesIntent.ANALYSIS,
+            needsTrend = true,
+            needsIntraday = true,
+            needsAi = true,
+        )
+        val plan = assertNotNull(SecuritiesQueryRouter.route(classification))
+        assertEquals(classification.entities, plan.searchEntities)
+        assertTrue(plan.targets.isEmpty())
         assertTrue(plan.needsTrend)
         assertTrue(plan.needsIntraday)
+        assertTrue(plan.needsAi)
     }
 
     @Test
-    fun routesComparisonWithTwoTargets() {
-        val plan = assertNotNull(SecuritiesQueryRouter.route("茅台和宁德时代对比一下"))
-
-        assertEquals(SecuritiesIntent.COMPARE, plan.intent)
-        assertEquals(setOf("sh600519", "sz300750"), plan.targets.map { it.providerSymbol }.toSet())
-    }
-
-    @Test
-    fun routesTwoPlainCodes() {
-        val plan = assertNotNull(SecuritiesQueryRouter.route("600519和300750涨跌对比"))
-
-        assertEquals(setOf("sh600519", "sz300750"), plan.targets.map { it.providerSymbol }.toSet())
-    }
-
-    @Test
-    fun keepsGeneralMarketKnowledgeOutOfQuoteFlow() {
-        assertNull(SecuritiesQueryRouter.route("市盈率是什么？"))
-        assertNull(SecuritiesQueryRouter.route("K线怎么看？"))
-    }
-
-    @Test
-    fun extractsUnknownSecurityNameForSearch() {
-        val plan = assertNotNull(SecuritiesQueryRouter.route("帮我查一下格力电器的股价"))
-
-        assertEquals(emptyList(), plan.targets)
-        assertEquals(listOf("格力电器"), plan.unresolvedTerms)
-    }
-
-    @Test
-    fun semanticMarketIntentCanResolveAnUnknownName() {
-        val plan = assertNotNull(
-            SecuritiesQueryRouter.route(
-                question = "格力电器最近怎么样",
-                assumeMarketIntent = true,
-            )
+    fun uncertainCompaniesStillReachTencentSearchInsteadOfBeingFilteredLocally() {
+        val classification = assertNotNull(LlmIntentResponseParser.parse(mixedCompanyIntent)).copy(
+            entities = listOf(
+                IntentEntity("不确定的企业", ListingStatus.UNKNOWN, "请提供完整名称"),
+                IntentEntity("其他市场企业", ListingStatus.LISTED, "当前不支持该市场"),
+            ),
         )
-
-        assertEquals(SecuritiesIntent.QUOTE, plan.intent)
-        assertEquals(listOf("格力电器"), plan.unresolvedTerms)
+        val plan = assertNotNull(SecuritiesQueryRouter.route(classification))
+        assertTrue(plan.targets.isEmpty())
+        assertEquals(classification.entities, plan.searchEntities)
+        assertTrue(plan.notices.isEmpty())
     }
 
     @Test
-    fun followsUniqueRecentMarketTarget() {
-        val history = listOf(
-            ChatHistoryItem(
-                role = ChatRole.ASSISTANT,
-                content = "[行情标的:sh600519|贵州茅台] 腾讯行情 · 2026-08-28 16:15:00",
-            )
-        )
+    fun emptyLlmEntitiesStayEmptyInsteadOfRecoveringFromUserText() {
+        val classification = assertNotNull(LlmIntentResponseParser.parse(mixedCompanyIntent))
+            .copy(entities = emptyList())
+        val plan = assertNotNull(SecuritiesQueryRouter.route(classification))
+        assertTrue(plan.targets.isEmpty())
+        assertTrue(plan.notices.single().contains("补充"))
+    }
 
-        val plan = assertNotNull(SecuritiesQueryRouter.route("它现在多少钱？", history))
-
-        assertEquals("sh600519", plan.targets.single().providerSymbol)
+    @Test
+    fun educationAndGeneralIntentNeverGenerateCardsEvenIfLlmIncludesEntities() {
+        val classification = assertNotNull(LlmIntentResponseParser.parse(mixedCompanyIntent))
+        assertNull(SecuritiesQueryRouter.route(classification.copy(kind = IntentKind.INVESTMENT_EDUCATION)))
+        assertNull(SecuritiesQueryRouter.route(classification.copy(kind = IntentKind.GENERAL)))
     }
 }

@@ -2,172 +2,118 @@ package com.guet.liang.stockchat.data
 
 import com.guet.liang.stockchat.model.ChatHistoryItem
 import com.guet.liang.stockchat.model.ChatRole
+import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class IntentRecognitionTest {
     @Test
-    fun classifiesHighConfidenceMarketVectorAndExtractsSecurity() {
-        val classification = EmbeddingFirstIntentRecognizer().classifyEmbeddingVectors(
-            question = "贵州茅台现在多少钱？",
-            questionVector = listOf(1f, 0f),
-            prototypeVectors = mapOf(
-                IntentKind.MARKET_DATA to listOf(1f, 0f),
-                IntentKind.INVESTMENT_EDUCATION to listOf(0f, 1f),
-                IntentKind.GENERAL to listOf(-1f, 0f),
-            ),
-        )
-
-        assertEquals(IntentKind.MARKET_DATA, classification.kind)
-        assertEquals(IntentSource.EMBEDDING, classification.source)
-        assertEquals(1f, classification.confidence)
-        assertEquals("sh600519", classification.entities.single().providerSymbol)
-    }
-
-    @Test
-    fun classifiesHighConfidenceGeneralQuestion() {
-        val classification = EmbeddingFirstIntentRecognizer().classifyEmbeddingVectors(
-            question = "帮我写一封请假邮件",
-            questionVector = listOf(0f, 1f),
-            prototypeVectors = mapOf(
-                IntentKind.MARKET_DATA to listOf(1f, 0f),
-                IntentKind.INVESTMENT_EDUCATION to listOf(-1f, 0f),
-                IntentKind.GENERAL to listOf(0f, 1f),
-            ),
-        )
-
-        assertEquals(IntentKind.GENERAL, classification.kind)
-        assertEquals(IntentSource.EMBEDDING, classification.source)
-        assertEquals(1f, classification.confidence)
-        assertTrue(classification.entities.isEmpty())
-    }
-
-    @Test
-    fun companyMentionDoesNotOverrideConfidentGeneralIntent() {
-        val classification = EmbeddingFirstIntentRecognizer().classifyEmbeddingVectors(
-            question = "帮我写一段贵州茅台的品牌介绍",
-            questionVector = listOf(0f, 1f),
-            prototypeVectors = mapOf(
-                IntentKind.MARKET_DATA to listOf(1f, 0f),
-                IntentKind.INVESTMENT_EDUCATION to listOf(-1f, 0f),
-                IntentKind.GENERAL to listOf(0f, 1f),
-            ),
-        )
-
-        assertEquals(IntentKind.GENERAL, classification.kind)
-        assertEquals("sh600519", classification.entities.single().providerSymbol)
-    }
-
-    @Test
-    fun explicitCodeKeepsMarketIntentWhenEmbeddingIsAmbiguous() {
-        val classification = EmbeddingFirstIntentRecognizer().classifyEmbeddingVectors(
-            question = "600519怎么样？",
-            questionVector = listOf(1f, 0f),
-            prototypeVectors = mapOf(
-                IntentKind.MARKET_DATA to listOf(1f, 0f),
-                IntentKind.INVESTMENT_EDUCATION to listOf(1f, 0.01f),
-                IntentKind.GENERAL to listOf(0f, 1f),
-            ),
-        )
-
-        assertEquals(IntentKind.MARKET_DATA, classification.kind)
-        assertEquals("sh600519", classification.entities.single().providerSymbol)
-    }
-
-    @Test
-    fun invokesLlmFallbackWhenEmbeddingConfidenceIsBelowThreshold() {
-        val history = listOf(ChatHistoryItem(ChatRole.USER, "我们聊点别的"))
-        var fallbackQuestion = ""
-        var fallbackHistory = emptyList<ChatHistoryItem>()
-        val fallback = object : IntentLlmFallback {
-            override fun classify(
-                question: String,
-                history: List<ChatHistoryItem>,
-                callback: (IntentClassification?) -> Unit,
-            ) {
-                fallbackQuestion = question
-                fallbackHistory = history
-                callback(
-                    IntentClassification(
-                        kind = IntentKind.GENERAL,
-                        confidence = 0.91f,
-                        source = IntentSource.NONE,
-                    )
-                )
-            }
+    fun forcesWebResearchBeforeReturningCompanyNames() {
+        var completion: ((JSONObject?, String?) -> Unit)? = null
+        var result: IntentRecognitionResult? = null
+        var requestBody: JSONObject? = null
+        val service = LlmIntentRecognitionService(AliyunApiConfig(apiKey = "test-only")) { body, callback ->
+            requestBody = body
+            completion = callback
         }
-        val recognizer = EmbeddingFirstIntentRecognizer(
-            embeddingProvider = TextEmbeddingProvider { text ->
-                when (text) {
-                    IntentPrototypeCatalog.anchors.getValue(IntentKind.MARKET_DATA) ->
-                        listOf(1f, 0f)
-                    IntentPrototypeCatalog.anchors.getValue(IntentKind.INVESTMENT_EDUCATION) ->
-                        listOf(0f, 1f)
-                    IntentPrototypeCatalog.anchors.getValue(IntentKind.GENERAL) ->
-                        listOf(-1f, 0f)
-                    else -> listOf(0f, -1f)
-                }
-            },
-            fallback = fallback,
+        service.classify("查一下原神开发商和微信开发商", emptyList(), "selected-vision-model") { result = it }
+        assertNull(result)
+        val body = assertNotNull(requestBody)
+        assertEquals("qwen-plus", body.optString("model"))
+        assertTrue(body.optBoolean("enable_search"))
+        assertTrue(assertNotNull(body.optJSONObject("search_options")).optBoolean("forced_search"))
+        assertFalse(body.optBoolean("stream"))
+        assertNotNull(completion).invoke(response(mixedCompanyIntent), null)
+        val success = assertIs<IntentRecognitionResult.Success>(result)
+        assertEquals(listOf("腾讯控股", "米哈游"), success.classification.entities.map { it.value })
+    }
+
+    @Test
+    fun unsupportedProviderDoesNotPretendToHaveSearchedTheWeb() {
+        var called = false
+        var result: IntentRecognitionResult? = null
+        val service = LlmIntentRecognitionService(
+            AliyunApiConfig(apiKey = "test-only", useAliyunExtensions = false),
+        ) { _, _ -> called = true }
+        service.classify("腾讯", emptyList(), "model") { result = it }
+        assertFalse(called)
+        assertIs<IntentRecognitionResult.Failure>(result)
+    }
+
+    @Test
+    fun passesConversationAndCurrentQuestionOnceForPronounResolution() {
+        var sentMessages: JSONArray? = null
+        val history = listOf(
+            ChatHistoryItem(ChatRole.USER, "腾讯和网易"),
+            ChatHistoryItem(ChatRole.ASSISTANT, "[行情标的:hk00700|腾讯控股]"),
+            ChatHistoryItem(ChatRole.USER, "只看前者的分时"),
         )
-        var result: IntentClassification? = null
-
-        recognizer.classify("解释一下量子纠缠", history) { result = it }
-
-        assertEquals("解释一下量子纠缠", fallbackQuestion)
-        assertEquals(history, fallbackHistory)
-        assertEquals(IntentKind.GENERAL, result?.kind)
-        assertEquals(IntentSource.LLM, result?.source)
-        assertEquals(0.91f, result?.confidence)
+        val service = LlmIntentRecognitionService(AliyunApiConfig(apiKey = "test-only")) { body, _ ->
+            sentMessages = body.optJSONArray("messages")
+        }
+        service.classify("只看前者的分时", history, "model") { }
+        val messages = assertNotNull(sentMessages)
+        assertEquals(4, messages.length())
+        assertEquals("腾讯和网易", assertNotNull(messages.optJSONObject(1)).optString("content"))
+        assertEquals(history[1].content, assertNotNull(messages.optJSONObject(2)).optString("content"))
+        assertEquals("只看前者的分时", assertNotNull(messages.optJSONObject(3)).optString("content"))
     }
 
     @Test
-    fun rejectsEmbeddingWhenTopCandidatesHaveInsufficientMargin() {
-        val classification = EmbeddingFirstIntentRecognizer().classifyEmbeddingVectors(
-            question = "这件事你怎么看？",
-            questionVector = listOf(1f, 0f),
-            prototypeVectors = mapOf(
-                IntentKind.MARKET_DATA to listOf(1f, 0f),
-                IntentKind.INVESTMENT_EDUCATION to listOf(0f, 1f),
-                IntentKind.GENERAL to listOf(1f, 0.01f),
-            ),
-        )
-
-        assertEquals(IntentKind.UNKNOWN, classification.kind)
-        assertEquals(IntentSource.EMBEDDING, classification.source)
-        assertTrue(classification.confidence > 0.99f)
+    fun requestFailureAndMalformedOutputNeverFallBackToLocalMatching() {
+        for (content in listOf<String?>(null, "MARKET_DATA 腾讯 hk00700", "{}")) {
+            var result: IntentRecognitionResult? = null
+            val service = LlmIntentRecognitionService(AliyunApiConfig(apiKey = "test-only")) { _, callback ->
+                callback(content?.let(::response), if (content == null) "请求超时" else null)
+            }
+            service.classify("贵州茅台600519行情", emptyList(), "model") { result = it }
+            assertIs<IntentRecognitionResult.Failure>(result)
+        }
     }
 
     @Test
-    fun classifiesInvestmentLearningQuestionsWithLocalRules() {
-        val recognizer = EmbeddingFirstIntentRecognizer()
-
-        val buyingStocks = recognizer.localClassification("新手如何买股票？")
-        val priceEarnings = recognizer.localClassification("市盈率是什么意思？")
-
-        assertEquals(IntentKind.INVESTMENT_EDUCATION, buyingStocks.kind)
-        assertEquals(IntentSource.LOCAL_RULE, buyingStocks.source)
-        assertEquals(IntentKind.INVESTMENT_EDUCATION, priceEarnings.kind)
-        assertEquals(IntentSource.LOCAL_RULE, priceEarnings.source)
+    fun missingKeyOrEmptyInputDoesNotEmitMockCardsOrSendRequests() {
+        for ((key, question) in listOf("" to "贵州茅台", "test-only" to "  ")) {
+            var calls = 0
+            var result: IntentRecognitionResult? = null
+            val service = LlmIntentRecognitionService(AliyunApiConfig(apiKey = key)) { _, _ -> calls++ }
+            service.classify(question, emptyList(), "model") { result = it }
+            assertEquals(0, calls)
+            assertIs<IntentRecognitionResult.Failure>(result)
+        }
     }
 
     @Test
-    fun classifiesUnrelatedQuestionAsGeneralWithLocalRules() {
-        val classification = EmbeddingFirstIntentRecognizer()
-            .localClassification("周末去上海怎么玩？")
-
-        assertEquals(IntentKind.GENERAL, classification.kind)
-        assertEquals(IntentSource.LOCAL_RULE, classification.source)
-        assertTrue(classification.entities.isEmpty())
+    fun rejectsInvalidResearchSchema() {
+        assertNull(LlmIntentResponseParser.parse(mixedCompanyIntent.replace("\"needsAi\":false,", "")))
+        assertNull(LlmIntentResponseParser.parse(mixedCompanyIntent.replace("MARKET_DATA", "MARKET_GUESS")))
     }
 
     @Test
-    fun returnsUnknownForBlankQuestion() {
-        val classification = EmbeddingFirstIntentRecognizer().classifyEmbedding("  \n ")
+    fun acceptsFencedJsonAndKeepsUnlistedEntitySeparate() {
+        val parsed = assertNotNull(LlmIntentResponseParser.parse("```json\n$mixedCompanyIntent\n```"))
+        assertEquals(ListingStatus.UNLISTED, parsed.entities.last().listingStatus)
+    }
 
-        assertEquals(IntentKind.UNKNOWN, classification.kind)
-        assertEquals(IntentSource.NONE, classification.source)
-        assertEquals(0f, classification.confidence)
+    private fun response(content: String): JSONObject = JSONObject().apply {
+        put("choices", JSONArray().apply {
+            put(JSONObject().apply {
+                put("message", JSONObject().apply { put("content", content) })
+            })
+        })
     }
 }
+
+internal val mixedCompanyIntent = """
+    {"intent":"MARKET_DATA","queryIntent":"COMPARE","needsTrend":false,"needsIntraday":false,"needsAi":false,
+     "entities":[
+       {"value":"腾讯控股","listingStatus":"LISTED","note":""},
+       {"value":"米哈游","listingStatus":"UNLISTED","note":"没有公开交易股票行情"}
+     ]}
+""".trimIndent()

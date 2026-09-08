@@ -1,5 +1,10 @@
 [
   {
+    "moduleId": "com.tencent.kuikly-open:core:2.26.0-2.1.21",
+    "file": "/Users/lzd/AndroidStudioProjects/StockChat/.kotlin/metadata/kotlinTransformedCInteropMetadataLibraries/com.tencent.kuikly-open-core-2.26.0-2.1.21-appleMain-cinterop/com.tencent.kuikly-open_core-cinterop-kuikly-XUS1aw.klib",
+    "sourceSetName": "appleMain"
+  },
+  {
     "moduleId": "co.touchlab:sqliter-driver:1.3.3",
     "file": "/Users/lzd/AndroidStudioProjects/StockChat/.kotlin/metadata/kotlinTransformedCInteropMetadataLibraries/co.touchlab-sqliter-driver-1.3.3-appleMain-cinterop/co.touchlab_sqliter-driver-cinterop-sqlite3-pnpooQ.klib",
     "sourceSetName": "appleMain"

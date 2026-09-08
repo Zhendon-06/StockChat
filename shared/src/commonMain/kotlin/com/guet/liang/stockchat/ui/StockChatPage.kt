@@ -42,6 +42,7 @@ import com.guet.liang.stockchat.model.VoiceInputState
 import com.guet.liang.stockchat.ui.settings.MODEL_CONFIGURATION_PAGE_NAME
 import com.guet.liang.stockchat.ui.settings.SETTINGS_PAGE_NAME
 import com.tencent.kuikly.core.annotations.Page
+import com.tencent.kuikly.core.base.Anchor
 import com.tencent.kuikly.core.base.Animation
 import com.tencent.kuikly.core.base.Border
 import com.tencent.kuikly.core.base.BoxShadow
@@ -98,8 +99,13 @@ private const val WELCOME_TEXT_MOTION_OFFSET_DP = 5f
 private const val WELCOME_SUGGESTION_DELAY = 0.06f
 // 键盘回调未给出动画时长时的兜底值（秒）
 private const val DEFAULT_KEYBOARD_ANIM_DURATION = 0.25f
+private const val MAX_COMPOSER_TEXT_LENGTH = 300
 
-private data class StockChatSuggestion(val iconAsset: String, val text: String)
+private data class StockChatSuggestion(
+    val iconAsset: String,
+    val text: String,
+    val question: String = text,
+)
 
 // 欢迎页输入框上方的快捷问题，点击直接发送
 private val WELCOME_SUGGESTIONS = listOf(
@@ -107,6 +113,7 @@ private val WELCOME_SUGGESTIONS = listOf(
     StockChatSuggestion("level_icon.png", "分析一下贵州茅台"),
     StockChatSuggestion("table_icon.png", "看看沪深 300 指数"),
     StockChatSuggestion("ai_generate.png", "现在市场风险大吗"),
+    StockChatSuggestion("ai_generate.png", "AI 选股思路", "如何建立自己的选股思路？"),
     StockChatSuggestion("data_icon.png", "新手怎么开始炒股？"),
     StockChatSuggestion("file_icon.png", "什么是市盈率？"),
     StockChatSuggestion("ranking_icon.png", "怎么分散投资风险？"),
@@ -238,6 +245,8 @@ internal class StockChatPage : BasePager() {
     private lateinit var inputRef: ViewRef<TextAreaView>
     private lateinit var renameInputRef: ViewRef<TextAreaView>
     private lateinit var messageScrollerRef: ViewRef<ScrollerView<*, *>>
+    private var todayMarketScrollerRef: ViewRef<ScrollerView<*, *>>? = null
+    private var todayMarketScrollOffsetY: Float = 0f
 
     private val layoutMetrics: StockChatLayoutMetrics
         get() = StockChatLayoutMetrics(pagerData.pageViewWidth)
@@ -300,7 +309,9 @@ internal class StockChatPage : BasePager() {
             return
         }
         prefillQuestionConsumed = true
-        inputText = prefillQuestion.take(300)
+        // stockContext 作为独立的结构化路由参数保留，不再重复拼进可见草稿。
+        // 草稿与 TextArea 使用同一上限，避免原生限长截断后的文本、行数和面板高度失配。
+        inputText = prefillQuestion.take(MAX_COMPOSER_TEXT_LENGTH)
         updateInputLineMetrics(inputText)
         focusComposer()
     }
@@ -568,8 +579,8 @@ internal class StockChatPage : BasePager() {
             ctx.DrawerMenuItem(this, "table_icon.png", "表格", metrics.scale) {
                 ctx.openStockComparisonLibrary()
             }
-            ctx.DrawerMenuItem(this, "ai_generate.png", "AI 选股思路", metrics.scale) {
-                ctx.sendQuickQuestion("如何建立自己的选股思路？")
+            ctx.DrawerMenuItem(this, "ranking_icon.png", "收藏卡片", metrics.scale) {
+                ctx.openFavoriteCards()
             }
             View {
                 attr {
@@ -930,6 +941,9 @@ internal class StockChatPage : BasePager() {
                             ctx.dispatchHome(StockChatHomeEvent.TodayMarketRetryRequested)
                         }
                     },
+                    scrollerRef = { ctx.todayMarketScrollerRef = it },
+                    onScroll = { offset -> ctx.todayMarketScrollOffsetY = offset },
+                    restoreOffsetY = ctx.todayMarketScrollOffsetY,
                 )
             }
         }
@@ -1788,7 +1802,7 @@ internal class StockChatPage : BasePager() {
                                 click {
                                     if (ctx.selectedHomeTab == HOME_TAB_CHAT) {
                                         ctx.sendMessage(
-                                            suggestion.text,
+                                            suggestion.question,
                                             StockChatQuestionSource.WELCOME_SUGGESTION,
                                         )
                                     }
@@ -2160,7 +2174,7 @@ internal class StockChatPage : BasePager() {
                             )
                             returnKeyTypeSend()
                             enablesReturnKeyAutomatically(true)
-                            maxTextLength(300)
+                            maxTextLength(MAX_COMPOSER_TEXT_LENGTH)
                             // 展开未聚焦时也可点：直接点输入区域原生聚焦拉起键盘
                             touchEnable(
                                 ctx.selectedHomeTab == HOME_TAB_CHAT &&
@@ -2971,154 +2985,176 @@ internal class StockChatPage : BasePager() {
         val ctx = this
         val metrics = ctx.layoutMetrics
         with(container) {
-            vif({ ctx.conversationMenuOpen }) {
+            View {
+                attr {
+                    absolutePositionAllZero()
+                    backgroundColor(Color(0x00000000))
+                    touchEnable(ctx.conversationMenuOpen)
+                    zIndex(15)
+                }
+                event {
+                    click { ctx.closeConversationMenu() }
+                }
+            }
+            View {
+                attr {
+                    absolutePosition(
+                        top = pagerData.statusBarHeight + metrics.dp(76f),
+                        right = metrics.dp(18f),
+                    )
+                    width(metrics.dp(220f))
+                    borderRadius(metrics.dp(22f))
+                    backgroundColor(StockChatTheme.surface)
+                    padding(all = metrics.dp(8f))
+                    boxShadow(
+                        BoxShadow(
+                            metrics.dp(1f),
+                            metrics.dp(8f),
+                            metrics.dp(24f),
+                            Color(0x26000000),
+                        )
+                    )
+                    val open = ctx.conversationMenuOpen
+                    val menuScale = if (open) 1f else 0.92f
+                    opacity(if (open) 1f else 0f)
+                    transform(
+                        scale = Scale(menuScale, menuScale),
+                        translate = Translate(0f, 0f, 0f, if (open) 0f else -metrics.dp(6f)),
+                        anchor = Anchor(1f, 0f),
+                    )
+                    touchEnable(open)
+                    animation(
+                        if (open) Animation.easeOut(0.22f) else Animation.easeIn(0.16f),
+                        ctx.conversationMenuOpen,
+                    )
+                    zIndex(16)
+                }
                 View {
                     attr {
-                        absolutePositionAllZero()
-                        backgroundColor(Color(0x00000000))
-                        zIndex(15)
+                        height(metrics.dp(64f))
+                        borderRadius(metrics.dp(16f))
+                        flexDirectionRow()
+                        alignItemsCenter()
+                        padding(left = metrics.dp(16f), right = metrics.dp(12f))
+                        touchEnable(ctx.conversationMenuOpen)
                     }
                     event {
-                        click { ctx.closeConversationMenu() }
+                        click {
+                            if (ctx.conversationMenuOpen) {
+                                ctx.createConversationStockComparison()
+                            }
+                        }
+                    }
+                    View {
+                        attr {
+                            size(metrics.dp(42f), metrics.dp(42f))
+                            borderRadius(metrics.dp(13f))
+                            backgroundColor(StockChatTheme.accentSoft)
+                            allCenter()
+                        }
+                        Image {
+                            attr {
+                                size(metrics.dp(23f), metrics.dp(23f))
+                                resizeContain()
+                                src(ImageUri.commonAssets("table_icon.png"))
+                            }
+                        }
+                    }
+                    View {
+                        attr {
+                            flex(1f)
+                            marginLeft(metrics.dp(12f))
+                        }
+                        Text {
+                            attr {
+                                text("会话表格对比")
+                                fontSize(metrics.dp(17f))
+                                fontWeightMedium()
+                                color(StockChatTheme.textPrimary)
+                            }
+                        }
+                        Text {
+                            attr {
+                                text("汇总会话全部股票")
+                                fontSize(metrics.dp(11f))
+                                color(StockChatTheme.textTertiary)
+                                marginTop(metrics.dp(2f))
+                            }
+                        }
+                    }
+                    Text {
+                        attr {
+                            text("›")
+                            fontSize(metrics.dp(24f))
+                            color(StockChatTheme.textTertiary)
+                        }
                     }
                 }
                 View {
                     attr {
-                        absolutePosition(
-                            top = pagerData.statusBarHeight + metrics.dp(76f),
-                            right = metrics.dp(18f),
-                        )
-                        width(metrics.dp(220f))
-                        borderRadius(metrics.dp(22f))
-                        backgroundColor(StockChatTheme.surface)
-                        padding(all = metrics.dp(8f))
-                        boxShadow(
-                            BoxShadow(
-                                metrics.dp(1f),
-                                metrics.dp(8f),
-                                metrics.dp(24f),
-                                Color(0x26000000),
-                            )
-                        )
-                        zIndex(16)
+                        height(metrics.dp(1f))
+                        backgroundColor(StockChatTheme.border)
+                        margin(left = metrics.dp(16f), right = metrics.dp(16f))
+                    }
+                }
+                View {
+                    attr {
+                        height(metrics.dp(64f))
+                        borderRadius(metrics.dp(16f))
+                        flexDirectionRow()
+                        alignItemsCenter()
+                        padding(left = metrics.dp(16f), right = metrics.dp(12f))
+                        touchEnable(ctx.conversationMenuOpen)
+                    }
+                    event {
+                        click {
+                            if (ctx.conversationMenuOpen) {
+                                ctx.createConversationMindMapArtifact()
+                            }
+                        }
                     }
                     View {
                         attr {
-                            height(metrics.dp(64f))
-                            borderRadius(metrics.dp(16f))
-                            flexDirectionRow()
-                            alignItemsCenter()
-                            padding(left = metrics.dp(16f), right = metrics.dp(12f))
+                            size(metrics.dp(42f), metrics.dp(42f))
+                            borderRadius(metrics.dp(13f))
+                            backgroundColor(Color(0xFFEAF2FF))
+                            allCenter()
                         }
-                        event {
-                            click { ctx.createConversationStockComparison() }
-                        }
-                        View {
+                        Image {
                             attr {
-                                size(metrics.dp(42f), metrics.dp(42f))
-                                borderRadius(metrics.dp(13f))
-                                backgroundColor(StockChatTheme.accentSoft)
-                                allCenter()
-                            }
-                            Image {
-                                attr {
-                                    size(metrics.dp(23f), metrics.dp(23f))
-                                    resizeContain()
-                                    src(ImageUri.commonAssets("table_icon.png"))
-                                }
+                                size(metrics.dp(23f), metrics.dp(23f))
+                                resizeContain()
+                                src(ImageUri.commonAssets("ranking_icon.png"))
                             }
                         }
-                        View {
+                    }
+                    View {
+                        attr {
+                            flex(1f)
+                            marginLeft(metrics.dp(12f))
+                        }
+                        Text {
                             attr {
-                                flex(1f)
-                                marginLeft(metrics.dp(12f))
-                            }
-                            Text {
-                                attr {
-                                    text("会话表格对比")
-                                    fontSize(metrics.dp(17f))
-                                    fontWeightMedium()
-                                    color(StockChatTheme.textPrimary)
-                                }
-                            }
-                            Text {
-                                attr {
-                                    text("汇总会话全部股票")
-                                    fontSize(metrics.dp(11f))
-                                    color(StockChatTheme.textTertiary)
-                                    marginTop(metrics.dp(2f))
-                                }
+                                text("思维导图")
+                                fontSize(metrics.dp(17f))
+                                fontWeightMedium()
+                                color(StockChatTheme.textPrimary)
                             }
                         }
                         Text {
                             attr {
-                                text("›")
-                                fontSize(metrics.dp(24f))
+                                text("梳理当前对话")
+                                fontSize(metrics.dp(11f))
                                 color(StockChatTheme.textTertiary)
+                                marginTop(metrics.dp(2f))
                             }
                         }
                     }
-                    View {
+                    Text {
                         attr {
-                            height(metrics.dp(1f))
-                            backgroundColor(StockChatTheme.border)
-                            margin(left = metrics.dp(16f), right = metrics.dp(16f))
-                        }
-                    }
-                    View {
-                        attr {
-                            height(metrics.dp(64f))
-                            borderRadius(metrics.dp(16f))
-                            flexDirectionRow()
-                            alignItemsCenter()
-                            padding(left = metrics.dp(16f), right = metrics.dp(12f))
-                        }
-                        event {
-                            click { ctx.createConversationMindMapArtifact() }
-                        }
-                        View {
-                            attr {
-                                size(metrics.dp(42f), metrics.dp(42f))
-                                borderRadius(metrics.dp(13f))
-                                backgroundColor(Color(0xFFEAF2FF))
-                                allCenter()
-                            }
-                            Image {
-                                attr {
-                                    size(metrics.dp(23f), metrics.dp(23f))
-                                    resizeContain()
-                                    src(ImageUri.commonAssets("ranking_icon.png"))
-                                }
-                            }
-                        }
-                        View {
-                            attr {
-                                flex(1f)
-                                marginLeft(metrics.dp(12f))
-                            }
-                            Text {
-                                attr {
-                                    text("思维导图")
-                                    fontSize(metrics.dp(17f))
-                                    fontWeightMedium()
-                                    color(StockChatTheme.textPrimary)
-                                }
-                            }
-                            Text {
-                                attr {
-                                    text("梳理当前对话")
-                                    fontSize(metrics.dp(11f))
-                                    color(StockChatTheme.textTertiary)
-                                    marginTop(metrics.dp(2f))
-                                }
-                            }
-                        }
-                        Text {
-                            attr {
-                                text("›")
-                                fontSize(metrics.dp(24f))
-                                color(StockChatTheme.textTertiary)
-                            }
+                            text("›")
+                            fontSize(metrics.dp(24f))
+                            color(StockChatTheme.textTertiary)
                         }
                     }
                 }
@@ -3321,6 +3357,19 @@ internal class StockChatPage : BasePager() {
         acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
             CONVERSATION_MIND_MAP_ARTIFACTS_PAGE_NAME,
             JSONObject(),
+        )
+    }
+
+    private fun openFavoriteCards() {
+        closeDrawer()
+        closeConversationMenu()
+        val params = JSONObject()
+        pageData.params.optString("qwenApiKey").trim()
+            .takeIf(String::isNotBlank)
+            ?.let { params.put("qwenApiKey", it) }
+        acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
+            FAVORITE_CARDS_PAGE_NAME,
+            params,
         )
     }
 
@@ -3967,7 +4016,7 @@ internal class StockChatPage : BasePager() {
     // 识别结果落到输入框由用户确认后发送，不直接发出；追加在已有草稿之后。
     // 状态顺序与 toggleVoiceMode 关闭分支一致：展开先触发、键盘动画后接管
     private fun fillComposerWithVoiceResult(recognizedText: String) {
-        inputText = (inputText + recognizedText).take(300)
+        inputText = (inputText + recognizedText).take(MAX_COMPOSER_TEXT_LENGTH)
         composerFocused = true
         composerExpanded = true
         collapseComposerAfterSettle = false

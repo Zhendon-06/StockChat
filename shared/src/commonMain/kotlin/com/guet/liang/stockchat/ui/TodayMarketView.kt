@@ -12,6 +12,7 @@ import com.tencent.kuikly.core.base.attr.CaptureRule
 import com.tencent.kuikly.core.base.attr.CaptureRuleDirection
 import com.tencent.kuikly.core.directives.vif
 import com.tencent.kuikly.core.views.Scroller
+import com.tencent.kuikly.core.views.ScrollerView
 import com.tencent.kuikly.core.views.Text
 import com.tencent.kuikly.core.views.View
 
@@ -23,7 +24,11 @@ internal fun ViewContainer<*, *>.TodayMarketContent(
     touchEnabled: () -> Boolean = { true },
     onQuoteClick: (StockQuote) -> Unit,
     onRetry: () -> Unit,
+    scrollerRef: ((com.tencent.kuikly.core.base.ViewRef<ScrollerView<*, *>>) -> Unit)? = null,
+    onScroll: ((Float) -> Unit)? = null,
+    restoreOffsetY: Float = 0f,
 ) {
+    var marketScroller: com.tencent.kuikly.core.base.ViewRef<ScrollerView<*, *>>? = null
     val bottomSwitcherHeight = 44f * scale
     val bottomSwitcherOffset = safeAreaBottom + 14f * scale
     View {
@@ -33,6 +38,12 @@ internal fun ViewContainer<*, *>.TodayMarketContent(
             touchEnable(touchEnabled())
         }
         Scroller {
+            if (scrollerRef != null) {
+                ref {
+                    marketScroller = it
+                    scrollerRef.invoke(it)
+                }
+            }
             attr {
                 absolutePosition(
                     top = 0f,
@@ -49,6 +60,16 @@ internal fun ViewContainer<*, *>.TodayMarketContent(
                     right = 18f * scale,
                     bottom = 24f * scale,
                 )
+            }
+            event {
+                scroll { params ->
+                    onScroll?.invoke(params.offsetY)
+                }
+                contentSizeChanged { _, _ ->
+                    if (restoreOffsetY > 0f) {
+                        marketScroller?.view?.setContentOffset(0f, restoreOffsetY, false)
+                    }
+                }
             }
             TodayMarketHeader(
                 state = state,
@@ -185,6 +206,16 @@ private fun ViewContainer<*, *>.TodayMarketSnapshotContent(
     onQuoteClick: (StockQuote) -> Unit,
 ) {
     TodayMarketMoodCard(snapshot, scale)
+    MarketDistributionCard(
+        "指数涨跌分布",
+        listOf(
+            MarketDistributionEntry("上涨", snapshot.advancingCount.toFloat(), "${snapshot.advancingCount}个", StockChatTheme.positive),
+            MarketDistributionEntry("下跌", snapshot.decliningCount.toFloat(), "${snapshot.decliningCount}个", StockChatTheme.negative),
+            MarketDistributionEntry("持平", snapshot.unchangedCount.toFloat(), "${snapshot.unchangedCount}个", StockChatTheme.textTertiary),
+        ),
+        "${snapshot.indices.size}个指数", "${snapshot.mood} · 样本",
+        "统计范围仅为本页指数样本，不代表全市场股票涨跌家数。点选环图查看占比。",
+    )
     Text {
         attr {
             text("主要指数")
@@ -201,11 +232,7 @@ private fun ViewContainer<*, *>.TodayMarketSnapshotContent(
                 width(pageWidth - 36f * scale)
                 marginBottom(10f * scale)
             }
-            MarketQuoteCard(
-                quote = quote,
-                scale = scale,
-                onClick = { onQuoteClick(quote) },
-            )
+            IndexQuoteCard(quote, scale, onClick = { onQuoteClick(quote) })
         }
     }
     TodayMarketObservationStocks(snapshot, pageWidth, scale, onQuoteClick)

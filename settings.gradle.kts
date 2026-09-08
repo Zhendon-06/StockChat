@@ -28,3 +28,5 @@ include(":shared")
 include(":table-core")
 include(":h5App")
 include(":miniApp")
+
+include(":kuikly-chart")

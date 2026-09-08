@@ -16,7 +16,7 @@ internal data class AliyunApiConfig(
     val baseUrl: String = "https://dashscope.aliyuncs.com/compatible-mode/v1",
     val chatModel: String = "",
     val visionModel: String = "",
-    val embeddingModel: String = "text-embedding-v4",
+    val webSearchModel: String = "qwen-plus",
     val providerDisplayName: String = "阿里云百炼",
     val useAliyunExtensions: Boolean = true,
     val supportsVision: Boolean = true,
@@ -38,12 +38,10 @@ internal class AliyunStockChatDataSource(
     private val useNativeStreaming: Boolean = false,
 ) : StockChatDataSource {
     private val marketDataService = TencentMarketDataService(networkModule)
-    private val intentRecognitionService = if (config.useAliyunExtensions) {
-        DashScopeIntentRecognitionService(networkModule, config)
-    } else {
-        null
-    }
-    private val localIntentRecognizer = EmbeddingFirstIntentRecognizer()
+    private val intentRecognitionService = LlmIntentRecognitionService(config, ::request)
+    private val securitySearch = TencentSecuritySearchService(networkModule)
+    private val securitySelector = LlmSecurityCandidateSelector(config, ::request)
+    private val securitiesResolver = SecuritiesSearchResolver(securitySearch::search, securitySelector::select)
 
     override fun answer(
         question: String,
@@ -70,61 +68,27 @@ internal class AliyunStockChatDataSource(
             )
             return
         }
-        val recognitionService = intentRecognitionService
-        if (recognitionService == null) {
-            answerClassifiedQuestion(
-                question,
-                history,
-                model,
-                attempt,
-                localIntentRecognizer.localClassification(question, history),
-                callback,
-            )
-            return
-        }
-        recognitionService.classify(question, history) { classification ->
-            answerClassifiedQuestion(
-                question,
-                history,
-                model,
-                attempt,
-                classification,
-                callback,
-            )
-        }
-    }
-
-    private fun answerClassifiedQuestion(
-        question: String,
-        history: List<ChatHistoryItem>,
-        model: String,
-        attempt: Int,
-        classification: IntentClassification,
-        callback: (ChatAnswer) -> Unit,
-    ) {
-        val marketPlan = if (classification.kind == IntentKind.MARKET_DATA) {
-            SecuritiesQueryRouter.route(question, history)
-                ?: SecuritiesQueryRouter.route(
-                    question = question,
-                    history = history,
-                    assumeMarketIntent = true,
-                )
-        } else {
-            null
-        }
-        if (marketPlan != null) {
-            answerMarketQuery(question, history, model, marketPlan, callback)
-        } else {
-            answerWithAi(
-                question = question,
-                history = history,
-                images = emptyList(),
-                model = model,
-                snapshots = emptyList(),
-                plan = null,
-                attempt = attempt,
-                callback = callback,
-            )
+        intentRecognitionService.classify(question, history, model) { result ->
+            when (result) {
+                is IntentRecognitionResult.Failure -> callback(ChatAnswer.Failure(result.message))
+                is IntentRecognitionResult.Success -> {
+                    val plan = SecuritiesQueryRouter.route(result.classification)
+                    if (plan != null) {
+                        securitiesResolver.resolve(question, history, model, plan.searchEntities) { resolution ->
+                            when (resolution) {
+                                is SecuritiesResolutionResult.Failure -> callback(ChatAnswer.Failure(resolution.message))
+                                is SecuritiesResolutionResult.Success -> answerMarketQuery(
+                                    question, history, model,
+                                    plan.copy(targets = resolution.targets, notices = plan.notices + resolution.notices),
+                                    callback,
+                                )
+                            }
+                        }
+                    } else {
+                        answerWithAi(question, history, emptyList(), model, emptyList(), null, attempt, callback)
+                    }
+                }
+            }
         }
     }
 
@@ -135,9 +99,18 @@ internal class AliyunStockChatDataSource(
         plan: SecuritiesQueryPlan,
         callback: (ChatAnswer) -> Unit,
     ) {
+        if (plan.targets.isEmpty()) {
+            if (plan.needsAi && plan.notices.isNotEmpty()) {
+                answerWithAi(question, history, emptyList(), model, emptyList(), plan, 0, callback)
+            } else {
+                callback(ChatAnswer.Success(marketAnswerBlocks(plan, emptyList(), aiUnavailable = false)))
+            }
+            return
+        }
         marketDataService.load(plan) { result ->
             when (result) {
                 is MarketDataResult.Success -> {
+                    val resolvedPlan = plan.copy(notices = plan.notices + result.notices)
                     if (plan.needsAi && config.apiKey.isNotBlank()) {
                         answerWithAi(
                             question = question,
@@ -145,7 +118,7 @@ internal class AliyunStockChatDataSource(
                             images = emptyList(),
                             model = model,
                             snapshots = result.snapshots,
-                            plan = plan,
+                            plan = resolvedPlan,
                             attempt = 0,
                             callback = callback,
                         )
@@ -153,7 +126,7 @@ internal class AliyunStockChatDataSource(
                         callback(
                             ChatAnswer.Success(
                                 marketAnswerBlocks(
-                                    plan = plan,
+                                    plan = resolvedPlan,
                                     snapshots = result.snapshots,
                                     aiUnavailable = plan.needsAi,
                                 )
@@ -161,27 +134,13 @@ internal class AliyunStockChatDataSource(
                         )
                     }
                 }
-                MarketDataResult.Empty -> {
-                    if (plan.targets.isEmpty()) {
-                        answerWithAi(
-                            question = question,
-                            history = history,
-                            images = emptyList(),
-                            model = model,
-                            snapshots = emptyList(),
-                            plan = null,
-                            attempt = 0,
-                            callback = callback,
-                        )
-                    } else {
-                        callback(
-                            ChatAnswer.Failure(
-                                "未找到对应证券，请尝试输入完整名称、六位代码或带交易所的代码。"
-                            )
-                        )
-                    }
-                }
-                is MarketDataResult.Failure -> callback(ChatAnswer.Failure(result.message))
+                MarketDataResult.Empty -> callback(
+                    ChatAnswer.Failure("AI 已识别标的，但行情服务暂未返回数据，请稍后重新生成。" +
+                        plan.notices.joinToString(prefix = "\n", separator = "\n"))
+                )
+                is MarketDataResult.Failure -> callback(
+                    ChatAnswer.Failure((listOf(result.message) + plan.notices).joinToString("\n"))
+                )
             }
         }
     }
@@ -204,7 +163,7 @@ internal class AliyunStockChatDataSource(
                     )
                 )
             } else {
-                MockStockChatDataSource.answer(question, history, images, model, attempt, callback)
+                callback(ChatAnswer.Failure(MISSING_API_KEY_MESSAGE))
             }
             return
         }
@@ -217,11 +176,11 @@ internal class AliyunStockChatDataSource(
         } else {
             history
         }
-        val questionWithMarketContext = if (snapshots.isEmpty()) {
-            question
-        } else {
-            "$question\n\n${marketContext(snapshots)}"
-        }
+        val questionWithMarketContext = listOf(
+            question,
+            if (snapshots.isEmpty()) "" else marketContext(snapshots),
+            plan?.notices?.joinToString("\n").orEmpty(),
+        ).filter(String::isNotBlank).joinToString("\n\n")
         val messages = JSONArray().apply {
             put(
                 JSONObject().apply {
@@ -310,7 +269,7 @@ internal class AliyunStockChatDataSource(
             }
             val directContent = response?.assistantContent().orEmpty()
             if (directContent.isNotEmpty()) {
-                callback(ChatAnswer.Success(answerBlocks(directContent, snapshots)))
+                callback(ChatAnswer.Success(answerBlocks(directContent, snapshots, plan)))
                 return
             }
             val streamDeltas = response?.streamDeltas().orEmpty()
@@ -340,7 +299,7 @@ internal class AliyunStockChatDataSource(
                 )
                 return
             }
-            callback(ChatAnswer.Success(answerBlocks(content, snapshots)))
+            callback(ChatAnswer.Success(answerBlocks(content, snapshots, plan)))
     }
 
     private fun streamWithNativeBridge(
@@ -411,7 +370,7 @@ internal class AliyunStockChatDataSource(
                                 )
                             )
                         } else {
-                            callback(ChatAnswer.Success(answerBlocks(content, snapshots)))
+                            callback(ChatAnswer.Success(answerBlocks(content, snapshots, plan)))
                         }
                     }
                 }
@@ -453,12 +412,15 @@ internal class AliyunStockChatDataSource(
     private fun answerBlocks(
         content: String,
         snapshots: List<TencentMarketSnapshot>,
+        plan: SecuritiesQueryPlan?,
     ): List<AnswerBlock> {
+        val text = listOf(content.trim(), plan?.notices?.joinToString("\n").orEmpty())
+            .filter(String::isNotBlank).joinToString("\n\n")
         return buildList {
             add(
                 AnswerBlock.Markdown(
-                    source = content.trim(),
-                    fallbackText = content.trim(),
+                    source = text,
+                    fallbackText = text,
                 )
             )
             snapshots.forEach { snapshot ->
@@ -475,7 +437,7 @@ internal class AliyunStockChatDataSource(
         val names = snapshots.joinToString("、") { snapshot ->
             "${snapshot.quote.name}（${snapshot.quote.symbol}）"
         }
-        val headline = when (plan.intent) {
+        val headline = if (snapshots.isEmpty()) "" else when (plan.intent) {
             SecuritiesIntent.QUOTE -> "已获取 $names 的最新行情快照。"
             SecuritiesIntent.TREND -> "已获取 $names 的最新行情与走势数据。"
             SecuritiesIntent.COMPARE -> "已获取 $names 的同期行情，可通过卡片对比价格与涨跌幅。"
@@ -486,7 +448,8 @@ internal class AliyunStockChatDataSource(
         } else {
             ""
         }
-        val markdown = "StockChat Demo 信息。$headline$aiNotice\n\n数据来源：腾讯证券公开行情接口；" +
+        val notices = plan.notices.joinToString("\n")
+        val markdown = "StockChat Demo 信息。$headline$aiNotice\n\n$notices\n\n数据来源：腾讯证券公开行情接口；" +
             "行情时间以卡片标注为准。仅供参考，不构成投资建议。"
         return buildList {
             add(AnswerBlock.Markdown(markdown, markdown))

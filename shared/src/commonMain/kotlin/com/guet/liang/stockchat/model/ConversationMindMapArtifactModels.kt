@@ -11,6 +11,7 @@ internal data class ConversationMindMapBranch(
 internal data class ConversationMindMapArtifactSnapshot(
     val title: String,
     val sourceMessageCount: Int,
+    val mermaidSource: String,
     val branches: List<ConversationMindMapBranch>,
 )
 
@@ -19,6 +20,7 @@ internal data class ConversationMindMapArtifact(
     val sessionId: String,
     val title: String,
     val sourceMessageCount: Int,
+    val mermaidSource: String,
     val createdAt: Long,
     val updatedAt: Long,
     val branches: List<ConversationMindMapBranch>,

@@ -31,3 +31,6 @@ include(":shared")
 include(":table-core")
 project(":shared").buildFileName = buildFileName
 project(":table-core").buildFileName = buildFileName
+
+include(":kuikly-chart")
+project(":kuikly-chart").buildFileName = buildFileName

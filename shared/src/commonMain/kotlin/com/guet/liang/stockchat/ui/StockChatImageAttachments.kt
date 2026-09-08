@@ -5,6 +5,7 @@ import com.tencent.kuikly.core.base.BorderStyle
 import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.base.attr.CaptureRule
+import com.tencent.kuikly.core.base.attr.CaptureRuleDirection
 import com.tencent.kuikly.core.directives.vfor
 import com.tencent.kuikly.core.reactive.collection.ObservableList
 import com.tencent.kuikly.core.views.Image
@@ -26,6 +27,7 @@ internal fun ViewContainer<*, *>.ComposerImageAttachments(
             showScrollerIndicator(false)
             bouncesEnable(true)
             scrollEnable(true)
+            capture(CaptureRule.pan(CaptureRuleDirection.HORIZONTAL))
             padding(left = 4f * scale, right = 4f * scale)
         }
         vfor(images) { imageUri ->

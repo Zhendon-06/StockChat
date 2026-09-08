@@ -1,0 +1,3 @@
+ALTER TABLE conversation_mind_map_artifact
+ADD COLUMN mermaid_source TEXT NOT NULL DEFAULT 'mindmap
+  root((当前会话))';

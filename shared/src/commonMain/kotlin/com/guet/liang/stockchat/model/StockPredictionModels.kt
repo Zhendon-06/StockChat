@@ -40,6 +40,7 @@ internal data class StockPrediction(
     val generatedAt: String,
     val sourceUpdatedAt: String,
     val historyPointCount: Int,
+    val conclusions: List<ChartConclusion> = emptyList(),
 ) {
     val predictions: List<StockPredictionPoint>
         get() = forecastPoints
