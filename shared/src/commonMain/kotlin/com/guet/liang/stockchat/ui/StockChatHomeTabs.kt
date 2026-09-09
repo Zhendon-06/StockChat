@@ -35,14 +35,7 @@ internal fun StockChatPage.HomeTabSwitcher(
                 borderRadius(metrics.dp(22f))
                 backgroundColor(StockChatTheme.recessed)
                 if (elevated) {
-                    boxShadow(
-                        BoxShadow(
-                            0f,
-                            metrics.dp(3f),
-                            metrics.dp(12f),
-                            Color(0x18000000),
-                        )
-                    )
+                    boxShadow(BoxShadow(0f, metrics.dp(3f), metrics.dp(12f), Color(0x18000000)))
                 }
                 flexDirectionRow()
                 padding(all = metrics.dp(3f))
@@ -57,12 +50,7 @@ internal fun StockChatPage.HomeTabSwitcher(
     }
 }
 
-internal fun StockChatPage.HomeTabItem(
-    container: ViewContainer<*, *>,
-    label: String,
-    tabIndex: Int,
-    enabled: () -> Boolean = { true },
-) {
+internal fun StockChatPage.HomeTabItem(container: ViewContainer<*, *>, label: String, tabIndex: Int, enabled: () -> Boolean = { true }) {
     val ctx = this
     val metrics = ctx.layoutMetrics
     with(container) {
@@ -72,17 +60,8 @@ internal fun StockChatPage.HomeTabItem(
                 flex(1f)
                 borderRadius(metrics.dp(19f))
                 // 选中态为带阴影的白色胶囊，未选中态透明；阴影不参与布局，切换时布局稳定
-                backgroundColor(
-                    if (selected) StockChatTheme.surface else Color(0x00000000)
-                )
-                boxShadow(
-                    BoxShadow(
-                        metrics.dp(0f),
-                        metrics.dp(2f),
-                        metrics.dp(8f),
-                        if (selected) Color(0x1F000000) else Color(0x00000000),
-                    )
-                )
+                backgroundColor(if (selected) StockChatTheme.surface else Color(0x00000000))
+                boxShadow(BoxShadow(metrics.dp(0f), metrics.dp(2f), metrics.dp(8f), if (selected) Color(0x1F000000) else Color(0x00000000)))
                 allCenter()
                 // 触摸门禁只放在外层容器和 click 回调里：enabled() 读的是本节点
                 // 未注册动画的 observable，放进 attr 会打断选中态动画
@@ -123,49 +102,29 @@ internal fun StockChatPage.HomeTabCapsule(container: ViewContainer<*, *>) {
         View {
             attr {
                 val presentation = ctx.homeState.capsulePresentation
-                val marketActive =
-                    presentation == StockChatHomeCapsulePresentation.MARKET_BOTTOM
+                val marketActive = presentation == StockChatHomeCapsulePresentation.MARKET_BOTTOM
                 val visible = presentation != StockChatHomeCapsulePresentation.HIDDEN
                 val switcherWidth = metrics.dp(232f)
                 val switcherHeight = metrics.dp(44f)
-                val collapsedContentBottom = metrics.composerContentBottom(
-                    pagerData.safeAreaInsets.bottom,
-                    focused = false,
-                )
+                val collapsedContentBottom = metrics.composerContentBottom(pagerData.safeAreaInsets.bottom, focused = false)
                 val heroTop = pagerData.statusBarHeight + metrics.dp(66f)
-                val heroBottom = pagerData.pageViewHeight -
-                    collapsedContentBottom - metrics.dp(136f)
+                val heroBottom = pagerData.pageViewHeight - collapsedContentBottom - metrics.dp(136f)
                 val heroCenter = (heroTop + heroBottom) / 2f
-                val suggestionTop = pagerData.pageViewHeight -
-                    collapsedContentBottom - metrics.dp(52f)
-                val chatTop = minOf(
-                    heroCenter + metrics.welcomeHeroSize / 2f + metrics.dp(68f),
-                    suggestionTop - switcherHeight - metrics.dp(24f),
-                )
-                val marketTop = pagerData.pageViewHeight -
-                    pagerData.safeAreaInsets.bottom - metrics.dp(14f) - switcherHeight
-                absolutePosition(
-                    top = if (marketActive) marketTop else chatTop,
-                    left = (pagerData.pageViewWidth - switcherWidth) / 2f,
-                )
+                val suggestionTop = pagerData.pageViewHeight - collapsedContentBottom - metrics.dp(52f)
+                val chatTop =
+                    minOf(heroCenter + metrics.welcomeHeroSize / 2f + metrics.dp(68f), suggestionTop - switcherHeight - metrics.dp(24f))
+                val marketTop = pagerData.pageViewHeight - pagerData.safeAreaInsets.bottom - metrics.dp(14f) - switcherHeight
+                absolutePosition(top = if (marketActive) marketTop else chatTop, left = (pagerData.pageViewWidth - switcherWidth) / 2f)
                 width(switcherWidth)
                 height(switcherHeight)
                 touchEnable(visible)
                 zIndex(8)
-                animate(
-                    Animation.springEaseOut(
-                        HOME_CAPSULE_TRAVEL_DURATION,
-                        0.92f,
-                        0.16f,
-                    ),
-                    ctx.homeState.capsulePresentation.ordinal,
-                )
+                animate(Animation.springEaseOut(HOME_CAPSULE_TRAVEL_DURATION, 0.92f, 0.16f), ctx.homeState.capsulePresentation.ordinal)
             }
             View {
                 attr {
                     val presentation = ctx.homeState.capsulePresentation
-                    val marketActive =
-                        presentation == StockChatHomeCapsulePresentation.MARKET_BOTTOM
+                    val marketActive = presentation == StockChatHomeCapsulePresentation.MARKET_BOTTOM
                     val visible = presentation != StockChatHomeCapsulePresentation.HIDDEN
                     absolutePositionAllZero()
                     opacity(if (visible) 1f else 0f)
@@ -179,17 +138,12 @@ internal fun StockChatPage.HomeTabCapsule(container: ViewContainer<*, *>) {
                         ctx.homeState.capsulePresentation.ordinal,
                     )
                 }
-                event {
-                    click { }
-                }
+                event { click {} }
                 ctx.HomeTabSwitcher(
                     this,
                     widthDp = 232f,
                     elevated = true,
-                    enabled = {
-                        ctx.homeState.capsulePresentation !=
-                            StockChatHomeCapsulePresentation.HIDDEN
-                    },
+                    enabled = { ctx.homeState.capsulePresentation != StockChatHomeCapsulePresentation.HIDDEN },
                 )
             }
         }
@@ -197,10 +151,11 @@ internal fun StockChatPage.HomeTabCapsule(container: ViewContainer<*, *>) {
 }
 
 internal fun StockChatPage.selectHomeTab(tabIndex: Int) {
-    val destination = when (tabIndex) {
-        HOME_TAB_CHAT -> StockChatHomeDestination.AI_CHAT
-        HOME_TAB_TODAY_MARKET -> StockChatHomeDestination.TODAY_MARKET
-        else -> return
-    }
+    val destination =
+        when (tabIndex) {
+            HOME_TAB_CHAT -> StockChatHomeDestination.AI_CHAT
+            HOME_TAB_TODAY_MARKET -> StockChatHomeDestination.TODAY_MARKET
+            else -> return
+        }
     dispatchHome(StockChatHomeEvent.DestinationSelected(destination))
 }

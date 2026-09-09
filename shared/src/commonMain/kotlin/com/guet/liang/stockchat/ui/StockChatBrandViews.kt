@@ -6,32 +6,18 @@ import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.views.Text
 import com.tencent.kuikly.core.views.View
 
-internal fun ViewContainer<*, *>.HamburgerButton(
-    scale: Float = 1f,
-    onClick: () -> Unit,
-) {
+internal fun ViewContainer<*, *>.HamburgerButton(scale: Float = 1f, onClick: () -> Unit) {
     View {
         attr {
             size(52f * scale, 52f * scale)
             borderRadius(26f * scale)
             backgroundColor(StockChatTheme.surface)
-            boxShadow(
-                BoxShadow(
-                    1f * scale,
-                    5f * scale,
-                    14f * scale,
-                    Color(0x1A000000),
-                )
-            )
+            boxShadow(BoxShadow(1f * scale, 5f * scale, 14f * scale, Color(0x1A000000)))
             allCenter()
         }
-        event {
-            click { onClick() }
-        }
+        event { click { onClick() } }
         View {
-            attr {
-                size(22f * scale, 14f * scale)
-            }
+            attr { size(22f * scale, 14f * scale) }
             View {
                 attr {
                     absolutePosition(top = 2f * scale, left = 0f)

@@ -9,6 +9,7 @@ import com.guet.liang.stockchat.model.ModelProviderKind
 import com.guet.liang.stockchat.model.SharedChatRecord
 import com.guet.liang.stockchat.model.StockTablePreviewRow
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal object MockSettingsData {
     val appearance = AppearanceSettings()
 

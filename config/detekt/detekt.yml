@@ -1,0 +1,41 @@
+build:
+  maxIssues: 0
+  excludeCorrectable: false
+config:
+  validation: true
+  warningsAsErrors: false
+complexity:
+  LongMethod:
+    threshold: 80
+  LongParameterList:
+    functionThreshold: 8
+    constructorThreshold: 8
+    ignoreDefaultParameters: true
+  TooManyFunctions:
+    thresholdInFiles: 20
+    thresholdInClasses: 15
+    excludes: ['**/*Page.kt', '**/*Test.kt']
+exceptions:
+  TooGenericExceptionCaught:
+    # 统一通过 Throwable.toUserMessage 映射并记录日志，避免重复样板代码。
+    active: false
+naming:
+  FunctionNaming:
+    # Kuikly 组件函数与 Compose 一样使用大写开头命名。
+    ignoreAnnotated: ['Page']
+    excludes: ['**/ui/**', '**/kuiklychart/**/*View.kt', '**/kuiklychart/**/*Chart.kt']
+style:
+  MagicNumber:
+    # Kuikly DSL 中 dp、字号、动画时长和透明度属于布局参数。
+    excludes: ['**/ui/**', '**/kuiklychart/**', '**/kuiklytableview/**']
+    ignorePropertyDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+    ignoreEnums: true
+    ignoreRanges: true
+  MaxLineLength:
+    maxLineLength: 140
+  ReturnCount:
+    max: 3
+    excludeGuardClauses: true
+  WildcardImport:
+    excludeImports: ['kotlin.test.*']

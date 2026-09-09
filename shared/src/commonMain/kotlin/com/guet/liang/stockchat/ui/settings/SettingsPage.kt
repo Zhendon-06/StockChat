@@ -2,16 +2,19 @@ package com.guet.liang.stockchat.ui.settings
 
 import com.guet.liang.stockchat.base.BasePager
 import com.guet.liang.stockchat.base.closePage
-import com.guet.liang.stockchat.data.ChatHistoryDatabase
-import com.guet.liang.stockchat.data.StockChatSettingsStore
+import com.guet.liang.stockchat.base.openRoute
+import com.guet.liang.stockchat.controller.SettingsController
+import com.guet.liang.stockchat.controller.archivedSessions
+import com.guet.liang.stockchat.model.AppearanceSettings
 import com.guet.liang.stockchat.model.FontSizeSettings
+import com.guet.liang.stockchat.model.ModelConfiguration
 import com.guet.liang.stockchat.model.ModelProviderConfig
 import com.guet.liang.stockchat.model.SettingsSnapshot
 import com.guet.liang.stockchat.model.ThemeMode
+import com.guet.liang.stockchat.ui.settingsController
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.base.ViewBuilder
 import com.tencent.kuikly.core.base.ViewContainer
-import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.reactive.handler.observable
 import com.tencent.kuikly.core.views.Scroller
@@ -19,14 +22,23 @@ import com.tencent.kuikly.core.views.View
 import kotlin.math.roundToInt
 
 @Page(SETTINGS_PAGE_NAME, supportInLocal = true)
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal class SettingsPage : BasePager() {
-    private var settingsSnapshot by observable(
-        StockChatSettingsStore.repository.loadSnapshot(),
-    )
+    private lateinit var controller: SettingsController
+    private var settingsSnapshot by
+        observable(
+            SettingsSnapshot(
+                AppearanceSettings(),
+                emptyList(),
+                ModelConfiguration("", emptyList()),
+                emptyList(),
+            )
+        )
     private var archivedSessionCount by observable(0)
 
     override fun created() {
         super.created()
+        controller = settingsController()
         reloadSettings()
     }
 
@@ -38,9 +50,7 @@ internal class SettingsPage : BasePager() {
     override fun body(): ViewBuilder {
         val ctx = this
         return {
-            attr {
-                backgroundColor(ctx.palette().background)
-            }
+            attr { backgroundColor(ctx.palette().background) }
             SettingsPageHeader(
                 statusBarHeight = ctx.pagerData.statusBarHeight,
                 title = "设置",
@@ -62,11 +72,7 @@ internal class SettingsPage : BasePager() {
                 ctx.SharedChatsCard(this)
                 ctx.ArchivedChatsCard(this)
                 ctx.ModelConfigurationCard(this)
-                View {
-                    attr {
-                        height(30f.settingsDp())
-                    }
-                }
+                View { attr { height(30f.settingsDp()) } }
             }
         }
     }
@@ -91,14 +97,14 @@ internal class SettingsPage : BasePager() {
                     title = "文字大小",
                     value = { ctx.fontSizeLabel() },
                     palette = { ctx.palette() },
-                    onClick = { ctx.openPage(FONT_SIZE_SETTINGS_PAGE_NAME) },
+                    onClick = { ctx.openSettingsPage(FONT_SIZE_SETTINGS_PAGE_NAME) },
                 )
                 SettingsDivider(palette = { ctx.palette() })
                 SettingsNavigationRow(
                     title = "表格样式",
                     value = { ctx.settingsSnapshot.appearance.tableStyle.preset.displayName },
                     palette = { ctx.palette() },
-                    onClick = { ctx.openPage(TABLE_STYLE_SETTINGS_PAGE_NAME) },
+                    onClick = { ctx.openSettingsPage(TABLE_STYLE_SETTINGS_PAGE_NAME) },
                 )
             }
         }
@@ -115,15 +121,13 @@ internal class SettingsPage : BasePager() {
                     title = "我的分享",
                     value = { "${ctx.settingsSnapshot.sharedChats.size} 条" },
                     palette = { ctx.palette() },
-                    onClick = { ctx.openPage(SHARED_CHATS_PAGE_NAME) },
+                    onClick = { ctx.openSettingsPage(SHARED_CHATS_PAGE_NAME) },
                 )
             }
         }
     }
 
-    private fun ModelConfigurationCard(
-        container: ViewContainer<*, *>,
-    ) {
+    private fun ModelConfigurationCard(container: ViewContainer<*, *>) {
         val ctx = this
         with(container) {
             SettingsCard(
@@ -135,7 +139,7 @@ internal class SettingsPage : BasePager() {
                     value = { ctx.activeProviderLabel() },
                     subtitle = "内置通义千问，支持配置阿里云、DeepSeek、GLM、Kimi 与 MiMo",
                     palette = { ctx.palette() },
-                    onClick = { ctx.openPage(MODEL_CONFIGURATION_PAGE_NAME) },
+                    onClick = { ctx.openSettingsPage(MODEL_CONFIGURATION_PAGE_NAME) },
                 )
             }
         }
@@ -153,7 +157,7 @@ internal class SettingsPage : BasePager() {
                     value = { "${ctx.archivedSessionCount} 条" },
                     subtitle = "查看已归档的聊天记录",
                     palette = { ctx.palette() },
-                    onClick = { ctx.openPage(ARCHIVED_CHATS_PAGE_NAME) },
+                    onClick = { ctx.openSettingsPage(ARCHIVED_CHATS_PAGE_NAME) },
                 )
             }
         }
@@ -163,13 +167,13 @@ internal class SettingsPage : BasePager() {
         if (settingsSnapshot.appearance.themeMode == themeMode) {
             return
         }
-        StockChatSettingsStore.repository.setThemeMode(themeMode)
+        controller.setThemeMode(themeMode)
         reloadSettings()
     }
 
     private fun reloadSettings() {
-        settingsSnapshot = StockChatSettingsStore.repository.loadSnapshot()
-        archivedSessionCount = ChatHistoryDatabase.repository().loadArchivedSessions().size
+        settingsSnapshot = controller.snapshot()
+        archivedSessionCount = controller.archivedSessions().size
     }
 
     private fun palette(): SettingsPalette = settingsPalette(settingsSnapshot.appearance.themeMode)
@@ -197,21 +201,16 @@ internal class SettingsPage : BasePager() {
         }
     }
 
-    private fun openPage(pageName: String) {
-        acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
-            pageName,
-            JSONObject(),
-        )
+    private fun openSettingsPage(pageName: String) {
+        openRoute(pageName, JSONObject())
     }
 
     private companion object {
         const val PAGE_HORIZONTAL_MARGIN = 16f
 
-        val themeOptions = ThemeMode.values().map { mode ->
-            SettingsSegmentOption(
-                value = mode,
-                label = mode.displayName,
-            )
-        }
+        val themeOptions =
+            ThemeMode.values().map { mode ->
+                SettingsSegmentOption(value = mode, label = mode.displayName)
+            }
     }
 }

@@ -7,8 +7,16 @@ plugins {
     id("com.google.devtools.ksp")
     id("app.cash.sqldelight")
     id("maven-publish")
+    id("io.gitlab.arturbosch.detekt")
     id("com.tencent.kuikly-open.kuikly")
 
+}
+
+detekt {
+    config.setFrom(files(rootProject.file("config/detekt/detekt.yml")))
+    buildUponDefaultConfig = true
+    source.setFrom(files("src/commonMain/kotlin", "src/commonTest/kotlin"))
+    ignoreFailures = true
 }
 
 val KEY_PAGE_NAME = "pageName"

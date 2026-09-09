@@ -5,11 +5,6 @@ import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.views.Text
 import com.tencent.kuikly.core.views.View
 
-internal data class SettingsSegmentOption<T>(
-    val value: T,
-    val label: String,
-)
-
 internal fun ViewContainer<*, *>.SettingsPageHeader(
     statusBarHeight: Float,
     title: String,
@@ -25,16 +20,11 @@ internal fun ViewContainer<*, *>.SettingsPageHeader(
         }
         View {
             attr {
-                absolutePosition(
-                    top = statusBarHeight + 8f.settingsDp(),
-                    left = 12f.settingsDp(),
-                )
+                absolutePosition(top = statusBarHeight + 8f.settingsDp(), left = 12f.settingsDp())
                 size(48f, 48f)
                 allCenter()
             }
-            event {
-                click { onBack() }
-            }
+            event { click { onBack() } }
             Text {
                 attr {
                     text("‹")
@@ -78,9 +68,7 @@ internal fun ViewContainer<*, *>.SettingsPageHeader(
                     padding(left = 8f.settingsDp(), right = 8f.settingsDp())
                     allCenter()
                 }
-                event {
-                    click { onAction() }
-                }
+                event { click { onAction() } }
                 Text {
                     attr {
                         text(actionText)
@@ -135,9 +123,7 @@ internal fun ViewContainer<*, *>.SettingsNavigationRow(
             flexDirectionRow()
             alignItemsCenter()
         }
-        event {
-            click { onClick() }
-        }
+        event { click { onClick() } }
         View {
             attr {
                 flex(1f)
@@ -225,11 +211,7 @@ internal fun <T> ViewContainer<*, *>.SettingsSegmentedRow(
                 lines(1)
             }
         }
-        View {
-            attr {
-                flex(1f)
-            }
-        }
+        View { attr { flex(1f) } }
         View {
             attr {
                 width(244f.settingsDp())
@@ -250,13 +232,11 @@ internal fun <T> ViewContainer<*, *>.SettingsSegmentedRow(
                                 palette().surface
                             } else {
                                 palette().surfaceMuted
-                            },
+                            }
                         )
                         allCenter()
                     }
-                    event {
-                        click { onSelect(option.value) }
-                    }
+                    event { click { onSelect(option.value) } }
                     Text {
                         attr {
                             text(option.label)
@@ -271,7 +251,7 @@ internal fun <T> ViewContainer<*, *>.SettingsSegmentedRow(
                                     palette().textPrimary
                                 } else {
                                     palette().textSecondary
-                                },
+                                }
                             )
                             lines(1)
                         }

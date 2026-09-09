@@ -5,6 +5,7 @@ package com.guet.liang.stockchat.data
 /** 阿里云百炼 OpenAI 兼容接口地址，同时是默认服务商与预测请求的兜底 baseUrl。 */
 internal const val DEFAULT_CHAT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class AliyunApiConfig(
     val apiKey: String,
     val baseUrl: String = DEFAULT_CHAT_BASE_URL,
@@ -17,6 +18,7 @@ internal data class AliyunApiConfig(
     val supportsStreaming: Boolean = true,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class MimoVoiceApiConfig(
     val apiKey: String,
     val baseUrl: String = "https://api.xiaomimimo.com/v1",

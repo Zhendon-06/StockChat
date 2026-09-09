@@ -1,21 +1,20 @@
+@file:Suppress("MagicNumber")
 package com.guet.liang.stockchat.data
 
 import com.guet.liang.stockchat.model.StockPrediction
 import com.guet.liang.stockchat.model.StockPredictionResult
-import com.tencent.kuikly.core.log.KLog
+import com.guet.liang.stockchat.base.StockChatLog
 
 // 预测链路日志辅助。
 
 private const val STOCK_PREDICTION_LOG_TAG = "StockPrediction"
 
 internal fun predictionLog(message: String) {
-    runCatching { KLog.i(STOCK_PREDICTION_LOG_TAG, message) }
-        .onFailure { println("[$STOCK_PREDICTION_LOG_TAG] $message") }
+    StockChatLog.d(STOCK_PREDICTION_LOG_TAG, message)
 }
 
 internal fun predictionError(message: String) {
-    runCatching { KLog.e(STOCK_PREDICTION_LOG_TAG, message) }
-        .onFailure { println("[$STOCK_PREDICTION_LOG_TAG] $message") }
+    StockChatLog.w(STOCK_PREDICTION_LOG_TAG, message)
 }
 
 internal fun predictionResultMessage(result: StockPredictionResult): String {

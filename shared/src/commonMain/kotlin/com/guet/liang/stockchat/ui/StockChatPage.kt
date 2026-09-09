@@ -2,19 +2,30 @@ package com.guet.liang.stockchat.ui
 
 import com.guet.liang.stockchat.base.BasePager
 import com.guet.liang.stockchat.base.bridgeModule
+import com.guet.liang.stockchat.base.setTimeout
+import com.guet.liang.stockchat.controller.ArtifactController
+import com.guet.liang.stockchat.controller.ChatSendController
+import com.guet.liang.stockchat.controller.ChatSessionController
+import com.guet.liang.stockchat.controller.ModelSelectionController
+import com.guet.liang.stockchat.controller.SettingsCatalogRepository
+import com.guet.liang.stockchat.controller.SettingsController
+import com.guet.liang.stockchat.controller.artifactController
+import com.guet.liang.stockchat.data.AliyunStockChatDataSource
 import com.guet.liang.stockchat.data.ChatHistoryDatabase
 import com.guet.liang.stockchat.data.ChatHistoryRepository
-import com.guet.liang.stockchat.data.ChatSessionSummary
 import com.guet.liang.stockchat.data.ConversationMindMapArtifactRepository
 import com.guet.liang.stockchat.data.ConversationTableArtifactRepository
 import com.guet.liang.stockchat.data.MimoSpeechRecognitionService
 import com.guet.liang.stockchat.data.MimoSpeechSynthesisService
 import com.guet.liang.stockchat.data.MimoVoiceApiConfig
 import com.guet.liang.stockchat.data.ModelCatalogService
-import com.guet.liang.stockchat.data.StockChatDataSource
-import com.guet.liang.stockchat.data.TodayMarketDataSource
+import com.guet.liang.stockchat.data.StockChatSettingsStore
 import com.guet.liang.stockchat.data.TencentTodayMarketDataSource
+import com.guet.liang.stockchat.data.TodayMarketDataSource
 import com.guet.liang.stockchat.model.ChatMessage
+import com.guet.liang.stockchat.model.ChatModelOption
+import com.guet.liang.stockchat.model.ChatSessionSummary
+import com.guet.liang.stockchat.model.DEFAULT_CHAT_MODEL_ICON_ASSET
 import com.guet.liang.stockchat.model.TodayMarketUiState
 import com.guet.liang.stockchat.model.VoiceInputState
 import com.tencent.kuikly.core.annotations.Page
@@ -37,6 +48,7 @@ import com.tencent.kuikly.core.views.TextAreaView
 internal const val DEFAULT_KEYBOARD_ANIM_DURATION = 0.25f
 
 @Page(CHAT_PAGE_NAME, supportInLocal = true)
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal class StockChatPage : BasePager() {
     internal var drawerOpen by observable(false)
     internal var composerFocused by observable(false)
@@ -55,12 +67,15 @@ internal class StockChatPage : BasePager() {
     internal var welcomeTextMotionStage by observable(2)
     internal var welcomeMotionGeneration = 0
     internal val selectedHomeTab: Int
-        get() = when (homeState.destination) {
-            StockChatHomeDestination.AI_CHAT -> HOME_TAB_CHAT
-            StockChatHomeDestination.TODAY_MARKET -> HOME_TAB_TODAY_MARKET
-        }
+        get() =
+            when (homeState.destination) {
+                StockChatHomeDestination.AI_CHAT -> HOME_TAB_CHAT
+                StockChatHomeDestination.TODAY_MARKET -> HOME_TAB_TODAY_MARKET
+            }
+
     internal val todayMarketState: TodayMarketUiState
         get() = homeState.todayMarketState
+
     // 键盘关闭后的强制归位计数，见 scheduleComposerDockResync
     internal var composerDockNudge by observable(0)
     // 输入框收缩动画结束后的强制归位计数，避免 TextArea 位置动画被打断后停在中间值
@@ -100,9 +115,6 @@ internal class StockChatPage : BasePager() {
     // drawer 模型列表请求状态
     internal var drawerModelsLoading by observable(false)
     internal var drawerModelsError by observable("")
-    internal var lastDrawerModelFetch = ""
-    internal var drawerModelInFlightFingerprint = ""
-    internal var drawerModelRequestToken = 0
     internal var imagePickerOpen by observable(false)
     internal var selectedImageCount by observable(0)
     internal var messages by observableList<ChatMessage>()
@@ -113,11 +125,8 @@ internal class StockChatPage : BasePager() {
     internal var selectedImages by observableList<String>()
     internal val selectedImagePreviews = mutableListOf<String>()
     internal val selectedImagePayloads = mutableListOf<String>()
-    internal var messageSequence = 0
-    internal var sessionSequence = 0
     // 当前会话 id：必须是 observable，抽屉列表项的高亮依赖它驱动重渲染
     internal var activeSessionId by observable("")
-    internal var requestToken = 0
     internal var voiceRequestToken = 0
     internal var speechSynthesisRequestToken = 0
     // 正在生成/播放语音的消息 id（空串 = 无朗读任务），驱动声音按钮上的流动声纹
@@ -136,14 +145,15 @@ internal class StockChatPage : BasePager() {
     internal var messageListContentHeight = 0f
     internal var messageListViewHeight = 0f
     internal lateinit var networkModule: NetworkModule
-    internal lateinit var dataSource: StockChatDataSource
     internal lateinit var speechRecognitionService: MimoSpeechRecognitionService
     internal lateinit var speechSynthesisService: MimoSpeechSynthesisService
-    internal lateinit var chatHistoryRepository: ChatHistoryRepository
-    internal lateinit var tableArtifactRepository: ConversationTableArtifactRepository
-    internal lateinit var mindMapArtifactRepository: ConversationMindMapArtifactRepository
+    private lateinit var chatHistoryRepository: ChatHistoryRepository
+    internal lateinit var sessionController: ChatSessionController
+    internal lateinit var sendController: ChatSendController
+    internal lateinit var artifactController: ArtifactController
     internal lateinit var todayMarketDataSource: TodayMarketDataSource
-    internal lateinit var modelCatalogService: ModelCatalogService
+    internal lateinit var modelSelectionController: ModelSelectionController
+    internal lateinit var settingsController: SettingsController
     internal lateinit var inputRef: ViewRef<TextAreaView>
     internal lateinit var renameInputRef: ViewRef<TextAreaView>
     internal lateinit var messageScrollerRef: ViewRef<ScrollerView<*, *>>
@@ -151,38 +161,74 @@ internal class StockChatPage : BasePager() {
     internal var todayMarketScrollOffsetY: Float = 0f
     internal val layoutMetrics: StockChatLayoutMetrics
         get() = StockChatLayoutMetrics(pagerData.pageViewWidth)
+
     // lateinit 就位探针：扩展函数无法直接使用 ::prop.isInitialized，统一从这里读取
     internal val inputRefReady: Boolean
         get() = ::inputRef.isInitialized
+
     internal val renameInputRefReady: Boolean
         get() = ::renameInputRef.isInitialized
+
     internal val messageScrollerRefReady: Boolean
         get() = ::messageScrollerRef.isInitialized
+
     internal val todayMarketDataSourceReady: Boolean
         get() = ::todayMarketDataSource.isInitialized
-    internal val modelCatalogServiceReady: Boolean
-        get() = ::modelCatalogService.isInitialized
 
     override fun created() {
         super.created()
         applySavedAppearance()
-        val mimoVoiceConfig = MimoVoiceApiConfig(
-            apiKey = pageData.params.optString("mimoVoiceApiKey").trim(),
-        )
+        val mimoVoiceConfig = MimoVoiceApiConfig(apiKey = pageData.params.optString("mimoVoiceApiKey").trim())
         networkModule = acquireModule(NetworkModule.MODULE_NAME)
-        modelCatalogService = ModelCatalogService(networkModule)
+        val modelCatalogService = ModelCatalogService(networkModule)
+        settingsController = settingsController()
+        val nativeStreamingEnabled = pageData.params.optInt("aliyunNativeStreaming", pageData.params.optInt("mimoNativeStreaming")) == 1
+        modelSelectionController =
+            ModelSelectionController(
+                settings = StockChatSettingsStore.repository,
+                catalog = SettingsCatalogRepository { url, key, callback -> modelCatalogService.load(url, key, callback) },
+                sourceFactory = { config ->
+                    AliyunStockChatDataSource(networkModule, config, bridgeModule, nativeStreamingEnabled && config.supportsStreaming)
+                },
+                scheduleTimeout = { delay, callback -> setTimeout(delay, callback) },
+                routeApiKey = pageData.params.optString("qwenApiKey"),
+                onChanged = { state ->
+                    activeModelProviderId = state.providerId
+                    selectedModelId = state.modelId
+                    chatModelOptions = state.options
+                    composerModelLabel = state.label
+                    composerModelIcon = state.icon
+                    drawerModelsLoading = state.loading
+                    drawerModelsError = state.error
+                    modelMenuContentRevision += 1
+                },
+            )
         chatHistoryRepository = ChatHistoryDatabase.repository()
-        tableArtifactRepository = ChatHistoryDatabase.artifactRepository()
-        mindMapArtifactRepository = ChatHistoryDatabase.mindMapArtifactRepository()
         todayMarketDataSource = TencentTodayMarketDataSource(networkModule)
         configureChatProvider()
         speechRecognitionService = MimoSpeechRecognitionService(networkModule, mimoVoiceConfig)
-        speechSynthesisService = MimoSpeechSynthesisService(
-            networkModule = networkModule,
-            config = mimoVoiceConfig,
-            bridgeModule = bridgeModule,
-            useNativeStreaming = pageData.params.optInt("mimoNativeStreaming") == 1,
-        )
+        speechSynthesisService =
+            MimoSpeechSynthesisService(
+                networkModule = networkModule,
+                config = mimoVoiceConfig,
+                bridgeModule = bridgeModule,
+                useNativeStreaming = pageData.params.optInt("mimoNativeStreaming") == 1,
+            )
+        sessionController =
+            ChatSessionController(chatHistoryRepository) { state ->
+                activeSessionId = state.activeSessionId
+                recentSessions.clear()
+                state.recentSessions.forEach { recentSessions.add(it) }
+                messages.clear()
+                state.messages.forEach { messages.add(it) }
+                updateTypingIndicatorTimer()
+            }
+        sendController =
+            ChatSendController({ modelSelectionController.dataSource }, sessionController, { selectedModel() }) {
+                isSending = it
+                updateTypingIndicatorTimer()
+            }
+        artifactController = artifactController()
         initializeChatSessions()
         dispatchHome(StockChatHomeEvent.Started)
         bridgeModule.observeDrawerGestures { result ->
@@ -194,12 +240,8 @@ internal class StockChatPage : BasePager() {
         observeBackRequests()
         // 键盘/聚焦任一信号出现时隐藏欢迎内容；节点保持挂载，只切透明度，
         // 避免键盘回落后重建绝对定位子树时从左上角飞入
-        bindValueChange({
-            composerFocused || keyboardVisible || keyboardHeight > 0f || keyboardDropSettling
-        }) { hidden ->
-            dispatchHome(
-                StockChatHomeEvent.WelcomeObscuredChanged(hidden == true)
-            )
+        bindValueChange({ composerFocused || keyboardVisible || keyboardHeight > 0f || keyboardDropSettling }) { hidden ->
+            dispatchHome(StockChatHomeEvent.WelcomeObscuredChanged(hidden == true))
         }
     }
 
@@ -229,9 +271,7 @@ internal class StockChatPage : BasePager() {
     }
 
     private fun observeBackRequests() {
-        bridgeModule.observeBackRequests {
-            handleBackRequest()
-        }
+        bridgeModule.observeBackRequests { handleBackRequest() }
     }
 
     override fun themeDidChanged(data: JSONObject) {
@@ -246,17 +286,11 @@ internal class StockChatPage : BasePager() {
         val enteredWelcome =
             nextState.destination == StockChatHomeDestination.AI_CHAT &&
                 nextState.chatStage == StockChatHomeChatStage.WELCOME &&
-                (
-                    previousState.destination != StockChatHomeDestination.AI_CHAT ||
-                        previousState.chatStage != StockChatHomeChatStage.WELCOME
-                    )
+                (previousState.destination != StockChatHomeDestination.AI_CHAT || previousState.chatStage != StockChatHomeChatStage.WELCOME)
         val leftWelcome =
             previousState.destination == StockChatHomeDestination.AI_CHAT &&
                 previousState.chatStage == StockChatHomeChatStage.WELCOME &&
-                (
-                    nextState.destination != StockChatHomeDestination.AI_CHAT ||
-                        nextState.chatStage != StockChatHomeChatStage.WELCOME
-                    )
+                (nextState.destination != StockChatHomeDestination.AI_CHAT || nextState.chatStage != StockChatHomeChatStage.WELCOME)
         if (enteredWelcome || leftWelcome) {
             stageWelcomeMotion(nextState)
         }
@@ -307,8 +341,8 @@ internal class StockChatPage : BasePager() {
         }
         bridgeModule.stopObservingDrawerGestures()
         bridgeModule.stopObservingBackRequests()
-        requestToken += 1
-        drawerModelRequestToken += 1
+        sendController.invalidate()
+        modelSelectionController.invalidate()
         welcomeMotionGeneration += 1
         dispatchHome(StockChatHomeEvent.Stopped)
         super.pageWillDestroy()
@@ -322,15 +356,9 @@ internal class StockChatPage : BasePager() {
                 overflow(true)
                 capture(CaptureRule.pan(CaptureRuleDirection.HORIZONTAL))
             }
-            event {
-                pan { params -> ctx.handleDrawerPan(params) }
-            }
-            vif({ StockChatTheme.renderRevision % 2 == 0 }) {
-                ctx.ContentLayers(this)
-            }
-            velse {
-                ctx.ContentLayers(this)
-            }
+            event { pan { params -> ctx.handleDrawerPan(params) } }
+            vif({ StockChatTheme.renderRevision % 2 == 0 }) { ctx.ContentLayers(this) }
+            velse { ctx.ContentLayers(this) }
         }
     }
 

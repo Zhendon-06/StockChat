@@ -1,5 +1,6 @@
 package com.guet.liang.stockchat.model
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal enum class ConversationStockDataSource(
     val label: String,
 ) {
@@ -8,6 +9,7 @@ internal enum class ConversationStockDataSource(
     FRESH_MARKET("最新行情"),
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class ConversationStockComparisonRow(
     val providerSymbol: String,
     val name: String,
@@ -49,6 +51,7 @@ internal data class ConversationStockComparisonRow(
         }.joinToString(" + ").ifBlank { "会话识别" }
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class ConversationStockComparisonSnapshot(
     val title: String,
     val sourceMessageCount: Int,
@@ -63,3 +66,19 @@ internal data class ConversationStockComparisonSnapshot(
 
 internal const val DEFAULT_STOCK_COMPARISON_DISCLAIMER =
     "行情与 AI 结论均为演示信息，仅供参考，不构成投资建议。"
+
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
+internal data class ConversationStockComparisonRefreshResult(
+    val snapshot: ConversationStockComparisonSnapshot,
+    val requestedCount: Int,
+    val refreshedCount: Int,
+    val unavailableCount: Int,
+    val unavailableProviderSymbols: List<String>,
+    val message: String,
+) {
+    val isComplete: Boolean
+        get() = requestedCount > 0 && unavailableCount == 0
+
+    val isPartial: Boolean
+        get() = refreshedCount > 0 && unavailableCount > 0
+}

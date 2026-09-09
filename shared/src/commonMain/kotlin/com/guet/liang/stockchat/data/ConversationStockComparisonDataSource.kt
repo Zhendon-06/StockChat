@@ -1,23 +1,13 @@
 package com.guet.liang.stockchat.data
 
+import com.guet.liang.stockchat.model.ConversationStockComparisonRefreshResult
+
 import com.guet.liang.stockchat.model.ConversationStockComparisonSnapshot
+import com.guet.liang.stockchat.model.MarketDataResult
+import com.guet.liang.stockchat.model.TencentMarketSnapshot
 import com.tencent.kuikly.core.module.NetworkModule
 
-internal data class ConversationStockComparisonRefreshResult(
-    val snapshot: ConversationStockComparisonSnapshot,
-    val requestedCount: Int,
-    val refreshedCount: Int,
-    val unavailableCount: Int,
-    val unavailableProviderSymbols: List<String>,
-    val message: String,
-) {
-    val isComplete: Boolean
-        get() = requestedCount > 0 && unavailableCount == 0
-
-    val isPartial: Boolean
-        get() = refreshedCount > 0 && unavailableCount > 0
-}
-
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal class ConversationStockComparisonDataSource(
     private val loadDetail: (String, (MarketDataResult) -> Unit) -> Unit,
 ) {

@@ -7,9 +7,10 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 
-internal const val CHAT_DARK_TEXT_ARGB = 0xFF171A18
-internal const val CHAT_LIGHT_TEXT_ARGB = 0xFFF3F7F5
+internal const val CHAT_DARK_TEXT_ARGB = StockChatTheme.COLOR_FF171A18
+internal const val CHAT_LIGHT_TEXT_ARGB = StockChatTheme.COLOR_FFF3F7F5
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class ChatBackgroundContrast(
     val textColorArgb: Long,
     val maskColorArgb: Long,
@@ -68,6 +69,7 @@ internal fun resolveChatBackgroundContrast(
     )
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 private data class Rgb(
     val red: Double,
     val green: Double,
@@ -107,8 +109,8 @@ private fun contrastRatio(firstLuminance: Double, secondLuminance: Double): Doub
     (max(firstLuminance, secondLuminance) + CONTRAST_OFFSET) /
         (min(firstLuminance, secondLuminance) + CONTRAST_OFFSET)
 
-private const val BLACK_ARGB = 0xFF000000
-private const val WHITE_ARGB = 0xFFFFFFFF
+private const val BLACK_ARGB = StockChatTheme.COLOR_FF000000
+private const val WHITE_ARGB = StockChatTheme.COLOR_FFFFFFFF
 private const val MASK_BRIGHTNESS_ALPHA_FACTOR = 0.34f
 private const val MAX_MASK_ALPHA = 0.82f
 private const val MIN_CUSTOM_IMAGE_AUTO_MASK_ALPHA = 0.64f

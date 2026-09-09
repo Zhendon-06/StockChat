@@ -8,6 +8,7 @@ import com.guet.liang.kuiklychart.api.ChartSpec
 import com.tencent.kuikly.core.base.Color
 import kotlin.math.max
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class ChartSeriesDataSnapshot(
     val type: ChartSeriesType,
     val name: String,
@@ -16,6 +17,7 @@ internal data class ChartSeriesDataSnapshot(
     val appearance: ChartSeriesAppearanceSnapshot,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class ChartSeriesAppearanceSnapshot(
     val color: Color,
     val fillColor: Color?,
@@ -62,6 +64,7 @@ internal data class ChartSeriesAppearanceSnapshot(
     }
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class ChartDataSnapshot(
     val series: List<ChartSeriesDataSnapshot>,
 ) {
@@ -70,11 +73,11 @@ internal data class ChartDataSnapshot(
             return ChartDataSnapshot(
                 spec.dataSeries.map { chartSeries ->
                     ChartSeriesDataSnapshot(
-                        chartSeries.type,
-                        chartSeries.name,
-                        chartSeries.dataValues.toList(),
-                        chartSeries,
-                        ChartSeriesAppearanceSnapshot.capture(chartSeries),
+                    chartSeries.type,
+                    chartSeries.name,
+                    chartSeries.dataValues.toList(),
+                    chartSeries,
+                    ChartSeriesAppearanceSnapshot.capture(chartSeries),
                     )
                 },
             )
@@ -82,14 +85,15 @@ internal data class ChartDataSnapshot(
     }
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal class ChartDataTransition private constructor(
     private val targetSeries: MutableList<ChartSeries>,
     private val seriesTransitions: List<SeriesTransition>,
     private val exitingSeriesTransitions: List<ExitingSeriesTransition>,
 ) {
     val hasChanges: Boolean
-        get() = seriesTransitions.any(SeriesTransition::hasChanges) ||
-            exitingSeriesTransitions.any(ExitingSeriesTransition::hasChanges)
+    get() = seriesTransitions.any(SeriesTransition::hasChanges) ||
+    exitingSeriesTransitions.any(ExitingSeriesTransition::hasChanges)
 
     fun apply(progress: Float) {
         val normalizedProgress = progress.coerceIn(0f, 1f)
@@ -148,8 +152,8 @@ internal class ChartDataTransition private constructor(
             val namedSeriesIndex = start.series.indices.firstOrNull { startIndex ->
                 val startSeries = start.series[startIndex]
                 startIndex !in usedStartSeries &&
-                    startSeries.type == targetSeries.type &&
-                    startSeries.name == targetSeries.name
+                startSeries.type == targetSeries.type &&
+                startSeries.name == targetSeries.name
             }
             if (namedSeriesIndex != null) {
                 return namedSeriesIndex
@@ -260,8 +264,8 @@ private fun interpolateValue(startValue: Float?, targetValue: Float?, progress: 
     if (startValue?.isFinite() == true && targetValue?.isFinite() == true) {
         return (
             startValue.toDouble() +
-                (targetValue.toDouble() - startValue.toDouble()) * progress.toDouble()
-            ).toFloat()
+            (targetValue.toDouble() - startValue.toDouble()) * progress.toDouble()
+        ).toFloat()
     }
     return if (progress <= 0f) startValue else targetValue
 }
@@ -274,7 +278,7 @@ private fun valuesEqual(first: List<Float?>, second: List<Float?>): Boolean {
         val firstValue = first[index]
         val secondValue = second[index]
         firstValue == secondValue ||
-            (firstValue?.isNaN() == true && secondValue?.isNaN() == true)
+        (firstValue?.isNaN() == true && secondValue?.isNaN() == true)
     }
 }
 

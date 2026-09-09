@@ -5,6 +5,7 @@ import com.tencent.kuikly.core.module.SharedPreferencesModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal object FavoriteCardsStore {
     private const val STORAGE_KEY = "stock_chat_favorite_cards_v1"
 

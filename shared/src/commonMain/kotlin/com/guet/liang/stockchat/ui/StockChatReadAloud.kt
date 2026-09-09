@@ -1,7 +1,9 @@
 package com.guet.liang.stockchat.ui
 
 import com.guet.liang.stockchat.base.bridgeModule
+import com.guet.liang.stockchat.base.playBase64Audio
 import com.guet.liang.stockchat.base.setTimeout
+import com.guet.liang.stockchat.base.stopAudioPlayback
 import com.guet.liang.stockchat.model.ChatMessage
 import com.guet.liang.stockchat.model.SpeechSynthesisResult
 import com.tencent.kuikly.core.timer.Timer
@@ -37,26 +39,15 @@ internal fun StockChatPage.readMessageAloud(message: ChatMessage) {
             SpeechSynthesisResult.Started -> Unit
             SpeechSynthesisResult.Completed -> endReadAloudIndicator()
             is SpeechSynthesisResult.Success -> {
-                bridgeModule.playBase64Audio(
-                    audioBase64 = result.audioBase64,
-                    mimeType = result.mimeType,
-                ) playback@{ payload ->
+                bridgeModule.playBase64Audio(audioBase64 = result.audioBase64, mimeType = result.mimeType) playback@{ payload ->
                     if (currentRequestToken != speechSynthesisRequestToken) {
                         return@playback
                     }
                     if (payload?.optInt("success", 0) != 1) {
                         endReadAloudIndicator()
-                        bridgeModule.toast(
-                            payload?.optString("errorMessage")
-                                ?.ifBlank { "语音播放失败，请稍后重试" }
-                                ?: "语音播放失败，请稍后重试"
-                        )
+                        bridgeModule.toast(payload?.optString("errorMessage")?.ifBlank { "语音播放失败，请稍后重试" } ?: "语音播放失败，请稍后重试")
                     } else {
-                        scheduleReadAloudFinish(
-                            currentRequestToken,
-                            message.id,
-                            result.audioBase64,
-                        )
+                        scheduleReadAloudFinish(currentRequestToken, message.id, result.audioBase64)
                     }
                 }
             }
@@ -78,11 +69,7 @@ internal fun StockChatPage.beginReadAloudIndicator(messageId: String) {
     readAloudMessageId = messageId
     if (readAloudWaveTimer == null) {
         readAloudWavePhase = 0
-        readAloudWaveTimer = Timer().also { timer ->
-            timer.schedule(0, 120) {
-                readAloudWavePhase = (readAloudWavePhase + 1) % 120
-            }
-        }
+        readAloudWaveTimer = Timer().also { timer -> timer.schedule(0, 120) { readAloudWavePhase = (readAloudWavePhase + 1) % 120 } }
     }
 }
 
@@ -94,11 +81,7 @@ internal fun StockChatPage.endReadAloudIndicator() {
 
 // 非流式播放没有完成回调：从 WAV 头解析时长，到点后收起声纹；
 // 解析失败兜底 60s，避免声纹无限滚动
-internal fun StockChatPage.scheduleReadAloudFinish(
-    requestToken: Int,
-    messageId: String,
-    audioBase64: String,
-) {
+internal fun StockChatPage.scheduleReadAloudFinish(requestToken: Int, messageId: String, audioBase64: String) {
     val durationMs = estimateWavDurationMs(audioBase64) ?: 60_000L
     setTimeout((durationMs + 300).coerceAtMost(120_000L).toInt()) {
         if (requestToken == speechSynthesisRequestToken && readAloudMessageId == messageId) {
@@ -110,11 +93,7 @@ internal fun StockChatPage.scheduleReadAloudFinish(
 internal fun estimateWavDurationMs(audioBase64: String): Long? {
     // WAV 头 44 字节：byteRate 在偏移 28、data 块大小在偏移 40（均小端 int32）
     val header = decodeBase64Prefix(audioBase64, 44) ?: return null
-    if (header[0] != 'R'.code.toByte() || header[1] != 'I'.code.toByte() ||
-        header[2] != 'F'.code.toByte() || header[3] != 'F'.code.toByte()
-    ) {
-        return null
-    }
+    if (!"RIFF".indices.all { header[it] == "RIFF"[it].code.toByte() }) return null
     fun littleEndianInt(offset: Int): Long {
         var value = 0L
         for (i in 3 downTo 0) {
@@ -136,15 +115,10 @@ internal fun decodeBase64Prefix(text: String, byteCount: Int): ByteArray? {
     var outputCount = 0
     var buffer = 0
     var bufferBits = 0
-    for (char in text) {
+    val encoded = text.asSequence().filterNot { it == '\n' || it == '\r' || it == ' ' }.takeWhile { it != '=' }
+    for (char in encoded) {
         if (outputCount >= byteCount) {
             break
-        }
-        if (char == '=') {
-            break
-        }
-        if (char == '\n' || char == '\r' || char == ' ') {
-            continue
         }
         val value = alphabet.indexOf(char)
         if (value < 0) {

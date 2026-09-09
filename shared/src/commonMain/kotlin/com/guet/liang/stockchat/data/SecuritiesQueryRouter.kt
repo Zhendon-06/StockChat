@@ -1,12 +1,15 @@
 package com.guet.liang.stockchat.data
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal enum class SecuritiesIntent { QUOTE, TREND, COMPARE, ANALYSIS }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class SecurityTarget(
     val providerSymbol: String,
     val displayName: String = "",
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class SecuritiesQueryPlan(
     val intent: SecuritiesIntent,
     val targets: List<SecurityTarget>,

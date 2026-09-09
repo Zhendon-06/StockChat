@@ -1,16 +1,21 @@
+@file:Suppress("LongMethod", "CyclomaticComplexMethod", "LongParameterList", "UnusedParameter", "MagicNumber")
 package com.guet.liang.stockchat.data
 
+import com.guet.liang.stockchat.base.streamChatCompletion
+import com.guet.liang.stockchat.base.BridgeModule
 import com.guet.liang.stockchat.model.AnswerBlock
 import com.guet.liang.stockchat.model.ChatAnswer
 import com.guet.liang.stockchat.model.ChatHistoryItem
 import com.guet.liang.stockchat.model.ChatRole
-import com.guet.liang.stockchat.base.BridgeModule
+import com.guet.liang.stockchat.model.MarketDataResult
+import com.guet.liang.stockchat.model.TencentMarketSnapshot
 import com.tencent.kuikly.core.module.NetworkModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 
 // OpenAI 兼容聊天数据源：流式/非流式问答与错误处理。
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal class AliyunStockChatDataSource(
     private val networkModule: NetworkModule,
     private val config: AliyunApiConfig,

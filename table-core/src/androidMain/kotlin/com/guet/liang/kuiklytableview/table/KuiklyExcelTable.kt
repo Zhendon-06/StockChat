@@ -1,5 +1,7 @@
 package com.guet.liang.kuiklytableview.table
 
+import com.guet.liang.kuiklytableview.ui.KuiklyTable
+
 import com.tencent.kuikly.core.base.ViewContainer
 import java.io.File
 

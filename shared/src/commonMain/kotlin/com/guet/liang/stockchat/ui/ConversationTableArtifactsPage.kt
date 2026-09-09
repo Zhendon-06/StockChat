@@ -1,8 +1,12 @@
 package com.guet.liang.stockchat.ui
 
+import com.guet.liang.stockchat.controller.ArtifactController
+import com.guet.liang.stockchat.controller.artifactController
+import com.guet.liang.stockchat.controller.ArtifactResult
+
+import com.guet.liang.stockchat.base.openRoute
 import com.guet.liang.stockchat.base.BasePager
 import com.guet.liang.stockchat.base.closePage
-import com.guet.liang.stockchat.data.ChatHistoryDatabase
 import com.guet.liang.stockchat.model.ConversationTableArtifactSummary
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.base.Border
@@ -13,7 +17,6 @@ import com.tencent.kuikly.core.base.ViewBuilder
 import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.base.attr.ImageUri
 import com.tencent.kuikly.core.directives.vif
-import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.reactive.handler.observable
 import com.tencent.kuikly.core.views.Image
@@ -25,6 +28,7 @@ internal const val CONVERSATION_TABLE_ARTIFACTS_PAGE_NAME = "conversation_table_
 internal const val CONVERSATION_TABLE_ARTIFACT_PAGE_NAME = "conversation_table_artifact"
 internal const val CONVERSATION_TABLE_ARTIFACT_ID_PARAM = "artifactId"
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 private sealed class ArtifactListUiState {
     data object Loading : ArtifactListUiState()
     data object Empty : ArtifactListUiState()
@@ -33,11 +37,14 @@ private sealed class ArtifactListUiState {
 }
 
 @Page(CONVERSATION_TABLE_ARTIFACTS_PAGE_NAME, supportInLocal = true)
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal class ConversationTableArtifactsPage : BasePager() {
+    private lateinit var artifactController: ArtifactController
     private var uiState by observable<ArtifactListUiState>(ArtifactListUiState.Loading)
 
     override fun created() {
         super.created()
+        artifactController = artifactController()
         loadArtifacts()
     }
 
@@ -96,7 +103,7 @@ internal class ConversationTableArtifactsPage : BasePager() {
                         size(44f, 44f)
                         borderRadius(22f)
                         backgroundColor(StockChatTheme.surface)
-                        border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
+                        themedBorder()
                         allCenter()
                     }
                     event {
@@ -335,7 +342,7 @@ internal class ConversationTableArtifactsPage : BasePager() {
                     minHeight(112f)
                     borderRadius(20f)
                     backgroundColor(StockChatTheme.surface)
-                    border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
+                    themedBorder()
                     boxShadow(BoxShadow(0f, 5f, 16f, Color(0x12000000)))
                     padding(top = 16f, left = 16f, right = 14f, bottom = 16f)
                     marginTop(14f)
@@ -398,15 +405,13 @@ internal class ConversationTableArtifactsPage : BasePager() {
 
     private fun loadArtifacts() {
         uiState = ArtifactListUiState.Loading
-        uiState = try {
-            val artifacts = ChatHistoryDatabase.artifactRepository().listAll()
-            if (artifacts.isEmpty()) {
+        uiState = when (val result = artifactController.tableArtifacts()) {
+            is ArtifactResult.Failure -> ArtifactListUiState.Error(result.message)
+            is ArtifactResult.Success -> if (result.value.isEmpty()) {
                 ArtifactListUiState.Empty
             } else {
-                ArtifactListUiState.Content(artifacts)
+                ArtifactListUiState.Content(result.value)
             }
-        } catch (_: Throwable) {
-            ArtifactListUiState.Error("本地表格对比暂时无法读取，请稍后重试。")
         }
     }
 
@@ -416,7 +421,7 @@ internal class ConversationTableArtifactsPage : BasePager() {
         pageData.params.optString("qwenApiKey").trim()
             .takeIf(String::isNotBlank)
             ?.let { params.put("qwenApiKey", it) }
-        acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
+        openRoute(
             CONVERSATION_TABLE_ARTIFACT_PAGE_NAME,
             params,
         )

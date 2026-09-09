@@ -1,5 +1,6 @@
 package com.guet.liang.stockchat.model
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class TodayMarketSnapshot(
     val asOf: String,
     val indices: List<StockQuote>,
@@ -17,6 +18,7 @@ internal data class TodayMarketSnapshot(
     val disclaimer: String = TODAY_MARKET_DISCLAIMER,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class TodayMarketSectorObservation(
     val name: String,
     val changeLabel: String,
@@ -24,12 +26,14 @@ internal data class TodayMarketSectorObservation(
     val members: String,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal sealed class TodayMarketResult {
     data class Success(val snapshot: TodayMarketSnapshot) : TodayMarketResult()
     data object Empty : TodayMarketResult()
     data class Failure(val message: String) : TodayMarketResult()
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal sealed class TodayMarketUiState {
     data object Loading : TodayMarketUiState()
     data class Content(val snapshot: TodayMarketSnapshot) : TodayMarketUiState()

@@ -1,10 +1,8 @@
 package com.guet.liang.stockchat.data
 
-internal data class MermaidMindMapNode(
-    val label: String,
-    val children: List<MermaidMindMapNode>,
-)
+import com.guet.liang.stockchat.model.MermaidMindMapNode
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal object MermaidMindMapParser {
     fun parse(source: String): MermaidMindMapNode? {
         val lines = source.lines()

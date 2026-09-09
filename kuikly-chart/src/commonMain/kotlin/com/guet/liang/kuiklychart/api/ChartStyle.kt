@@ -4,6 +4,7 @@ import com.tencent.kuikly.core.base.Color
 
 /** Shared visual tokens for all chart types. */
 @KuiklyChartDsl
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 public class ChartTheme {
     public var backgroundColor: Color = Color.WHITE
     public var textColor: Color = Color(0xFF475569L)
@@ -31,6 +32,7 @@ public class ChartTheme {
 
 /** X-axis options for category-based charts. */
 @KuiklyChartDsl
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 public class CategoryAxisConfig {
     public var visible: Boolean = true
     public var showLabels: Boolean = true
@@ -43,6 +45,7 @@ public class CategoryAxisConfig {
 
 /** Y-axis and numeric scale options. */
 @KuiklyChartDsl
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 public class ValueAxisConfig {
     public var visible: Boolean = true
     public var showLabels: Boolean = true
@@ -58,6 +61,7 @@ public class ValueAxisConfig {
 
 /** Cartesian axis configuration. */
 @KuiklyChartDsl
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 public class ChartAxisConfig {
     public val x: CategoryAxisConfig = CategoryAxisConfig()
     public val y: ValueAxisConfig = ValueAxisConfig()
@@ -73,6 +77,7 @@ public class ChartAxisConfig {
 
 /** Horizontal and vertical plot-grid options. */
 @KuiklyChartDsl
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 public class ChartGridConfig {
     public var horizontal: Boolean = true
     public var vertical: Boolean = false
@@ -91,6 +96,7 @@ public class ChartGridConfig {
 
 /** Legend layout and typography options. */
 @KuiklyChartDsl
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 public class ChartLegendConfig {
     public var position: ChartLegendPosition = ChartLegendPosition.TOP
     public var fontSize: Float? = null
@@ -101,6 +107,7 @@ public class ChartLegendConfig {
 
 /** Grouped-bar layout options. */
 @KuiklyChartDsl
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 public class BarChartConfig {
     public var groupWidthRatio: Float = 0.72f
     public var barSpacing: Float = 3f
@@ -109,6 +116,7 @@ public class BarChartConfig {
 
 /** Pie and donut layout options. */
 @KuiklyChartDsl
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 public class PieChartConfig {
     public var innerRadiusRatio: Float = 0f
     public var startAngle: Float = -1.5707964f
@@ -124,6 +132,7 @@ public class PieChartConfig {
 
 /** Tooltip and crosshair options. */
 @KuiklyChartDsl
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 public class ChartTooltipConfig {
     public var enabled: Boolean = true
     public var crosshairEnabled: Boolean = true
@@ -133,6 +142,7 @@ public class ChartTooltipConfig {
 
 /** Gesture and selection behavior. */
 @KuiklyChartDsl
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 public class ChartInteractionConfig {
     public var selectionEnabled: Boolean = true
     public var panEnabled: Boolean = false
@@ -145,6 +155,7 @@ public class ChartInteractionConfig {
 
 /** Runtime data-transition options used by `ChartView.update`. */
 @KuiklyChartDsl
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 public class ChartAnimationConfig {
     /** Enables interpolation between the currently displayed and replacement data. */
     public var enabled: Boolean = true

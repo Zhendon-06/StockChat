@@ -20,7 +20,23 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-internal interface SettingsRepository {
+/** Share history operations exposed independently from appearance and provider settings. */
+internal interface SharedChatSettingsRepository {
+    fun saveSharedChat(record: SharedChatRecord)
+
+    fun recordSharedChat(
+        sessionId: String,
+        question: String,
+        content: ShareContent,
+        destinationLabel: String = "系统分享",
+    ): SharedChatRecord
+
+    fun deleteSharedChat(recordId: String): Boolean
+
+}
+
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
+internal interface SettingsRepository : SharedChatSettingsRepository {
     val snapshot: StateFlow<SettingsSnapshot>
 
     fun loadSnapshot(): SettingsSnapshot
@@ -33,17 +49,6 @@ internal interface SettingsRepository {
 
     fun setChatBackground(settings: ChatBackgroundSettings)
 
-    fun saveSharedChat(record: SharedChatRecord)
-
-    fun recordSharedChat(
-        sessionId: String,
-        question: String,
-        content: ShareContent,
-        destinationLabel: String = "系统分享",
-    ): SharedChatRecord
-
-    fun deleteSharedChat(recordId: String): Boolean
-
     fun saveModelProvider(provider: ModelProviderConfig)
 
     fun deleteModelProvider(providerId: String): Boolean
@@ -51,6 +56,7 @@ internal interface SettingsRepository {
     fun selectModel(providerId: String, modelId: String): Boolean
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal class InMemorySettingsRepository(
     initialAppearance: AppearanceSettings = MockSettingsData.appearance,
     initialSharedChats: List<SharedChatRecord> = MockSettingsData.sharedChats,
@@ -66,7 +72,7 @@ internal class InMemorySettingsRepository(
         .sortedByDescending(SharedChatRecord::sharedAtEpochMillis)
     private var modelConfiguration = initialModelConfiguration.normalized()
     private var generatedShareSequence = 0L
-    private val mutableSnapshot = MutableStateFlow(createSnapshot())
+    private val mutableSnapshot = MutableStateFlow(currentSnapshot)
 
     override val snapshot: StateFlow<SettingsSnapshot> = mutableSnapshot.asStateFlow()
 
@@ -83,7 +89,8 @@ internal class InMemorySettingsRepository(
         restoreFromPersistence()
     }
 
-    private fun createSnapshot(): SettingsSnapshot {
+    private val currentSnapshot: SettingsSnapshot
+        get() {
         return SettingsSnapshot(
             appearance = appearance,
             sharedChats = sharedChats.toList(),
@@ -217,7 +224,7 @@ internal class InMemorySettingsRepository(
             ?.read()
             ?.let(SettingsSnapshotJsonCodec::decode)
             ?: run {
-                mutableSnapshot.value = createSnapshot()
+                mutableSnapshot.value = currentSnapshot
                 return
             }
         appearance = storedState.appearance.normalized()
@@ -229,117 +236,19 @@ internal class InMemorySettingsRepository(
             .withBuiltInDefaultProvider()
             .normalized()
         modelConfiguration = restoredModelConfiguration
-        mutableSnapshot.value = createSnapshot()
+        mutableSnapshot.value = currentSnapshot
     }
 
     private fun publishAndPersist() {
-        val updatedSnapshot = createSnapshot()
+        val updatedSnapshot = currentSnapshot
         mutableSnapshot.value = updatedSnapshot
         persistence?.write(SettingsSnapshotJsonCodec.encode(updatedSnapshot))
     }
 
-    private fun AppearanceSettings.normalized(): AppearanceSettings {
-        return copy(
-            fontSize = fontSize.normalized(),
-            tableStyle = tableStyle.normalized(),
-            chatBackground = chatBackground.normalized(),
-        )
-    }
 
-    private fun TableStyleSettings.normalized(): TableStyleSettings {
-        return copy(
-            preset = when (preset) {
-                TableStylePreset.BLUE,
-                TableStylePreset.DARK,
-                -> TableStylePreset.DEFAULT
-                else -> preset
-            },
-            customColorArgb = customColorArgb
-                .coerceIn(0xFF000000L, 0xFFFFFFFFL)
-                .or(0xFF000000L),
-        )
-    }
-
-    private fun FontSizeSettings.normalized(): FontSizeSettings {
-        return copy(
-            scale = scale.coerceIn(FontSizeSettings.MIN_SCALE, FontSizeSettings.MAX_SCALE),
-        )
-    }
-
-    private fun ChatBackgroundSettings.normalized(): ChatBackgroundSettings {
-        return copy(
-            customImageUri = customImageUri?.trim()?.takeIf(String::isNotEmpty),
-            blurRadius = blurRadius.coerceIn(
-                ChatBackgroundSettings.MIN_BLUR_RADIUS,
-                ChatBackgroundSettings.MAX_BLUR_RADIUS,
-            ),
-            maskOpacity = maskOpacity.coerceIn(
-                ChatBackgroundSettings.MIN_MASK_OPACITY,
-                ChatBackgroundSettings.MAX_MASK_OPACITY,
-            ),
-            maskBrightness = maskBrightness.coerceIn(
-                ChatBackgroundSettings.MIN_MASK_BRIGHTNESS,
-                ChatBackgroundSettings.MAX_MASK_BRIGHTNESS,
-            ),
-            chatTextSizeSp = chatTextSizeSp.coerceIn(
-                ChatBackgroundSettings.MIN_CHAT_TEXT_SIZE_SP,
-                ChatBackgroundSettings.MAX_CHAT_TEXT_SIZE_SP,
-            ),
-        )
-    }
-
-    private fun ModelConfiguration.normalized(): ModelConfiguration {
-        val normalizedProviders = providers
-            .distinctBy(ModelProviderConfig::id)
-            .map { provider -> provider.normalized() }
-        require(normalizedProviders.isNotEmpty()) { "At least one model provider is required." }
-        val normalizedActiveProviderId = activeProviderId.takeIf { activeId ->
-            normalizedProviders.any { provider -> provider.id == activeId }
-        } ?: normalizedProviders.first().id
-        return copy(
-            activeProviderId = normalizedActiveProviderId,
-            providers = normalizedProviders,
-        )
-    }
-
-    private fun ModelConfiguration.withBuiltInDefaultProvider(): ModelConfiguration {
-        val builtInDefault = MockSettingsData.modelConfiguration.providers
-            .firstOrNull { provider -> provider.kind == ModelProviderKind.DEFAULT }
-            ?: return this
-        val existingDefault = providers.firstOrNull { provider ->
-            provider.kind == ModelProviderKind.DEFAULT
-        }
-        val restoredDefault = builtInDefault.copy(
-            apiKey = existingDefault?.apiKey.orEmpty(),
-            selectedModelId = existingDefault?.selectedModelId
-                ?.takeIf { modelId -> builtInDefault.models.any { model -> model.id == modelId } }
-                ?: builtInDefault.selectedModelId,
-        )
-        return copy(
-            providers = listOf(restoredDefault) + providers.filterNot { provider ->
-                provider.kind == ModelProviderKind.DEFAULT
-            },
-        )
-    }
-
-    private fun ModelProviderConfig.normalized(): ModelProviderConfig {
-        val normalizedModels = models
-            .filter { model -> model.id.isNotBlank() }
-            .distinctBy(ModelOption::id)
-        // 第三方 Provider 的模型列表允许为空，需通过「获取可用模型」拉取后再写入。
-        val normalizedSelectedModelId = selectedModelId.takeIf { selectedId ->
-            normalizedModels.any { model -> model.id == selectedId }
-        } ?: normalizedModels.firstOrNull()?.id.orEmpty()
-        return copy(
-            displayName = displayName.trim().ifBlank { kind.displayName },
-            baseUrl = baseUrl.trim().trimEnd('/'),
-            apiKey = apiKey.trim(),
-            models = normalizedModels,
-            selectedModelId = normalizedSelectedModelId,
-        )
-    }
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal object StockChatSettingsStore {
     private val mutableRepository = InMemorySettingsRepository()
 

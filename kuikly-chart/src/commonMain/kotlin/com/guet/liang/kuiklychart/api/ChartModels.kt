@@ -75,7 +75,7 @@ public data class ChartViewport(
     public val endIndex: Float,
 ) {
     public val visiblePointCount: Float
-        get() = (endIndex - startIndex + 1f).coerceAtLeast(1f)
+    get() = (endIndex - startIndex + 1f).coerceAtLeast(1f)
 }
 
 /** Built-in colors used when a series or slice does not declare a color. */

@@ -1,59 +1,26 @@
 package com.guet.liang.stockchat.ui
 
 import com.guet.liang.stockchat.model.StockQuote
-import com.tencent.kuikly.core.base.Border
-import com.tencent.kuikly.core.base.BorderStyle
 import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.views.Canvas
 import com.tencent.kuikly.core.views.Text
 import com.tencent.kuikly.core.views.View
 
-internal fun ViewContainer<*, *>.MarketQuoteCard(
-    quote: StockQuote,
-    scale: Float = 1f,
-    onClick: () -> Unit,
-) {
+internal fun ViewContainer<*, *>.MarketQuoteCard(quote: StockQuote, scale: Float = 1f, onClick: () -> Unit) {
     View {
         attr {
-            padding(
-                top = 15f * scale,
-                left = 15f * scale,
-                bottom = 14f * scale,
-                right = 15f * scale,
-            )
+            padding(top = 15f * scale, left = 15f * scale, bottom = 14f * scale, right = 15f * scale)
             borderRadius(18f * scale)
             backgroundColor(StockChatTheme.surface)
-            border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
+            themedBorder()
         }
-        event {
-            click { onClick() }
-        }
+        event { click { onClick() } }
         View {
             attr {
                 flexDirectionRow()
                 alignItemsCenter()
             }
-            View {
-                attr {
-                    flex(1f)
-                }
-                Text {
-                    attr {
-                        text(quote.name)
-                        fontSize(17f * scale)
-                        fontWeightBold()
-                        color(StockChatTheme.textPrimary)
-                    }
-                }
-                Text {
-                    attr {
-                        text("${quote.marketLabel} · ${quote.symbol}")
-                        fontSize(12f * scale)
-                        color(StockChatTheme.textSecondary)
-                        marginTop(3f * scale)
-                    }
-                }
-            }
+            QuoteIdentity(quote, scale)
             Text {
                 attr {
                     text("查看详情  ›")
@@ -69,28 +36,7 @@ internal fun ViewContainer<*, *>.MarketQuoteCard(
                 alignItemsFlexEnd()
                 marginTop(14f * scale)
             }
-            View {
-                attr {
-                    flex(1f)
-                }
-                Text {
-                    attr {
-                        text(quote.price)
-                        fontSize(25f * scale)
-                        fontWeightBold()
-                        color(StockChatTheme.textPrimary)
-                    }
-                }
-                Text {
-                    attr {
-                        text("${quote.change}  ${quote.changePercent}")
-                        fontSize(13f * scale)
-                        fontWeightMedium()
-                        color(if (quote.isPositive) StockChatTheme.positive else StockChatTheme.negative)
-                        marginTop(4f * scale)
-                    }
-                }
-            }
+            QuotePrice(quote, scale)
             TrendSparkline(quote, 102f * scale, 48f * scale)
         }
         View {
@@ -122,11 +68,7 @@ internal fun ViewContainer<*, *>.MarketQuoteCard(
 }
 
 internal fun ViewContainer<*, *>.TrendSparkline(quote: StockQuote, width: Float, height: Float) {
-    Canvas({
-        attr {
-            size(width, height)
-        }
-    }) { context, canvasWidth, canvasHeight ->
+    Canvas({ attr { size(width, height) } }) { context, canvasWidth, canvasHeight ->
         val points = quote.trendPoints
         if (points.size > 1) {
             val min = points.minOrNull() ?: 0f
@@ -147,6 +89,51 @@ internal fun ViewContainer<*, *>.TrendSparkline(quote: StockQuote, width: Float,
             context.lineCapRound()
             context.strokeStyle(if (quote.isPositive) StockChatTheme.positive else StockChatTheme.negative)
             context.stroke()
+        }
+    }
+}
+
+private fun ViewContainer<*, *>.QuoteIdentity(quote: StockQuote, scale: Float) {
+    View {
+        attr { flex(1f) }
+        Text {
+            attr {
+                text(quote.name)
+                fontSize(17f * scale)
+                fontWeightBold()
+                color(StockChatTheme.textPrimary)
+            }
+        }
+        Text {
+            attr {
+                text("${quote.marketLabel} · ${quote.symbol}")
+                fontSize(12f * scale)
+                color(StockChatTheme.textSecondary)
+                marginTop(3f * scale)
+            }
+        }
+    }
+}
+
+private fun ViewContainer<*, *>.QuotePrice(quote: StockQuote, scale: Float) {
+    View {
+        attr { flex(1f) }
+        Text {
+            attr {
+                text(quote.price)
+                fontSize(25f * scale)
+                fontWeightBold()
+                color(StockChatTheme.textPrimary)
+            }
+        }
+        Text {
+            attr {
+                text("${quote.change}  ${quote.changePercent}")
+                fontSize(13f * scale)
+                fontWeightMedium()
+                color(if (quote.isPositive) StockChatTheme.positive else StockChatTheme.negative)
+                marginTop(4f * scale)
+            }
         }
     }
 }

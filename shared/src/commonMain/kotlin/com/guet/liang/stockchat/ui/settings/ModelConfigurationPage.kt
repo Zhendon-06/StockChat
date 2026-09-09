@@ -2,21 +2,26 @@ package com.guet.liang.stockchat.ui.settings
 
 import com.guet.liang.stockchat.base.BasePager
 import com.guet.liang.stockchat.base.bridgeModule
-import com.guet.liang.stockchat.data.ModelCatalogService
-import com.guet.liang.stockchat.data.StockChatSettingsStore
+import com.guet.liang.stockchat.base.setTimeout
+import com.guet.liang.stockchat.controller.ModelConfigurationController
+import com.guet.liang.stockchat.controller.SettingsController
+import com.guet.liang.stockchat.model.ModelConfiguration
 import com.guet.liang.stockchat.model.ModelOption
 import com.guet.liang.stockchat.model.ModelProviderKind
 import com.guet.liang.stockchat.model.ThemeMode
+import com.guet.liang.stockchat.ui.settingsController
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.base.ViewBuilder
-import com.tencent.kuikly.core.module.NetworkModule
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.reactive.handler.observable
 import com.tencent.kuikly.core.views.Scroller
 
 @Page(MODEL_CONFIGURATION_PAGE_NAME, supportInLocal = true)
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal class ModelConfigurationPage : BasePager() {
-    internal var configuration by observable(StockChatSettingsStore.repository.loadSnapshot().modelConfiguration)
+    internal lateinit var controller: SettingsController
+    internal lateinit var modelController: ModelConfigurationController
+    internal var configuration by observable(ModelConfiguration("", emptyList()))
     private var themeMode by observable(ThemeMode.SYSTEM)
     internal var selectedProviderId by observable("")
     internal var providerName by observable("")
@@ -29,37 +34,42 @@ internal class ModelConfigurationPage : BasePager() {
     internal var modelListLoading by observable(false)
     internal var modelListError by observable("")
     internal var unsavedDialogOpen by observable(false)
-    internal var modelRequestToken = 0
-    internal var lastAttemptedModelRequest = ""
-    internal lateinit var modelCatalogService: ModelCatalogService
-    // lateinit 就位探针：扩展函数无法直接使用 ::prop.isInitialized，统一从这里读取
-    internal val modelCatalogServiceReady: Boolean
-        get() = ::modelCatalogService.isInitialized
 
     override fun created() {
         super.created()
-        modelCatalogService = ModelCatalogService(
-            acquireModule<NetworkModule>(NetworkModule.MODULE_NAME),
-        )
-        val snapshot = StockChatSettingsStore.repository.loadSnapshot()
+        controller = settingsController()
+        modelController =
+            ModelConfigurationController(
+                settings = controller,
+                scheduleTimeout = { delay, callback -> setTimeout(delay, callback) },
+                onCatalogChanged = { state ->
+                    availableModels = state.models
+                    modelListVisible = state.visible
+                    modelListLoading = state.loading
+                    modelListError = state.error
+                },
+                onProviderSaved = { provider ->
+                    reloadConfiguration(provider.id)
+                    bridgeModule.toast("已获取 ${provider.models.size} 个可用模型")
+                },
+            )
+        val snapshot = controller.snapshot()
         configuration = snapshot.modelConfiguration
         themeMode = snapshot.appearance.themeMode
         selectProvider(configuration.activeProviderId)
-        bridgeModule.observeBackRequests {
-            closePage()
-        }
+        bridgeModule.observeBackRequests { closePage() }
     }
 
     override fun pageDidAppear() {
         super.pageDidAppear()
-        val snapshot = StockChatSettingsStore.repository.loadSnapshot()
+        val snapshot = controller.snapshot()
         configuration = snapshot.modelConfiguration
         themeMode = snapshot.appearance.themeMode
         selectProvider(configuration.activeProviderId)
     }
 
     override fun pageWillDestroy() {
-        modelRequestToken += 1
+        modelController.resetCatalog()
         bridgeModule.stopObservingBackRequests()
         super.pageWillDestroy()
     }
@@ -67,9 +77,7 @@ internal class ModelConfigurationPage : BasePager() {
     override fun body(): ViewBuilder {
         val ctx = this
         return {
-            attr {
-                backgroundColor(ctx.palette().background)
-            }
+            attr { backgroundColor(ctx.palette().background) }
             SettingsPageHeader(
                 statusBarHeight = ctx.pagerData.statusBarHeight,
                 title = "模型配置",
@@ -113,13 +121,14 @@ internal class ModelConfigurationPage : BasePager() {
 
     internal fun palette(): SettingsPalette = settingsPalette(themeMode)
 
-    internal fun providerAsset(kind: ModelProviderKind): String = when (kind) {
-        ModelProviderKind.DEFAULT -> "stockchat_app_icon.png"
-        ModelProviderKind.ALIYUN -> "tongyi-qianwen.png"
-        ModelProviderKind.DEEPSEEK -> "deepseek.png"
-        ModelProviderKind.GLM -> "glm.png"
-        ModelProviderKind.KIMI -> "kimi.png"
-        ModelProviderKind.MIMO -> "mimo.png"
-        ModelProviderKind.CUSTOM -> "stockchat_app_icon.png"
-    }
+    internal fun providerAsset(kind: ModelProviderKind): String =
+        when (kind) {
+            ModelProviderKind.DEFAULT -> "stockchat_app_icon.png"
+            ModelProviderKind.ALIYUN -> "tongyi-qianwen.png"
+            ModelProviderKind.DEEPSEEK -> "deepseek.png"
+            ModelProviderKind.GLM -> "glm.png"
+            ModelProviderKind.KIMI -> "kimi.png"
+            ModelProviderKind.MIMO -> "mimo.png"
+            ModelProviderKind.CUSTOM -> "stockchat_app_icon.png"
+        }
 }

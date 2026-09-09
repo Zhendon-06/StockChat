@@ -1,4 +1,7 @@
+@file:Suppress("CyclomaticComplexMethod", "LongMethod", "ReturnCount", "MagicNumber")
 package com.guet.liang.stockchat.data
+
+import com.guet.liang.stockchat.base.toUserMessage
 
 import com.guet.liang.stockchat.model.StockPrediction
 import com.guet.liang.stockchat.model.StockPredictionConfig
@@ -149,14 +152,14 @@ internal class StockPredictionService(
                     finish(StockPredictionResult.Success(prediction))
                 }
             }
-        } catch (throwable: Throwable) {
+        } catch (exception: RuntimeException) {
             predictionError(
                 "request_exception provider=${config.providerDisplayName} " +
-                    "type=${throwable::class.simpleName ?: "unknown"}"
+                    "type=${exception::class.simpleName ?: "unknown"}"
             )
             finish(
                 StockPredictionResult.Failure(
-                    "${config.providerDisplayName} 预测请求失败，请稍后重试。",
+                    exception.toUserMessage("${config.providerDisplayName} 预测请求失败，请稍后重试。"),
                 )
             )
         }

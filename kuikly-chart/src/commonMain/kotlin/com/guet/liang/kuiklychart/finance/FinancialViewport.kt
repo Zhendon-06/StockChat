@@ -50,8 +50,6 @@ public object FinancialViewportMath {
     /** Flings slower than this, measured at the plot in pixels per millisecond, stop. */
     public const val FLING_STOP_SPEED: Float = 0.01f
 
-    private const val RUBBER_BAND_RESISTANCE = 0.55f
-
     public fun clampCount(count: Float, size: Int): Float {
         val upper = MAX_COUNT.coerceAtMost(size.coerceAtLeast(1).toFloat())
         val lower = MIN_COUNT.coerceAtMost(upper)
@@ -70,7 +68,7 @@ public object FinancialViewportMath {
 
     /** Whether the viewport currently shows over-scroll space beyond the data. */
     public fun isOverscrolled(viewport: FinancialViewport, size: Int): Boolean =
-        viewport.start < 0f || viewport.start > maxStart(viewport.count, size)
+    viewport.start < 0f || viewport.start > maxStart(viewport.count, size)
 
     /** Latest data view used by [FinancialChartSpec.visibleCount] and reset. */
     public fun latest(visibleCount: Int, size: Int): FinancialViewport {
@@ -145,7 +143,8 @@ public object FinancialViewportMath {
 
     /**
      * Velocity from touch samples, ignoring samples older than [windowMillis] before the last one.
-     * Result is in pixels per millisecond; `0` when there is no usable history.
+     * Result is in pixels per millisecond
+    `0` when there is no usable history.
      */
     public fun velocity(samples: List<TouchSample>, windowMillis: Float = 100f): Float {
         if (samples.size < 2) return 0f
@@ -156,21 +155,23 @@ public object FinancialViewportMath {
         return (latest.x - oldest.x) / elapsed
     }
 
-    /** Ease-out interpolation between two viewports for settle and programmatic zoom animations. */
-    public fun interpolate(from: FinancialViewport, to: FinancialViewport, progress: Float): FinancialViewport {
-        val eased = 1f - (1f - progress.coerceIn(0f, 1f)).let { it * it * it }
-        return FinancialViewport(
-            from.start + (to.start - from.start) * eased,
-            from.count + (to.count - from.count) * eased,
-        )
-    }
-
-    private fun rubberBand(overshoot: Float, limit: Float): Float {
-        if (limit <= 0f || overshoot <= 0f) return 0f
-        return limit * (1f - exp(-RUBBER_BAND_RESISTANCE * overshoot / limit))
-    }
-
     public data class FlingStep(val viewport: FinancialViewport, val velocity: Float, val finished: Boolean)
 
     public data class TouchSample(val x: Float, val timeMillis: Float)
+}
+
+private const val RUBBER_BAND_RESISTANCE = 0.55f
+
+private fun rubberBand(overshoot: Float, limit: Float): Float {
+    if (limit <= 0f || overshoot <= 0f) return 0f
+    return limit * (1f - exp(-RUBBER_BAND_RESISTANCE * overshoot / limit))
+}
+
+/** Ease-out interpolation between two viewports for settle and programmatic zoom animations. */
+public fun FinancialViewportMath.interpolate(from: FinancialViewport, to: FinancialViewport, progress: Float): FinancialViewport {
+    val eased = 1f - (1f - progress.coerceIn(0f, 1f)).let { it * it * it }
+    return FinancialViewport(
+        from.start + (to.start - from.start) * eased,
+        from.count + (to.count - from.count) * eased,
+    )
 }

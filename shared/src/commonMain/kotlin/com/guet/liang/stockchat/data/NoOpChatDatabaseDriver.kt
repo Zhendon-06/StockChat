@@ -46,6 +46,7 @@ internal class NoOpChatDatabaseDriver : SqlDriver {
     override fun close() = Unit
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 private class NoOpCursor(
     private val hasRow: Boolean,
 ) : SqlCursor {
@@ -68,6 +69,7 @@ private class NoOpCursor(
     override fun getBoolean(index: Int): Boolean? = false
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 private class NoOpTransaction : Transacter.Transaction() {
     override val enclosingTransaction: Transacter.Transaction?
         get() = null

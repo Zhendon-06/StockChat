@@ -1,5 +1,6 @@
 package com.guet.liang.stockchat.model
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class ConversationMindMapBranch(
     val sequence: Int,
     val topic: String,
@@ -8,6 +9,7 @@ internal data class ConversationMindMapBranch(
     val status: ConversationTableRowStatus,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class ConversationMindMapArtifactSnapshot(
     val title: String,
     val sourceMessageCount: Int,
@@ -15,6 +17,7 @@ internal data class ConversationMindMapArtifactSnapshot(
     val branches: List<ConversationMindMapBranch>,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class ConversationMindMapArtifact(
     val id: Long,
     val sessionId: String,
@@ -26,10 +29,17 @@ internal data class ConversationMindMapArtifact(
     val branches: List<ConversationMindMapBranch>,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class ConversationMindMapArtifactSummary(
     val id: Long,
     val sessionId: String,
     val title: String,
     val branchCount: Int,
     val updatedAt: Long,
+)
+
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
+internal data class MermaidMindMapNode(
+    val label: String,
+    val children: List<MermaidMindMapNode>,
 )

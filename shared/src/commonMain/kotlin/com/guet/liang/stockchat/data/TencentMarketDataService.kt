@@ -1,69 +1,16 @@
 package com.guet.liang.stockchat.data
 
+import com.guet.liang.stockchat.model.HistoricalPointsResult
+import com.guet.liang.stockchat.model.MarketDataResult
+import com.guet.liang.stockchat.model.MarketOrderLevel
 import com.guet.liang.stockchat.model.StockQuote
+import com.guet.liang.stockchat.model.TencentHistoricalCandle
+import com.guet.liang.stockchat.model.TencentHistoricalPoint
+import com.guet.liang.stockchat.model.TencentMarketSnapshot
 import com.tencent.kuikly.core.module.NetworkModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 
-private const val MIN_HISTORICAL_POINT_COUNT = 1
-private const val MAX_HISTORICAL_POINT_COUNT = 240
-private const val DEFAULT_HISTORICAL_POINT_COUNT = 120
-
-internal data class TencentMarketSnapshot(
-    val providerSymbol: String,
-    val quote: StockQuote,
-    val previousClose: String,
-    val open: String,
-    val high: String,
-    val low: String,
-    val volume: String,
-    val volumeUnit: String,
-    val amount: String,
-    val amountUnit: String,
-    val turnoverRate: String,
-    val priceEarningsRatio: String,
-    val amplitude: String,
-    val dailyCandles: List<TencentHistoricalCandle> = emptyList(),
-    val orderBook: List<MarketOrderLevel> = emptyList(),
-    val totalMarketValue: String = "",
-    val floatMarketValue: String = "",
-    val priceBookRatio: String = "",
-    val volumeRatio: String = "",
-
-)
-
-internal data class TencentHistoricalCandle(
-    val date: String,
-    val open: Float,
-    val close: Float,
-    val high: Float,
-    val low: Float,
-    val volume: Float,
-)
-
-internal sealed class MarketDataResult {
-    data class Success(
-        val snapshots: List<TencentMarketSnapshot>,
-        val notices: List<String> = emptyList(),
-    ) : MarketDataResult()
-    data object Empty : MarketDataResult()
-    data class Failure(val message: String) : MarketDataResult()
-}
-
-internal data class TencentHistoricalPoint(
-    val date: String,
-    val close: Float,
-)
-
-internal sealed class HistoricalPointsResult {
-    data class Success(
-        val providerSymbol: String,
-        val points: List<TencentHistoricalPoint>,
-    ) : HistoricalPointsResult()
-
-    data object Empty : HistoricalPointsResult()
-    data class Failure(val message: String) : HistoricalPointsResult()
-}
-
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal class TencentMarketDataService(
     private val networkModule: NetworkModule,
 ) {
@@ -105,11 +52,9 @@ internal class TencentMarketDataService(
             return
         }
         val requestedCount = count.coerceIn(MIN_HISTORICAL_POINT_COUNT, MAX_HISTORICAL_POINT_COUNT)
-        val params = JSONObject().apply {
-            put("param", "$providerSymbol,day,,,$requestedCount,qfq")
-        }
-        networkModule.requestGet(KLINE_URL, params) { data, success, errorMessage, response ->
-            if (!isSuccessful(success, response.statusCode)) {
+        val params = historicalRequestParams(providerSymbol, requestedCount)
+        networkModule.requestGet(TENCENT_KLINE_URL, params) { data, success, errorMessage, response ->
+            if (!isSuccessfulMarketResponse(success, response.statusCode)) {
                 callback(
                     HistoricalPointsResult.Failure(
                         errorMessage.ifBlank { "腾讯历史行情服务暂时不可用，请稍后重试。" }
@@ -182,8 +127,8 @@ internal class TencentMarketDataService(
         val params = JSONObject().apply {
             put("param", "${target.providerSymbol},day,,,20,qfq")
         }
-        networkModule.requestGet(KLINE_URL, params) { data, success, errorMessage, response ->
-            if (!isSuccessful(success, response.statusCode)) {
+        networkModule.requestGet(TENCENT_KLINE_URL, params) { data, success, errorMessage, response ->
+            if (!isSuccessfulMarketResponse(success, response.statusCode)) {
                 callback(
                     SnapshotResult.Failure(
                         errorMessage.ifBlank { "腾讯行情服务暂时不可用，请稍后重试。" }
@@ -211,8 +156,8 @@ internal class TencentMarketDataService(
         val params = JSONObject().apply {
             put("code", snapshot.providerSymbol)
         }
-        networkModule.requestGet(MINUTE_URL, params) { data, success, _, response ->
-            if (!isSuccessful(success, response.statusCode)) {
+        networkModule.requestGet(TENCENT_MINUTE_URL, params) { data, success, _, response ->
+            if (!isSuccessfulMarketResponse(success, response.statusCode)) {
                 callback(SnapshotResult.Success(snapshot))
                 return@requestGet
             }
@@ -234,417 +179,10 @@ internal class TencentMarketDataService(
         }
     }
 
-    private fun isSuccessful(success: Boolean, statusCode: Int?): Boolean {
-        return success && (statusCode == null || statusCode in 200..299)
-    }
-
     private sealed class SnapshotResult {
         data class Success(val snapshot: TencentMarketSnapshot) : SnapshotResult()
         data object Empty : SnapshotResult()
         data class Failure(val message: String) : SnapshotResult()
     }
 
-    companion object {
-        private const val KLINE_URL =
-            "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get"
-        private const val MINUTE_URL =
-            "https://web.ifzq.gtimg.cn/appstock/app/minute/query"
-    }
-}
-
-internal object TencentMarketResponseParser {
-    fun parseSnapshot(
-        response: JSONObject,
-        providerSymbol: String,
-    ): TencentMarketSnapshot? {
-        if (response.optInt("code", -1) != 0) {
-            return null
-        }
-        val securityData = response.optJSONObject("data")
-            ?.optJSONObject(providerSymbol)
-            ?: return null
-        val quoteData = securityData.optJSONObject("qt")
-            ?.optJSONArray(providerSymbol)
-            ?: return null
-        val name = quoteData.optString(1).orEmpty().trim()
-        val code = quoteData.optString(2).orEmpty().trim()
-        val price = quoteData.optString(3).orEmpty().trim()
-        if (name.isEmpty() || code.isEmpty() || price.isEmpty()) {
-            return null
-        }
-
-        val previousClose = quoteData.optString(4).orEmpty().trim()
-        val open = quoteData.optString(5).orEmpty().trim()
-        val volume = quoteData.optString(6).orEmpty().trim()
-        val updatedAt = quoteData.optString(30).orEmpty().trim()
-        val rawChange = quoteData.optString(31).orEmpty().trim()
-        val rawChangePercent = quoteData.optString(32).orEmpty().trim()
-        val high = quoteData.optString(33).orEmpty().trim()
-        val low = quoteData.optString(34).orEmpty().trim()
-        val amount = quoteData.optString(37).orEmpty().trim()
-        val turnoverRate = quoteData.optString(38).orEmpty().trim()
-        val priceEarningsRatio = quoteData.optString(39).orEmpty().trim()
-        val amplitude = quoteData.optString(43).orEmpty().trim()
-        val isHongKong = providerSymbol.startsWith("hk")
-        val isIndex = isMarketIndex(providerSymbol)
-        val volumeUnit = if (isHongKong) "股" else "手"
-        val amountUnit = if (isHongKong) "港元" else "万元"
-        val trendPoints = parseKlinePoints(securityData)
-        val dailyCandles = parseKlineCandles(securityData)
-        val numericChange = rawChange.toDoubleOrNull() ?: 0.0
-        val change = signedValue(rawChange, numericChange)
-        val changePercent = signedValue(rawChangePercent, numericChange) + "%"
-        val movement = when {
-            numericChange > 0.0 -> "上涨"
-            numericChange < 0.0 -> "下跌"
-            else -> "持平"
-        }
-        val quote = StockQuote(
-            name = name,
-            symbol = code,
-            marketLabel = marketLabel(providerSymbol, isIndex),
-            price = price,
-            change = change,
-            changePercent = changePercent,
-            updatedAt = "腾讯行情 · ${formatTimestamp(updatedAt)}",
-            isPositive = numericChange >= 0.0,
-            trendPoints = trendPoints.ifEmpty {
-                listOfNotNull(price.toFloatOrNull())
-            },
-            summary = buildSummary(
-                previousClose,
-                open,
-                high,
-                low,
-                volume,
-                volumeUnit,
-                amount,
-                amountUnit,
-            ),
-            aiInsight = "最新行情快照显示该标的当前${movement}${changePercent}。请结合基本面、估值和风险承受能力综合判断。",
-        )
-        return TencentMarketSnapshot(
-            providerSymbol = providerSymbol,
-            quote = quote,
-            previousClose = previousClose,
-            open = open,
-            high = high,
-            low = low,
-            volume = volume,
-            volumeUnit = volumeUnit,
-            amount = amount,
-            amountUnit = amountUnit,
-            turnoverRate = turnoverRate,
-            priceEarningsRatio = priceEarningsRatio,
-            amplitude = amplitude,
-            dailyCandles = dailyCandles,
-            orderBook = if (!isIndex && (providerSymbol.startsWith("sh") || providerSymbol.startsWith("sz"))) buildList {
-                for (level in 1..5) {
-                    for ((side, offset) in listOf("买" to 9, "卖" to 19)) {
-                        val priceValue = quoteData.optString(offset + (level - 1) * 2).orEmpty().toFloatOrNull()
-                        val size = quoteData.optString(offset + (level - 1) * 2 + 1).orEmpty().toFloatOrNull()
-                        if (priceValue != null && priceValue.isFinite() && priceValue > 0 && size != null && size.isFinite() && size >= 0) {
-                            add(MarketOrderLevel(side, level, priceValue, size))
-                        }
-                    }
-                }
-            } else emptyList(),
-            totalMarketValue = quoteData.optString(45).orEmpty(),
-            floatMarketValue = quoteData.optString(44).orEmpty(),
-            priceBookRatio = quoteData.optString(46).orEmpty(),
-            volumeRatio = quoteData.optString(49).orEmpty(),
-        )
-    }
-
-    fun parseMinutePoints(
-        response: JSONObject,
-        providerSymbol: String,
-    ): List<Float> {
-        if (response.optInt("code", -1) != 0) {
-            return emptyList()
-        }
-        val minuteData = response.optJSONObject("data")
-            ?.optJSONObject(providerSymbol)
-            ?.optJSONObject("data")
-            ?.optJSONArray("data")
-            ?: return emptyList()
-        val points = buildList {
-            for (index in 0 until minuteData.length()) {
-                minuteData.optString(index).orEmpty()
-                    .trim()
-                    .split(Regex("\\s+"))
-                    .getOrNull(1)
-                    ?.toFloatOrNull()
-                    ?.let(::add)
-            }
-        }
-        return samplePoints(points, MAX_CHART_POINTS)
-    }
-
-    fun parseHistoricalPoints(
-        response: JSONObject,
-        providerSymbol: String,
-        maxCount: Int = DEFAULT_HISTORICAL_POINT_COUNT,
-    ): List<TencentHistoricalPoint> {
-        if (response.optInt("code", -1) != 0 || maxCount <= 0) {
-            return emptyList()
-        }
-        val securityData = response.optJSONObject("data")
-            ?.optJSONObject(providerSymbol)
-            ?: return emptyList()
-        val rows = securityData.optJSONArray("qfqday")
-            ?.takeIf { it.length() > 0 }
-            ?: securityData.optJSONArray("day")?.takeIf { it.length() > 0 }
-            ?: return emptyList()
-        val points = buildList {
-            for (index in 0 until rows.length()) {
-                val row = rows.optJSONArray(index) ?: continue
-                val date = row.optString(0).orEmpty().trim()
-                val close = row.optString(2).orEmpty().trim().toFloatOrNull()
-                if (date.isNotEmpty() && close != null && close.isFinite() && close > 0f) {
-                    add(TencentHistoricalPoint(date = date, close = close))
-                }
-            }
-        }
-        val orderedPoints = points
-            .map { point ->
-                point.copy(date = point.date.replace('/', '-'))
-            }
-            .distinctBy(TencentHistoricalPoint::date)
-            .sortedBy(TencentHistoricalPoint::date)
-        return sampleHistoricalPoints(orderedPoints, maxCount)
-    }
-
-    fun parseSearch(rawResponse: String): List<TencentSearchMatch> {
-        val payload = rawResponse.substringAfter("=\"", "")
-            .substringBeforeLast("\"", "")
-        if (payload.isEmpty()) {
-            return emptyList()
-        }
-        return payload.split('^').mapNotNull { item ->
-            val fields = item.split('~')
-            val market = fields.getOrNull(0)?.lowercase().orEmpty()
-            val code = fields.getOrNull(1).orEmpty()
-            val name = decodeUnicodeEscapes(fields.getOrNull(2).orEmpty())
-            val validCode = when (market) {
-                "hk" -> code.length == 5
-                "sh", "sz", "bj" -> code.length == 6
-                else -> false
-            }
-            if (!validCode || name.isBlank()) {
-                null
-            } else {
-                TencentSearchMatch(
-                    providerSymbol = market + code,
-                    code = code,
-                    name = name,
-                    type = fields.getOrNull(4).orEmpty(),
-                )
-            }
-        }
-    }
-
-    private fun parseKlinePoints(securityData: JSONObject): List<Float> {
-        val rows = securityData.optJSONArray("qfqday")
-            ?: securityData.optJSONArray("day")
-            ?: return emptyList()
-        return buildList {
-            for (index in 0 until rows.length()) {
-                rows.optJSONArray(index)
-                    ?.optString(2)
-                    ?.toFloatOrNull()
-                    ?.let(::add)
-            }
-        }
-    }
-
-    private fun parseKlineCandles(securityData: JSONObject): List<TencentHistoricalCandle> {
-        val rows = securityData.optJSONArray("qfqday")
-            ?: securityData.optJSONArray("day")
-            ?: return emptyList()
-        return buildList {
-            for (index in 0 until rows.length()) {
-                val row = rows.optJSONArray(index) ?: continue
-                val date = row.optString(0).orEmpty().trim().replace('/', '-')
-                val open = row.optString(1).orEmpty().trim().toFloatOrNull()
-                val close = row.optString(2).orEmpty().trim().toFloatOrNull()
-                val high = row.optString(3).orEmpty().trim().toFloatOrNull()
-                val low = row.optString(4).orEmpty().trim().toFloatOrNull()
-                val volume = row.optString(5).orEmpty().trim().toFloatOrNull()
-                if (date.isNotEmpty() && open != null && close != null &&
-                    high != null && low != null && volume != null &&
-                    listOf(open, close, high, low, volume).all(Float::isFinite)
-                ) {
-                    add(
-                        TencentHistoricalCandle(
-                            date = date,
-                            open = open,
-                            close = close,
-                            high = high,
-                            low = low,
-                            volume = volume,
-                        )
-                    )
-                }
-            }
-        }
-    }
-
-    private fun signedValue(rawValue: String, numericChange: Double): String {
-        if (rawValue.isEmpty()) {
-            return if (numericChange >= 0.0) "+0.00" else "0.00"
-        }
-        return if (numericChange > 0.0 && !rawValue.startsWith("+")) {
-            "+$rawValue"
-        } else {
-            rawValue
-        }
-    }
-
-    private fun marketLabel(providerSymbol: String, isIndex: Boolean): String {
-        val marketName = when {
-            providerSymbol.startsWith("sh") -> "沪市"
-            providerSymbol.startsWith("sz") -> "深市"
-            providerSymbol.startsWith("bj") -> "北交所"
-            providerSymbol.startsWith("hk") -> "港股"
-            else -> "证券"
-        }
-        return if (isIndex) {
-            "${marketName}指数 · 腾讯行情"
-        } else {
-            "$marketName · 腾讯行情"
-        }
-    }
-
-    private fun buildSummary(
-        previousClose: String,
-        open: String,
-        high: String,
-        low: String,
-        volume: String,
-        volumeUnit: String,
-        amount: String,
-        amountUnit: String,
-    ): String {
-        return buildList {
-            previousClose.takeIf(String::isNotEmpty)?.let { add("昨收 $it") }
-            open.takeIf(String::isNotEmpty)?.let { add("今开 $it") }
-            high.takeIf(String::isNotEmpty)?.let { add("最高 $it") }
-            low.takeIf(String::isNotEmpty)?.let { add("最低 $it") }
-            volume.takeIf(String::isNotEmpty)?.let { add("成交量 $it $volumeUnit") }
-            amount.takeIf(String::isNotEmpty)?.let { add("成交额 $it $amountUnit") }
-        }.joinToString("，")
-    }
-
-    private fun formatTimestamp(timestamp: String): String {
-        if (
-            timestamp.length >= 19 && timestamp[4] in setOf('/', '-') &&
-            timestamp[7] in setOf('/', '-')
-        ) {
-            return timestamp.take(19).replace('/', '-')
-        }
-        if (timestamp.length < 14) {
-            return timestamp.ifBlank { "时间未知" }
-        }
-        return "${timestamp.substring(0, 4)}-${timestamp.substring(4, 6)}-" +
-            "${timestamp.substring(6, 8)} ${timestamp.substring(8, 10)}:" +
-            "${timestamp.substring(10, 12)}:${timestamp.substring(12, 14)}"
-    }
-
-    private fun decodeUnicodeEscapes(value: String): String {
-        val result = StringBuilder()
-        var index = 0
-        while (index < value.length) {
-            if (index + 5 < value.length && value[index] == '\\' && value[index + 1] == 'u') {
-                val codePoint = value.substring(index + 2, index + 6).toIntOrNull(16)
-                if (codePoint != null) {
-                    result.append(codePoint.toChar())
-                    index += 6
-                    continue
-                }
-            }
-            result.append(value[index])
-            index += 1
-        }
-        return result.toString()
-    }
-
-    private fun samplePoints(points: List<Float>, maxCount: Int): List<Float> {
-        if (maxCount <= 0 || points.isEmpty()) {
-            return emptyList()
-        }
-        if (maxCount == 1) {
-            return listOf(points.last())
-        }
-        if (points.size <= maxCount) {
-            return points
-        }
-        return List(maxCount) { index ->
-            val sourceIndex = index * (points.lastIndex).toFloat() / (maxCount - 1).toFloat()
-            points[sourceIndex.toInt().coerceIn(points.indices)]
-        }
-    }
-
-    private fun sampleHistoricalPoints(
-        points: List<TencentHistoricalPoint>,
-        maxCount: Int,
-    ): List<TencentHistoricalPoint> {
-        if (maxCount <= 0 || points.isEmpty()) {
-            return emptyList()
-        }
-        if (maxCount == 1) {
-            return listOf(points.last())
-        }
-        if (points.size <= maxCount) {
-            return points
-        }
-        return List(maxCount) { index ->
-            val sourceIndex = index * (points.lastIndex).toFloat() / (maxCount - 1).toFloat()
-            points[sourceIndex.toInt().coerceIn(points.indices)]
-        }
-    }
-
-    private const val MAX_CHART_POINTS = 80
-}
-
-internal data class TencentSearchMatch(
-    val providerSymbol: String,
-    val code: String,
-    val name: String,
-    val type: String,
-)
-
-internal fun normalizeProviderSymbol(symbol: String): String? {
-    val normalized = symbol.trim().lowercase().replace(" ", "")
-    Regex("^(sh|sz|bj)\\d{6}$").matchEntire(normalized)?.let {
-        return normalized
-    }
-    Regex("^hk(\\d{1,5})$").matchEntire(normalized)?.let { match ->
-        return "hk${match.groupValues[1].padStart(5, '0')}"
-    }
-    Regex("^(\\d{6})[.]?(sh|sz|bj)$").matchEntire(normalized)?.let { match ->
-        return match.groupValues[2] + match.groupValues[1]
-    }
-    Regex("^(\\d{1,5})[.]?hk$").matchEntire(normalized)?.let { match ->
-        return "hk${match.groupValues[1].padStart(5, '0')}"
-    }
-    if (!Regex("^\\d{6}$").matches(normalized)) {
-        return null
-    }
-    return when (normalized.first()) {
-        '4', '8' -> "bj$normalized"
-        '5', '6', '9' -> "sh$normalized"
-        else -> "sz$normalized"
-    }
-}
-
-internal fun providerSymbolForQuote(quote: StockQuote): String? {
-    val market = when {
-        quote.marketLabel.startsWith("沪市") -> "sh"
-        quote.marketLabel.startsWith("深市") -> "sz"
-        quote.marketLabel.startsWith("北交所") -> "bj"
-        quote.marketLabel.startsWith("港股") -> "hk"
-        else -> null
-    }
-    return market?.let { "$it${quote.symbol}" } ?: normalizeProviderSymbol(quote.symbol)
 }

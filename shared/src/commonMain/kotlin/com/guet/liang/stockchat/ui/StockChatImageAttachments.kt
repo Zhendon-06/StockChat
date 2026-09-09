@@ -46,9 +46,7 @@ internal fun ViewContainer<*, *>.ComposerImageAttachments(
                         resizeCover()
                         src(imageUri, false)
                     }
-                    event {
-                        click { onPreview(imageUri) }
-                    }
+                    event { click { onPreview(imageUri) } }
                 }
                 View {
                     attr {
@@ -59,9 +57,7 @@ internal fun ViewContainer<*, *>.ComposerImageAttachments(
                         zIndex(10)
                         capture(CaptureRule.click())
                     }
-                    event {
-                        click { onRemove(imageUri) }
-                    }
+                    event { click { onRemove(imageUri) } }
                     View {
                         attr {
                             size(22f * scale, 22f * scale)
@@ -85,11 +81,7 @@ internal fun ViewContainer<*, *>.ComposerImageAttachments(
     }
 }
 
-internal fun ViewContainer<*, *>.MessageImageGallery(
-    images: List<String>,
-    scale: Float,
-    onPreview: (String) -> Unit,
-) {
+internal fun ViewContainer<*, *>.MessageImageGallery(images: List<String>, scale: Float, onPreview: (String) -> Unit) {
     if (images.isEmpty()) {
         return
     }
@@ -119,9 +111,7 @@ internal fun ViewContainer<*, *>.MessageImageGallery(
                         marginRight(itemSpacing)
                     }
                 }
-                event {
-                    click { onPreview(imageUri) }
-                }
+                event { click { onPreview(imageUri) } }
             }
         }
     }

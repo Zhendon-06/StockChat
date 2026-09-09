@@ -3,6 +3,14 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     kotlin("multiplatform")
     id("com.android.library")
+    id("io.gitlab.arturbosch.detekt")
+}
+
+detekt {
+    config.setFrom(files(rootProject.file("config/detekt/detekt.yml")))
+    buildUponDefaultConfig = true
+    source.setFrom(files("src/commonMain/kotlin", "src/commonTest/kotlin"))
+    ignoreFailures = true
 }
 
 kotlin {

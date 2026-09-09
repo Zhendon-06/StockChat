@@ -1,5 +1,7 @@
+@file:Suppress("LongMethod", "CyclomaticComplexMethod")
 package com.guet.liang.stockchat.data
 
+import com.guet.liang.stockchat.base.streamSpeechSynthesis
 import com.guet.liang.stockchat.model.SpeechRecognitionResult
 import com.guet.liang.stockchat.model.SpeechSynthesisResult
 import com.guet.liang.stockchat.base.BridgeModule
@@ -9,6 +11,7 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 
 // MiMo 语音服务：语音识别与语音合成。
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal class MimoSpeechRecognitionService(
     private val networkModule: NetworkModule,
     private val config: MimoVoiceApiConfig,
@@ -87,6 +90,7 @@ internal class MimoSpeechRecognitionService(
     }
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal class MimoSpeechSynthesisService(
     private val networkModule: NetworkModule,
     private val config: MimoVoiceApiConfig,

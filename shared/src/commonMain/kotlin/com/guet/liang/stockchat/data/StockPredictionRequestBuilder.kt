@@ -1,3 +1,4 @@
+@file:Suppress("MagicNumber")
 package com.guet.liang.stockchat.data
 
 import com.guet.liang.stockchat.model.StockPredictionInput

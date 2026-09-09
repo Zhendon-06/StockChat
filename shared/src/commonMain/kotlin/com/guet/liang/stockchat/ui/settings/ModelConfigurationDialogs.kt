@@ -18,9 +18,7 @@ internal fun ModelConfigurationPage.UnsavedChangesDialog(container: ViewContaine
                     backgroundColor(Color(0x88000000))
                     zIndex(30)
                 }
-                event {
-                    click { }
-                }
+                event { click {} }
             }
             View {
                 attr {
@@ -37,87 +35,25 @@ internal fun ModelConfigurationPage.UnsavedChangesDialog(container: ViewContaine
                         backgroundColor(ctx.palette().surface)
                         padding(all = 20f.settingsDp())
                     }
-                Text {
-                    attr {
-                        text("保存模型配置？")
-                        fontSize(19f.settingsDp())
-                        fontWeightBold()
-                        color(ctx.palette().textPrimary)
-                    }
-                }
-                Text {
-                    attr {
-                        text("当前页面有尚未保存的修改，退出后这些修改将丢失。")
-                        fontSize(13f.settingsDp())
-                        lineHeight(20f.settingsDp())
-                        color(ctx.palette().textSecondary)
-                        marginTop(10f.settingsDp())
-                    }
-                }
-                View {
-                    attr {
-                        flexDirectionRow()
-                        justifyContentFlexEnd()
-                        alignItemsCenter()
-                        marginTop(20f.settingsDp())
-                    }
-                    View {
+                    Text {
                         attr {
-                            height(38f.settingsDp())
-                            padding(left = 12f.settingsDp(), right = 12f.settingsDp())
-                            allCenter()
-                        }
-                        event {
-                            click { ctx.unsavedDialogOpen = false }
-                        }
-                        Text {
-                            attr {
-                                text("继续编辑")
-                                fontSize(13f.settingsDp())
-                                color(ctx.palette().textSecondary)
-                            }
+                            text("保存模型配置？")
+                            fontSize(19f.settingsDp())
+                            fontWeightBold()
+                            color(ctx.palette().textPrimary)
                         }
                     }
-                    View {
+                    Text {
                         attr {
-                            height(38f.settingsDp())
-                            padding(left = 12f.settingsDp(), right = 12f.settingsDp())
-                            allCenter()
-                        }
-                        event {
-                            click { ctx.discardAndClose() }
-                        }
-                        Text {
-                            attr {
-                                text("放弃修改")
-                                fontSize(13f.settingsDp())
-                                color(ctx.palette().warning)
-                            }
+                            text("当前页面有尚未保存的修改，退出后这些修改将丢失。")
+                            fontSize(13f.settingsDp())
+                            lineHeight(20f.settingsDp())
+                            color(ctx.palette().textSecondary)
+                            marginTop(10f.settingsDp())
                         }
                     }
-                    View {
-                        attr {
-                            height(38f.settingsDp())
-                            padding(left = 16f.settingsDp(), right = 16f.settingsDp())
-                            borderRadius(19f.settingsDp())
-                            backgroundColor(ctx.palette().accent)
-                            allCenter()
-                            marginLeft(4f.settingsDp())
-                        }
-                        event {
-                            click { ctx.saveAndClose() }
-                        }
-                        Text {
-                            attr {
-                                text("保存并退出")
-                                fontSize(13f.settingsDp())
-                                fontWeightBold()
-                                color(Color.WHITE)
-                            }
-                        }
-                    }
+                    ctx.UnsavedDialogActions(this)
                 }
-            }
             }
         }
     }
@@ -155,6 +91,65 @@ internal fun ModelConfigurationPage.SecurityNotice(container: ViewContainer<*, *
                     lineHeight(17f.settingsDp())
                     color(ctx.palette().warning)
                     marginTop(4f.settingsDp())
+                }
+            }
+        }
+    }
+}
+
+private fun ModelConfigurationPage.UnsavedDialogActions(container: ViewContainer<*, *>) {
+    val ctx = this
+    with(container) {
+        View {
+            attr {
+                flexDirectionRow()
+                justifyContentFlexEnd()
+                alignItemsCenter()
+                marginTop(20f.settingsDp())
+            }
+            ctx.UnsavedDialogAction(this, "继续编辑") { ctx.unsavedDialogOpen = false }
+            ctx.UnsavedDialogAction(this, "放弃修改", warning = true) { ctx.discardAndClose() }
+            ctx.UnsavedDialogAction(this, "保存并退出", primary = true) { ctx.saveAndClose() }
+        }
+    }
+}
+
+private fun ModelConfigurationPage.UnsavedDialogAction(
+    container: ViewContainer<*, *>,
+    label: String,
+    primary: Boolean = false,
+    warning: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val ctx = this
+    with(container) {
+        View {
+            attr {
+                height(38f.settingsDp())
+                padding(
+                    left = if (primary) 16f.settingsDp() else 12f.settingsDp(),
+                    right = if (primary) 16f.settingsDp() else 12f.settingsDp(),
+                )
+                if (primary) {
+                    borderRadius(19f.settingsDp())
+                    backgroundColor(ctx.palette().accent)
+                    marginLeft(4f.settingsDp())
+                }
+                allCenter()
+            }
+            event { click { onClick() } }
+            Text {
+                attr {
+                    text(label)
+                    fontSize(13f.settingsDp())
+                    if (primary) fontWeightBold()
+                    color(
+                        when {
+                            primary -> Color.WHITE
+                            warning -> ctx.palette().warning
+                            else -> ctx.palette().textSecondary
+                        }
+                    )
                 }
             }
         }

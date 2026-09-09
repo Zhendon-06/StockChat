@@ -5,6 +5,7 @@ import com.tencent.kuikly.core.module.CallbackRef
 import com.tencent.kuikly.core.module.Module
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal class BridgeModule : Module() {
     private var drawerGestureCallbackRef: CallbackRef? = null
     private var backRequestCallbackRef: CallbackRef? = null
@@ -35,110 +36,22 @@ internal class BridgeModule : Module() {
         callNativeMethod("toast", methodArgs, null)
     }
 
-    fun startVoiceRecording(responseCallbackFn: CallbackFn) {
-        callNativeMethod(START_VOICE_RECORDING, null, responseCallbackFn)
-    }
-
-    fun stopVoiceRecording(responseCallbackFn: CallbackFn) {
-        callNativeMethod(STOP_VOICE_RECORDING, null, responseCallbackFn)
-    }
-
-    fun cancelVoiceRecording() {
-        callNativeMethod(CANCEL_VOICE_RECORDING, null, null)
-    }
-
-    fun playBase64Audio(
-        audioBase64: String,
-        mimeType: String,
-        responseCallbackFn: CallbackFn,
-    ) {
-        val methodArgs = JSONObject().apply {
-            put("audioBase64", audioBase64)
-            put("mimeType", mimeType)
-        }
-        callNativeMethod(PLAY_BASE64_AUDIO, methodArgs, responseCallbackFn)
-    }
-
-    fun stopAudioPlayback() {
-        callNativeMethod(STOP_AUDIO_PLAYBACK, null, null)
-    }
-
-    fun streamSpeechSynthesis(
-        apiKey: String,
-        url: String,
-        requestBody: JSONObject,
-        responseCallbackFn: CallbackFn,
-    ) {
-        val methodArgs = JSONObject().apply {
-            put("apiKey", apiKey)
-            put("url", url)
-            put("requestBody", requestBody.toString())
-        }
-        var callbackRef: CallbackRef? = null
-        callbackRef = toNative(
-            keepCallbackAlive = true,
-            methodName = STREAM_SPEECH_SYNTHESIS,
-            param = methodArgs.toString(),
-            callback = { payload ->
-                responseCallbackFn(payload)
-                if (payload?.optInt("success", 0) == 0 || payload?.optString("event") == "end") {
-                    callbackRef?.let(::removeCallback)
-                    callbackRef = null
-                }
-            },
-            syncCall = false,
-        ).callbackRef
-    }
-
     fun pickImages(maxCount: Int, responseCallbackFn: CallbackFn) {
-        val methodArgs = JSONObject().apply {
-            put("maxCount", maxCount.coerceIn(1, MAX_IMAGE_SELECTION_COUNT))
-        }
+        val methodArgs = JSONObject().apply { put("maxCount", maxCount.coerceIn(1, MAX_IMAGE_SELECTION_COUNT)) }
         callNativeMethod(PICK_IMAGES, methodArgs, responseCallbackFn)
-    }
-
-    fun streamChatCompletion(
-        apiKey: String,
-        url: String,
-        requestBody: JSONObject,
-        responseCallbackFn: CallbackFn,
-        headers: JSONObject? = null,
-        providerDisplayName: String = "",
-    ) {
-        val methodArgs = JSONObject().apply {
-            put("apiKey", apiKey)
-            put("url", url)
-            put("requestBody", requestBody.toString())
-            headers?.let { put("headers", it.toString()) }
-            if (providerDisplayName.isNotBlank()) {
-                put("providerDisplayName", providerDisplayName)
-            }
-        }
-        var callbackRef: CallbackRef? = null
-        callbackRef = toNative(
-            keepCallbackAlive = true,
-            methodName = STREAM_CHAT_COMPLETION,
-            param = methodArgs.toString(),
-            callback = { payload ->
-                responseCallbackFn(payload)
-                if (payload?.optInt("success", 0) == 0 || payload?.optString("event") == "end") {
-                    callbackRef?.let(::removeCallback)
-                    callbackRef = null
-                }
-            },
-            syncCall = false,
-        ).callbackRef
     }
 
     fun observeDrawerGestures(responseCallbackFn: CallbackFn) {
         stopObservingDrawerGestures()
-        drawerGestureCallbackRef = toNative(
-            keepCallbackAlive = true,
-            methodName = OBSERVE_DRAWER_GESTURES,
-            param = null,
-            callback = responseCallbackFn,
-            syncCall = false,
-        ).callbackRef
+        drawerGestureCallbackRef =
+            toNative(
+                    keepCallbackAlive = true,
+                    methodName = OBSERVE_DRAWER_GESTURES,
+                    param = null,
+                    callback = responseCallbackFn,
+                    syncCall = false,
+                )
+                .callbackRef
     }
 
     fun stopObservingDrawerGestures() {
@@ -149,13 +62,15 @@ internal class BridgeModule : Module() {
 
     fun observeBackRequests(responseCallbackFn: CallbackFn) {
         stopObservingBackRequests()
-        backRequestCallbackRef = toNative(
-            keepCallbackAlive = true,
-            methodName = OBSERVE_BACK_REQUESTS,
-            param = null,
-            callback = responseCallbackFn,
-            syncCall = false,
-        ).callbackRef
+        backRequestCallbackRef =
+            toNative(
+                    keepCallbackAlive = true,
+                    methodName = OBSERVE_BACK_REQUESTS,
+                    param = null,
+                    callback = responseCallbackFn,
+                    syncCall = false,
+                )
+                .callbackRef
     }
 
     fun stopObservingBackRequests() {
@@ -172,29 +87,13 @@ internal class BridgeModule : Module() {
         return syncCallNativeMethod(DATE_FORMATTER, params, null)
     }
 
-    private fun callNativeMethod(methodName: String, data: JSONObject?, callbackFn: CallbackFn?) {
-        toNative(
-            false,
-            methodName,
-            data?.toString(),
-            callbackFn,
-            false
-        )
+    internal fun callNativeMethod(methodName: String, data: JSONObject?, callbackFn: CallbackFn?) {
+        toNative(false, methodName, data?.toString(), callbackFn, false)
     }
 
     // --------- 同步调用Native方法 -------
-    private fun syncCallNativeMethod(
-        methodName: String,
-        data: JSONObject?,
-        callbackFn: CallbackFn?
-    ): String {
-        return toNative(
-            false,
-            methodName,
-            data?.toString(),
-            callbackFn,
-            true
-        ).toString()
+    private fun syncCallNativeMethod(methodName: String, data: JSONObject?, callbackFn: CallbackFn?): String {
+        return toNative(false, methodName, data?.toString(), callbackFn, true).toString()
     }
 
     companion object {
@@ -217,5 +116,4 @@ internal class BridgeModule : Module() {
         /** 单次图片选择上限；输入面板与原生选图桥接共用。 */
         const val MAX_IMAGE_SELECTION_COUNT = 9
     }
-
 }

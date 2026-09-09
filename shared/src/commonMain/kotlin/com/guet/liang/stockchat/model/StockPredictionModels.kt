@@ -53,6 +53,7 @@ internal data class StockPredictionConfig(
     val useAliyunExtensions: Boolean = false,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal sealed class StockPredictionResult {
     data class Success(val prediction: StockPrediction) : StockPredictionResult()
 

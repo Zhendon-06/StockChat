@@ -3,10 +3,12 @@ package com.guet.liang.stockchat.ui.settings
 import com.guet.liang.stockchat.base.BasePager
 import com.guet.liang.stockchat.base.bridgeModule
 import com.guet.liang.stockchat.base.closePage
-import com.guet.liang.stockchat.data.ChatHistoryDatabase
-import com.guet.liang.stockchat.data.ChatSessionSummary
-import com.guet.liang.stockchat.data.StockChatSettingsStore
+import com.guet.liang.stockchat.controller.SettingsController
+import com.guet.liang.stockchat.controller.archivedSessions
+import com.guet.liang.stockchat.controller.restoreSession
+import com.guet.liang.stockchat.model.ChatSessionSummary
 import com.guet.liang.stockchat.model.ThemeMode
+import com.guet.liang.stockchat.ui.settingsController
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.base.ViewBuilder
 import com.tencent.kuikly.core.base.ViewContainer
@@ -19,12 +21,15 @@ import com.tencent.kuikly.core.views.Text
 import com.tencent.kuikly.core.views.View
 
 @Page(ARCHIVED_CHATS_PAGE_NAME, supportInLocal = true)
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal class ArchivedChatsPage : BasePager() {
+    private lateinit var controller: SettingsController
     private var sessions by observableList<ChatSessionSummary>()
     private var themeMode by observable(ThemeMode.SYSTEM)
 
     override fun created() {
         super.created()
+        controller = settingsController()
         reloadSessions()
     }
 
@@ -36,9 +41,7 @@ internal class ArchivedChatsPage : BasePager() {
     override fun body(): ViewBuilder {
         val ctx = this
         return {
-            attr {
-                backgroundColor(ctx.palette().background)
-            }
+            attr { backgroundColor(ctx.palette().background) }
             SettingsPageHeader(
                 statusBarHeight = ctx.pagerData.statusBarHeight,
                 title = "归档的聊天记录",
@@ -54,9 +57,7 @@ internal class ArchivedChatsPage : BasePager() {
                         bottom = ctx.pagerData.safeAreaInsets.bottom,
                     )
                 }
-                vif({ ctx.sessions.isEmpty() }) {
-                    ctx.EmptyState(this)
-                }
+                vif({ ctx.sessions.isEmpty() }) { ctx.EmptyState(this) }
                 vif({ ctx.sessions.isNotEmpty() }) {
                     Scroller {
                         attr {
@@ -67,7 +68,11 @@ internal class ArchivedChatsPage : BasePager() {
                         }
                         Text {
                             attr {
-                                width((ctx.pagerData.pageViewWidth - 44f.settingsDp()).coerceAtLeast(1f))
+                                width(
+                                    (ctx.pagerData.pageViewWidth - 44f.settingsDp()).coerceAtLeast(
+                                        1f
+                                    )
+                                )
                                 alignSelfCenter()
                                 text("归档后的聊天不会出现在抽屉中，可在这里恢复。")
                                 fontSize(12f.settingsDp())
@@ -76,19 +81,14 @@ internal class ArchivedChatsPage : BasePager() {
                                 marginBottom(2f.settingsDp())
                             }
                         }
-                        vfor({ ctx.sessions }) { session ->
-                            ctx.ArchivedSessionCard(this, session)
-                        }
+                        vfor({ ctx.sessions }) { session -> ctx.ArchivedSessionCard(this, session) }
                     }
                 }
             }
         }
     }
 
-    private fun ArchivedSessionCard(
-        container: ViewContainer<*, *>,
-        session: ChatSessionSummary,
-    ) {
+    private fun ArchivedSessionCard(container: ViewContainer<*, *>, session: ChatSessionSummary) {
         val ctx = this
         with(container) {
             SettingsCard(
@@ -138,9 +138,7 @@ internal class ArchivedChatsPage : BasePager() {
                             backgroundColor(ctx.palette().accentSoft)
                             allCenter()
                         }
-                        event {
-                            click { ctx.restoreSession(session.id) }
-                        }
+                        event { click { ctx.restoreSession(session.id) } }
                         Text {
                             attr {
                                 text("恢复")
@@ -203,24 +201,23 @@ internal class ArchivedChatsPage : BasePager() {
     }
 
     private fun restoreSession(sessionId: String) {
-        if (ChatHistoryDatabase.repository().restoreSession(sessionId)) {
+        if (controller.restoreSession(sessionId)) {
             reloadSessions()
             bridgeModule.toast("已恢复到最近对话")
         }
     }
 
     private fun reloadSessions() {
-        themeMode = StockChatSettingsStore.repository.loadSnapshot().appearance.themeMode
+        themeMode = controller.snapshot().appearance.themeMode
         sessions.clear()
-        sessions.addAll(ChatHistoryDatabase.repository().loadArchivedSessions())
+        sessions.addAll(controller.archivedSessions())
     }
 
     private fun formatUpdatedAt(epochMillis: Long): String {
         if (epochMillis <= 0L) {
             return "时间未知"
         }
-        return bridgeModule.dateFormatter(epochMillis, "yyyy-MM-dd HH:mm")
-            .ifBlank { "时间未知" }
+        return bridgeModule.dateFormatter(epochMillis, "yyyy-MM-dd HH:mm").ifBlank { "时间未知" }
     }
 
     private fun palette(): SettingsPalette = settingsPalette(themeMode)

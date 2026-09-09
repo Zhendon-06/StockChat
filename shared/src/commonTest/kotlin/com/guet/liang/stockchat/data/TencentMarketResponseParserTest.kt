@@ -1,5 +1,7 @@
+@file:Suppress("MagicNumber", "LongParameterList", "MaxLineLength")
 package com.guet.liang.stockchat.data
 
+import com.guet.liang.stockchat.model.TencentHistoricalPoint
 import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.Test

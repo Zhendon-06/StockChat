@@ -12,8 +12,7 @@ import com.tencent.kuikly.core.views.TextAreaView
  */
 
 /**
- * `maxTextLength(length)` 不带 `lengthLimitType` 时，各端 render 走「legacy 后置截断」路径；
- * 新签名 `maxTextLength(length, type)` 会切换到前置拦截 + 超限回调的新路径，行为并不相同。
+ * `maxTextLength(length)` 不带 `lengthLimitType` 时，各端 render 走「legacy 后置截断」路径； 新签名 `maxTextLength(length, type)` 会切换到前置拦截 + 超限回调的新路径，行为并不相同。
  * 为保持现有输入体验不变，这里保留 legacy 调用。
  */
 @Suppress("DEPRECATION")
@@ -28,9 +27,8 @@ internal fun InputAttr.maxTextLengthLegacy(length: Int) {
 }
 
 /**
- * `TextAreaView.setText` 被标记弃用，推荐只用 `attr { text(...) }` 响应式绑定。
- * 输入框已经绑定了 `text(inputText)`，但这里的调用是在原生输入（含输入法组合态）
- * 与 Kotlin 状态不一致时强制把文本回写到原生控件，语义与响应式 diff 不同，故保留。
+ * `TextAreaView.setText` 被标记弃用，推荐只用 `attr { text(...) }` 响应式绑定。 输入框已经绑定了 `text(inputText)`，但这里的调用是在原生输入（含输入法组合态） 与 Kotlin
+ * 状态不一致时强制把文本回写到原生控件，语义与响应式 diff 不同，故保留。
  */
 @Suppress("DEPRECATION")
 internal fun TextAreaView.replaceNativeText(text: String) {

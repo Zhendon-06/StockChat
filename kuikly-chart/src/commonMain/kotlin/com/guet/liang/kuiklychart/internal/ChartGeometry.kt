@@ -13,11 +13,13 @@ import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class ChartPoint(
     val horizontal: Float,
     val vertical: Float,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class ChartRect(
     val left: Float,
     val top: Float,
@@ -25,23 +27,24 @@ internal data class ChartRect(
     val bottom: Float,
 ) {
     val width: Float
-        get() = (right - left).coerceAtLeast(0f)
+    get() = (right - left).coerceAtLeast(0f)
 
     val height: Float
-        get() = (bottom - top).coerceAtLeast(0f)
+    get() = (bottom - top).coerceAtLeast(0f)
 
     fun contains(horizontal: Float, vertical: Float): Boolean {
         return horizontal in left..right && vertical in top..bottom
     }
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class ValueScale(
     val minimum: Float,
     val maximum: Float,
     val ticks: List<Float>,
 ) {
     val range: Float
-        get() = (maximum - minimum).coerceAtLeast(0.0001f)
+    get() = (maximum - minimum).coerceAtLeast(0.0001f)
 
     fun verticalPosition(value: Float, plot: ChartRect): Float {
         val ratio = ((value - minimum) / range).coerceIn(0f, 1f)
@@ -65,7 +68,7 @@ internal data class ValueScale(
         ).roundToInt().coerceAtLeast(2)
         val tickStep = (
             interpolatedMaximum.toDouble() - interpolatedMinimum.toDouble()
-            ) / (tickCount - 1).toDouble()
+        ) / (tickCount - 1).toDouble()
         return ValueScale(
             interpolatedMinimum,
             interpolatedMaximum,
@@ -79,10 +82,11 @@ internal data class ValueScale(
 private fun interpolateFloat(start: Float, target: Float, progress: Float): Float {
     return (
         start.toDouble() +
-            (target.toDouble() - start.toDouble()) * progress.toDouble()
-        ).toFloat()
+        (target.toDouble() - start.toDouble()) * progress.toDouble()
+    ).toFloat()
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class PieSliceGeometry(
     val seriesIndex: Int,
     val dataIndex: Int,
@@ -94,12 +98,14 @@ internal data class PieSliceGeometry(
     val endAngle: Float,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class BarGeometry(
     val seriesIndex: Int,
     val dataIndex: Int,
     val rect: ChartRect,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class ChartRenderGeometry(
     val plot: ChartRect,
     val viewport: ChartViewport,
@@ -109,13 +115,14 @@ internal data class ChartRenderGeometry(
     val bars: List<BarGeometry> = emptyList(),
 ) {
     val categoryWidth: Float
-        get() = if (viewport.visiblePointCount <= 0f) 0f else plot.width / viewport.visiblePointCount
+    get() = if (viewport.visiblePointCount <= 0f) 0f else plot.width / viewport.visiblePointCount
 
     fun categoryCenter(dataIndex: Int): Float {
         return plot.left + (dataIndex - viewport.startIndex + 0.5f) * categoryWidth
     }
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal object ViewportMath {
     fun full(dataCount: Int): ChartViewport {
         return ChartViewport(0f, (dataCount - 1).coerceAtLeast(0).toFloat())
@@ -133,7 +140,7 @@ internal object ViewportMath {
         val normalizedViewport = normalize(viewport, dataCount)
         val fullViewport = full(dataCount)
         return abs(normalizedViewport.startIndex - fullViewport.startIndex) <= VIEWPORT_EPSILON &&
-            abs(normalizedViewport.endIndex - fullViewport.endIndex) <= VIEWPORT_EPSILON
+        abs(normalizedViewport.endIndex - fullViewport.endIndex) <= VIEWPORT_EPSILON
     }
 
     fun normalize(viewport: ChartViewport, dataCount: Int): ChartViewport {
@@ -155,14 +162,15 @@ internal object ViewportMath {
         plotWidth: Float,
         dataCount: Int,
     ): ChartViewport {
-        if (!horizontalDelta.isFinite() || !plotWidth.isFinite() || plotWidth <= 0f || dataCount <= 1) {
+        if (!horizontalDelta.isFinite() || !plotWidth.isFinite()) return normalize(viewport, dataCount)
+        if (plotWidth <= 0f || dataCount <= 1) {
             return normalize(viewport, dataCount)
         }
         val indexDelta = -horizontalDelta / plotWidth * viewport.visiblePointCount
         return normalize(
             ChartViewport(
-                viewport.startIndex + indexDelta,
-                viewport.endIndex + indexDelta,
+            viewport.startIndex + indexDelta,
+            viewport.endIndex + indexDelta,
             ),
             dataCount,
         )
@@ -191,19 +199,20 @@ internal object ViewportMath {
     private const val VIEWPORT_EPSILON: Float = 0.0001f
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal object ViewportRenderMath {
     fun visibleDataRange(viewport: ChartViewport, dataCount: Int): IntRange {
         if (dataCount <= 0) {
-            return 1..0
+            return IntRange.EMPTY
         }
         val normalizedViewport = ViewportMath.normalize(viewport, dataCount)
         val firstIndex = ceil(normalizedViewport.startIndex - CATEGORY_HALF_WIDTH)
-            .toInt()
-            .coerceAtLeast(0)
+        .toInt()
+        .coerceAtLeast(0)
         val lastIndex = floor(normalizedViewport.endIndex + CATEGORY_HALF_WIDTH)
-            .toInt()
-            .coerceAtMost(dataCount - 1)
-        return if (lastIndex >= firstIndex) firstIndex..lastIndex else 1..0
+        .toInt()
+        .coerceAtMost(dataCount - 1)
+        return if (lastIndex >= firstIndex) firstIndex..lastIndex else IntRange.EMPTY
     }
 
     fun categoryLabelIndices(
@@ -235,8 +244,61 @@ internal object ViewportRenderMath {
     private const val CATEGORY_HALF_WIDTH: Float = 0.5f
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal object ScaleMath {
     fun calculate(spec: ChartSpec, viewport: ChartViewport): ValueScale {
+        val (rawMinimum, rawMaximum) = rawBounds(spec, viewport)
+        var explicitMinimum = spec.axes.y.minimum?.takeIf(Float::isFinite)
+        var explicitMaximum = spec.axes.y.maximum?.takeIf(Float::isFinite)
+        if (explicitMinimum != null && explicitMaximum != null && explicitMinimum > explicitMaximum) {
+            val previousMinimum = explicitMinimum
+            explicitMinimum = explicitMaximum
+            explicitMaximum = previousMinimum
+        }
+        var requestedMinimum = explicitMinimum ?: rawMinimum
+        var requestedMaximum = explicitMaximum ?: rawMaximum
+        if (requestedMinimum >= requestedMaximum) {
+            val padding = max(abs(requestedMinimum) * 0.1f, 1f)
+            if (explicitMinimum != null && explicitMaximum == null) {
+                requestedMaximum = requestedMinimum + padding
+            } else if (explicitMaximum != null && explicitMinimum == null) {
+                requestedMinimum = requestedMaximum - padding
+            } else {
+                requestedMinimum -= padding
+                requestedMaximum += padding
+            }
+        }
+
+        val requestedTicks = spec.axes.y.tickCount.coerceAtLeast(2)
+        val requestedRange = (requestedMaximum - requestedMinimum).coerceAtLeast(0.0001f)
+        val step = niceNumber(requestedRange / (requestedTicks - 1), true)
+        var scaleMinimum = explicitMinimum ?: floor(requestedMinimum / step) * step
+        var scaleMaximum = explicitMaximum ?: ceil(requestedMaximum / step) * step
+        if (scaleMinimum >= scaleMaximum) {
+            scaleMaximum = scaleMinimum + step
+        }
+
+        val ticks = scaleTicks(scaleMinimum, scaleMaximum, step, requestedTicks)
+        scaleMinimum = min(scaleMinimum, ticks.first())
+        scaleMaximum = max(scaleMaximum, ticks.last())
+        return ValueScale(scaleMinimum, scaleMaximum, ticks)
+    }
+
+    private fun scaleTicks(scaleMinimum: Float, scaleMaximum: Float, step: Float, requestedTicks: Int): List<Float> {
+        val ticks = mutableListOf<Float>()
+        var tickValue = scaleMinimum
+        val tickLimit = requestedTicks * 4
+        while (tickValue <= scaleMaximum + step * 0.25f && ticks.size < tickLimit) {
+            ticks.add(normalizeNearZero(tickValue))
+            tickValue += step
+        }
+        if (ticks.isEmpty() || ticks.last() < scaleMaximum - step * 0.25f) {
+            ticks.add(scaleMaximum)
+        }
+        return ticks
+    }
+
+    private fun rawBounds(spec: ChartSpec, viewport: ChartViewport): Pair<Float, Float> {
         val visibleStart = floor(viewport.startIndex).toInt().coerceAtLeast(0)
         val visibleEnd = ceil(viewport.endIndex).toInt().coerceAtMost((spec.dataCount() - 1).coerceAtLeast(0))
         var rawMinimum = Float.POSITIVE_INFINITY
@@ -270,49 +332,7 @@ internal object ScaleMath {
             rawMaximum += padding
         }
 
-        var explicitMinimum = spec.axes.y.minimum?.takeIf(Float::isFinite)
-        var explicitMaximum = spec.axes.y.maximum?.takeIf(Float::isFinite)
-        if (explicitMinimum != null && explicitMaximum != null && explicitMinimum > explicitMaximum) {
-            val previousMinimum = explicitMinimum
-            explicitMinimum = explicitMaximum
-            explicitMaximum = previousMinimum
-        }
-        var requestedMinimum = explicitMinimum ?: rawMinimum
-        var requestedMaximum = explicitMaximum ?: rawMaximum
-        if (requestedMinimum >= requestedMaximum) {
-            val padding = max(abs(requestedMinimum) * 0.1f, 1f)
-            if (explicitMinimum != null && explicitMaximum == null) {
-                requestedMaximum = requestedMinimum + padding
-            } else if (explicitMaximum != null && explicitMinimum == null) {
-                requestedMinimum = requestedMaximum - padding
-            } else {
-                requestedMinimum -= padding
-                requestedMaximum += padding
-            }
-        }
-
-        val requestedTicks = spec.axes.y.tickCount.coerceAtLeast(2)
-        val requestedRange = (requestedMaximum - requestedMinimum).coerceAtLeast(0.0001f)
-        val step = niceNumber(requestedRange / (requestedTicks - 1), true)
-        var scaleMinimum = explicitMinimum ?: floor(requestedMinimum / step) * step
-        var scaleMaximum = explicitMaximum ?: ceil(requestedMaximum / step) * step
-        if (scaleMinimum >= scaleMaximum) {
-            scaleMaximum = scaleMinimum + step
-        }
-
-        val ticks = mutableListOf<Float>()
-        var tickValue = scaleMinimum
-        val tickLimit = requestedTicks * 4
-        while (tickValue <= scaleMaximum + step * 0.25f && ticks.size < tickLimit) {
-            ticks.add(normalizeNearZero(tickValue))
-            tickValue += step
-        }
-        if (ticks.isEmpty() || ticks.last() < scaleMaximum - step * 0.25f) {
-            ticks.add(scaleMaximum)
-        }
-        scaleMinimum = min(scaleMinimum, ticks.first())
-        scaleMaximum = max(scaleMaximum, ticks.last())
-        return ValueScale(scaleMinimum, scaleMaximum, ticks)
+        return rawMinimum to rawMaximum
     }
 
     private fun niceNumber(value: Float, roundResult: Boolean): Float {

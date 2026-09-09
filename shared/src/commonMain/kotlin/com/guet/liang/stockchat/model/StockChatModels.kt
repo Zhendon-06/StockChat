@@ -1,16 +1,19 @@
 package com.guet.liang.stockchat.model
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal enum class ChatRole {
     USER,
     ASSISTANT,
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal enum class MessageState {
     DELIVERED,
     GENERATING,
     FAILED,
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal enum class VoiceInputState {
     IDLE,
     STARTING,
@@ -18,6 +21,7 @@ internal enum class VoiceInputState {
     TRANSCRIBING,
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal sealed class AnswerBlock {
     data class Markdown(
         val source: String,
@@ -34,6 +38,7 @@ internal sealed class AnswerBlock {
     ) : AnswerBlock()
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class ChatMessage(
     val id: String,
     val role: ChatRole,
@@ -44,11 +49,13 @@ internal data class ChatMessage(
     val errorMessage: String = "",
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class ChatHistoryItem(
     val role: ChatRole,
     val content: String,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class StockQuote(
     val name: String,
     val symbol: String,
@@ -63,6 +70,7 @@ internal data class StockQuote(
     val aiInsight: String,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal sealed class ChatAnswer {
     data class Streaming(
         val markdown: String,
@@ -72,11 +80,13 @@ internal sealed class ChatAnswer {
     data class Failure(val message: String) : ChatAnswer()
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal sealed class SpeechRecognitionResult {
     data class Success(val text: String) : SpeechRecognitionResult()
     data class Failure(val message: String) : SpeechRecognitionResult()
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal sealed class SpeechSynthesisResult {
     data object Started : SpeechSynthesisResult()
 
@@ -90,8 +100,17 @@ internal sealed class SpeechSynthesisResult {
     data class Failure(val message: String) : SpeechSynthesisResult()
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal sealed class StockDetailResult {
     data class Success(val quote: StockQuote) : StockDetailResult()
     data object Empty : StockDetailResult()
     data class Failure(val message: String) : StockDetailResult()
 }
+
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
+internal data class ChatSessionSummary(
+    val id: String,
+    val title: String,
+    val updatedAt: Long,
+    val isArchived: Boolean = false,
+)

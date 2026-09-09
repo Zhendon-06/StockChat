@@ -1,5 +1,6 @@
 package com.guet.liang.stockchat.ui
 
+import com.guet.liang.stockchat.model.ChatMessage
 import com.guet.liang.stockchat.model.MessageState
 import com.tencent.kuikly.core.base.BoxShadow
 import com.tencent.kuikly.core.base.Color
@@ -16,102 +17,47 @@ import com.tencent.kuikly.core.views.View
 internal fun StockChatPage.MessageList(container: ViewContainer<*, *>) {
     val ctx = this
     with(container) {
-    Scroller {
-        ref {
-            ctx.messageScrollerRef = it
+        Scroller {
+            ref { ctx.messageScrollerRef = it }
+            attr {
+                absolutePositionAllZero()
+                showScrollerIndicator(false)
+                bouncesEnable(true)
+                // 顶部不留 padding，内容直接从顶栏下缘开始；
+                // 底部留出渐隐区高度，滚到底时最后一条消息不会停在淡出区内
+                padding(bottom = ctx.layoutMetrics.composerContentFadeHeight + 8f)
+            }
+            event {
+                // 滚动容器会消费触摸，点击/拖动到不了根容器的空白点击处理，
+                // 在这里单独接上：点消息区空白或开始拖动列表都视作离开输入
+                click {
+                    if (ctx.selectedHomeTab == HOME_TAB_CHAT) {
+                        ctx.handleBlankAreaTap()
+                    }
+                }
+                dragBegin {
+                    if (ctx.selectedHomeTab == HOME_TAB_CHAT) {
+                        ctx.handleBlankAreaTap()
+                    }
+                }
+                scroll { params ->
+                    ctx.messageListContentHeight = params.contentHeight
+                    ctx.messageListViewHeight = params.viewHeight
+                    val remaining = params.contentHeight - params.offsetY - params.viewHeight
+                    ctx.messageListNearBottom = remaining <= 48f
+                    if (!ctx.messageListNearBottom) {
+                        ctx.stickMessageListToBottom = false
+                    }
+                }
+                contentSizeChanged { _, contentHeight ->
+                    ctx.messageListContentHeight = contentHeight
+                    if (ctx.stickMessageListToBottom || ctx.messageListNearBottom) {
+                        ctx.scrollMessageListToBottom(animated = true)
+                    }
+                }
+            }
+            vfor({ ctx.messages }) { message -> ctx.MessageRow(this, message) }
         }
-        attr {
-            absolutePositionAllZero()
-            showScrollerIndicator(false)
-            bouncesEnable(true)
-            // 顶部不留 padding，内容直接从顶栏下缘开始；
-            // 底部留出渐隐区高度，滚到底时最后一条消息不会停在淡出区内
-            padding(bottom = ctx.layoutMetrics.composerContentFadeHeight + 8f)
-        }
-        event {
-            // 滚动容器会消费触摸，点击/拖动到不了根容器的空白点击处理，
-            // 在这里单独接上：点消息区空白或开始拖动列表都视作离开输入
-            click {
-                if (ctx.selectedHomeTab == HOME_TAB_CHAT) {
-                    ctx.handleBlankAreaTap()
-                }
-            }
-            dragBegin {
-                if (ctx.selectedHomeTab == HOME_TAB_CHAT) {
-                    ctx.handleBlankAreaTap()
-                }
-            }
-            scroll { params ->
-                ctx.messageListContentHeight = params.contentHeight
-                ctx.messageListViewHeight = params.viewHeight
-                val remaining = params.contentHeight - params.offsetY - params.viewHeight
-                ctx.messageListNearBottom = remaining <= 48f
-                if (!ctx.messageListNearBottom) {
-                    ctx.stickMessageListToBottom = false
-                }
-            }
-            contentSizeChanged { _, contentHeight ->
-                ctx.messageListContentHeight = contentHeight
-                if (ctx.stickMessageListToBottom || ctx.messageListNearBottom) {
-                    ctx.scrollMessageListToBottom(animated = true)
-                }
-            }
-        }
-        vfor({ ctx.messages }) { message ->
-                ChatMessageItem(
-                    message = message,
-                    scale = ctx.layoutMetrics.scale,
-                    isFirst = message.id == ctx.messages.firstOrNull()?.id,
-                    typingPhase = { ctx.typingDotPhase },
-                    onQuoteClick = {
-                        if (ctx.selectedHomeTab == HOME_TAB_CHAT) {
-                            ctx.openStockDetail(
-                                it,
-                                HOME_TAB_CHAT,
-                            )
-                        }
-                    },
-                    onImageClick = {
-                        if (ctx.selectedHomeTab == HOME_TAB_CHAT) {
-                            ctx.openImagePreview(it)
-                        }
-                    },
-                    onRetry = {
-                        if (ctx.selectedHomeTab == HOME_TAB_CHAT) {
-                            ctx.retryMessage(it)
-                        }
-                    },
-                    onCopy = {
-                        if (ctx.selectedHomeTab == HOME_TAB_CHAT) {
-                            ctx.copyMessage(it)
-                        }
-                    },
-                    onCopySelection = {
-                        if (ctx.selectedHomeTab == HOME_TAB_CHAT) {
-                            ctx.copySelectedText(it)
-                        }
-                    },
-                    onRegenerate = {
-                        if (ctx.selectedHomeTab == HOME_TAB_CHAT) {
-                            ctx.regenerateMessage(it)
-                        }
-                    },
-                    onReadAloud = {
-                        if (ctx.selectedHomeTab == HOME_TAB_CHAT) {
-                            ctx.readMessageAloud(it)
-                        }
-                    },
-                    readAloudPhase = {
-                        if (ctx.readAloudMessageId == message.id) ctx.readAloudWavePhase else -1
-                    },
-                    onMore = {
-                        if (ctx.selectedHomeTab == HOME_TAB_CHAT) {
-                            ctx.openMessageMenu(it.id)
-                        }
-                    },
-                )
-            }
-    }
     }
 }
 
@@ -123,28 +69,19 @@ internal fun StockChatPage.ScrollToBottomButton(container: ViewContainer<*, *>) 
             attr {
                 absolutePosition(
                     right = metrics.dp(18f),
-                    bottom = metrics.composerContentBottom(
-                        metrics.composerBottomInset(
-                            ctx.keyboardHeight,
-                            pagerData.safeAreaInsets.bottom,
-                        ),
-                        ctx.composerExpanded,
-                        ctx.voiceMode,
-                        ctx.selectedImageCount > 0,
-                        ctx.composerExtraInputLines(),
-                    ) + metrics.dp(12f),
+                    bottom =
+                        metrics.composerContentBottom(
+                            metrics.composerBottomInset(ctx.keyboardHeight, pagerData.safeAreaInsets.bottom),
+                            ctx.composerExpanded,
+                            ctx.voiceMode,
+                            ctx.selectedImageCount > 0,
+                            ctx.composerExtraInputLines(),
+                        ) + metrics.dp(12f),
                 )
                 size(metrics.dp(44f), metrics.dp(44f))
                 borderRadius(metrics.dp(22f))
                 backgroundColor(StockChatTheme.surface)
-                boxShadow(
-                    BoxShadow(
-                        metrics.dp(1f),
-                        metrics.dp(4f),
-                        metrics.dp(12f),
-                        Color(0x26000000),
-                    )
-                )
+                boxShadow(BoxShadow(metrics.dp(1f), metrics.dp(4f), metrics.dp(12f), Color(0x26000000)))
                 allCenter()
                 zIndex(7)
             }
@@ -170,10 +107,7 @@ internal fun StockChatPage.scrollMessageListToBottom(animated: Boolean) {
     if (!messageScrollerRefReady || messageListContentHeight <= 0f) {
         return
     }
-    val targetOffset = maxOf(
-        0f,
-        messageListContentHeight - messageListViewHeight,
-    )
+    val targetOffset = maxOf(0f, messageListContentHeight - messageListViewHeight)
     messageScrollerRef.view?.setContentOffset(0f, targetOffset, animated)
 }
 
@@ -185,18 +119,65 @@ internal fun StockChatPage.resetMessageListScrollState() {
 }
 
 internal fun StockChatPage.updateTypingIndicatorTimer() {
-    val waitingFirstToken = messages.any {
-        it.state == MessageState.GENERATING && it.blocks.isEmpty()
-    }
+    val waitingFirstToken = messages.any { it.state == MessageState.GENERATING && it.blocks.isEmpty() }
     if (waitingFirstToken && typingDotTimer == null) {
         typingDotPhase = 0
-        typingDotTimer = Timer().also { timer ->
-            timer.schedule(0, 320) {
-                typingDotPhase = (typingDotPhase + 1) % 3
-            }
-        }
+        typingDotTimer = Timer().also { timer -> timer.schedule(0, 320) { typingDotPhase = (typingDotPhase + 1) % 3 } }
     } else if (!waitingFirstToken && typingDotTimer != null) {
         typingDotTimer?.cancel()
         typingDotTimer = null
+    }
+}
+
+private fun StockChatPage.MessageRow(container: ViewContainer<*, *>, message: ChatMessage) {
+    val ctx = this
+    with(container) {
+        ChatMessageItem(
+            message = message,
+            scale = ctx.layoutMetrics.scale,
+            isFirst = message.id == ctx.messages.firstOrNull()?.id,
+            typingPhase = { ctx.typingDotPhase },
+            onQuoteClick = {
+                if (ctx.selectedHomeTab == HOME_TAB_CHAT) {
+                    ctx.openStockDetail(it, HOME_TAB_CHAT)
+                }
+            },
+            onImageClick = {
+                if (ctx.selectedHomeTab == HOME_TAB_CHAT) {
+                    ctx.openImagePreview(it)
+                }
+            },
+            onRetry = {
+                if (ctx.selectedHomeTab == HOME_TAB_CHAT) {
+                    ctx.retryMessage(it)
+                }
+            },
+            onCopy = {
+                if (ctx.selectedHomeTab == HOME_TAB_CHAT) {
+                    ctx.copyMessage(it)
+                }
+            },
+            onCopySelection = {
+                if (ctx.selectedHomeTab == HOME_TAB_CHAT) {
+                    ctx.copySelectedText(it)
+                }
+            },
+            onRegenerate = {
+                if (ctx.selectedHomeTab == HOME_TAB_CHAT) {
+                    ctx.regenerateMessage(it)
+                }
+            },
+            onReadAloud = {
+                if (ctx.selectedHomeTab == HOME_TAB_CHAT) {
+                    ctx.readMessageAloud(it)
+                }
+            },
+            readAloudPhase = { if (ctx.readAloudMessageId == message.id) ctx.readAloudWavePhase else -1 },
+            onMore = {
+                if (ctx.selectedHomeTab == HOME_TAB_CHAT) {
+                    ctx.openMessageMenu(it.id)
+                }
+            },
+        )
     }
 }

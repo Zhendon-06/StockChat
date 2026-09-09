@@ -1,8 +1,9 @@
 package com.guet.liang.stockchat.ui
 
+import com.guet.liang.stockchat.controller.ComparisonContentUi
+import com.guet.liang.stockchat.controller.ComparisonRefreshPhase
 import com.guet.liang.stockchat.model.ConversationStockComparisonRow
-import com.tencent.kuikly.core.base.Border
-import com.tencent.kuikly.core.base.BorderStyle
+import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.views.Scroller
 import com.tencent.kuikly.core.views.Text
@@ -15,12 +16,12 @@ internal fun ConversationTableArtifactPage.ComparisonContent(
     content: ComparisonContentUi,
 ) {
     val ctx = this
-    val contentHeight = (
-        pagerData.pageViewHeight -
-            pagerData.statusBarHeight -
-            HEADER_HEIGHT -
-            pagerData.safeAreaInsets.bottom
-        ).coerceAtLeast(0f)
+    val contentHeight =
+        (pagerData.pageViewHeight -
+                pagerData.statusBarHeight -
+                HEADER_HEIGHT -
+                pagerData.safeAreaInsets.bottom)
+            .coerceAtLeast(0f)
     val tableHeight = (contentHeight - NON_TABLE_CONTENT_HEIGHT).coerceAtLeast(MIN_TABLE_HEIGHT)
     with(container) {
         Scroller {
@@ -32,53 +33,18 @@ internal fun ConversationTableArtifactPage.ComparisonContent(
             }
             View {
                 attr {
-                    width((pagerData.pageViewWidth - 32f).coerceAtLeast(1f))
+                    width(ctx.contentWidth())
                     alignSelfCenter()
                 }
                 ctx.ComparisonSummary(this, content)
                 ctx.RefreshStatus(this, content)
-                View {
-                    attr {
-                        height(TABLE_SECTION_HEADER_HEIGHT)
-                        flexDirectionRow()
-                        alignItemsCenter()
-                        marginTop(10f)
-                    }
-                    View {
-                        attr {
-                            flex(1f)
-                        }
-                        Text {
-                            attr {
-                                text("关键交易指标")
-                                fontSize(16f)
-                                fontWeightBold()
-                                color(StockChatTheme.textPrimary)
-                            }
-                        }
-                        Text {
-                            attr {
-                                text("点击任意一行进入行情详情")
-                                fontSize(10f)
-                                color(StockChatTheme.textTertiary)
-                                marginTop(2f)
-                            }
-                        }
-                    }
-                    Text {
-                        attr {
-                            text("左右滑动查看全部列")
-                            fontSize(11f)
-                            color(StockChatTheme.textTertiary)
-                        }
-                    }
-                }
+                ctx.ComparisonTableHeader(this)
                 View {
                     attr {
                         height(tableHeight)
                         alignSelfStretch()
                         borderRadius(14f)
-                        border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
+                        themedBorder()
                         backgroundColor(StockChatTheme.surface)
                         overflow(true)
                     }
@@ -125,7 +91,7 @@ internal fun ConversationTableArtifactPage.ComparisonSummary(
                 height(SUMMARY_HEIGHT)
                 borderRadius(20f)
                 backgroundColor(StockChatTheme.surface)
-                border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
+                themedBorder()
                 padding(top = 14f, left = 16f, right = 16f, bottom = 14f)
             }
             Text {
@@ -154,12 +120,7 @@ internal fun ConversationTableArtifactPage.ComparisonSummary(
                     alignItemsFlexEnd()
                     marginTop(10f)
                 }
-                ctx.ComparisonSummaryMetric(
-                    this,
-                    "${snapshot.rows.size}",
-                    "全部标的",
-                    isFirst = true,
-                )
+                ctx.ComparisonSummaryMetric(this, "${snapshot.rows.size}", "全部标的", isFirst = true)
                 ctx.ComparisonSummaryMetric(this, "$userMentionedCount", "用户提及")
                 ctx.ComparisonSummaryMetric(this, "$aiGeneratedCount", "AI 生成")
             }
@@ -179,8 +140,10 @@ internal fun ConversationTableArtifactPage.ComparisonSummaryMetric(
                 flex(1f)
                 height(42f)
                 borderRadius(12f)
-                backgroundColor(if (isFirst) StockChatTheme.accentSoft else StockChatTheme.surfaceSoft)
-                border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
+                backgroundColor(
+                    if (isFirst) StockChatTheme.accentSoft else StockChatTheme.surfaceSoft
+                )
+                themedBorder()
                 marginRight(if (label == "AI 生成") 0f else 8f)
                 flexDirectionRow()
                 alignItemsCenter()
@@ -212,30 +175,11 @@ internal fun ConversationTableArtifactPage.RefreshStatus(
     content: ComparisonContentUi,
 ) {
     val ctx = this
-    val isWarning = content.refreshPhase == ComparisonRefreshPhase.PARTIAL ||
-        content.refreshPhase == ComparisonRefreshPhase.FAILED
-    val statusBackground = when {
-        isWarning -> StockChatTheme.warningSoft
-        content.refreshPhase == ComparisonRefreshPhase.SESSION_ONLY -> StockChatTheme.recessed
-        else -> StockChatTheme.accentSoft
-    }
-    val statusColor = when {
-        isWarning -> StockChatTheme.warning
-        content.refreshPhase == ComparisonRefreshPhase.SESSION_ONLY -> StockChatTheme.textSecondary
-        else -> StockChatTheme.accent
-    }
-    val statusText = when (content.refreshPhase) {
-        ComparisonRefreshPhase.REFRESHING ->
-            "正在同步最新行情 ${content.completedCount}/${content.refreshTargetCount}"
-        ComparisonRefreshPhase.CURRENT ->
-            "已同步 ${content.refreshedCount} 个标的的最新行情"
-        ComparisonRefreshPhase.PARTIAL ->
-            "已更新 ${content.refreshedCount}/${content.refreshTargetCount}，其余保留会话行情"
-        ComparisonRefreshPhase.FAILED ->
-            "实时行情暂不可用，当前展示会话中的最近数据"
-        ComparisonRefreshPhase.SESSION_ONLY ->
-            "已完成会话表格汇总，暂无可刷新的证券代码"
-    }
+    val (statusBackground, statusColor) = comparisonRefreshColors(content.refreshPhase)
+    val statusText = comparisonRefreshText(content)
+    val canRefresh =
+        content.refreshPhase != ComparisonRefreshPhase.REFRESHING &&
+            content.refreshPhase != ComparisonRefreshPhase.SESSION_ONLY
     with(container) {
         View {
             attr {
@@ -247,12 +191,8 @@ internal fun ConversationTableArtifactPage.RefreshStatus(
                 flexDirectionRow()
                 alignItemsCenter()
             }
-            if (content.refreshPhase != ComparisonRefreshPhase.REFRESHING &&
-                content.refreshPhase != ComparisonRefreshPhase.SESSION_ONLY
-            ) {
-                event {
-                    click { ctx.refreshMarketData() }
-                }
+            if (canRefresh) {
+                event { click { ctx.refreshMarketData() } }
             }
             Text {
                 attr {
@@ -264,9 +204,7 @@ internal fun ConversationTableArtifactPage.RefreshStatus(
                     lines(1)
                 }
             }
-            if (content.refreshPhase != ComparisonRefreshPhase.REFRESHING &&
-                content.refreshPhase != ComparisonRefreshPhase.SESSION_ONLY
-            ) {
+            if (canRefresh) {
                 Text {
                     attr {
                         text("重新刷新")
@@ -280,3 +218,62 @@ internal fun ConversationTableArtifactPage.RefreshStatus(
         }
     }
 }
+
+private fun ConversationTableArtifactPage.ComparisonTableHeader(container: ViewContainer<*, *>) {
+    with(container) {
+        View {
+            attr {
+                height(TABLE_SECTION_HEADER_HEIGHT)
+                flexDirectionRow()
+                alignItemsCenter()
+                marginTop(10f)
+            }
+            View {
+                attr { flex(1f) }
+                Text {
+                    attr {
+                        text("关键交易指标")
+                        fontSize(16f)
+                        fontWeightBold()
+                        color(StockChatTheme.textPrimary)
+                    }
+                }
+                Text {
+                    attr {
+                        text("点击任意一行进入行情详情")
+                        fontSize(10f)
+                        color(StockChatTheme.textTertiary)
+                        marginTop(2f)
+                    }
+                }
+            }
+            Text {
+                attr {
+                    text("左右滑动查看全部列")
+                    fontSize(11f)
+                    color(StockChatTheme.textTertiary)
+                }
+            }
+        }
+    }
+}
+
+private fun comparisonRefreshColors(phase: ComparisonRefreshPhase): Pair<Color, Color> =
+    when (phase) {
+        ComparisonRefreshPhase.PARTIAL,
+        ComparisonRefreshPhase.FAILED -> StockChatTheme.warningSoft to StockChatTheme.warning
+        ComparisonRefreshPhase.SESSION_ONLY ->
+            StockChatTheme.recessed to StockChatTheme.textSecondary
+        else -> StockChatTheme.accentSoft to StockChatTheme.accent
+    }
+
+private fun comparisonRefreshText(content: ComparisonContentUi): String =
+    when (content.refreshPhase) {
+        ComparisonRefreshPhase.REFRESHING ->
+            "正在同步最新行情 ${content.completedCount}/${content.refreshTargetCount}"
+        ComparisonRefreshPhase.CURRENT -> "已同步 ${content.refreshedCount} 个标的的最新行情"
+        ComparisonRefreshPhase.PARTIAL ->
+            "已更新 ${content.refreshedCount}/${content.refreshTargetCount}，其余保留会话行情"
+        ComparisonRefreshPhase.FAILED -> "实时行情暂不可用，当前展示会话中的最近数据"
+        ComparisonRefreshPhase.SESSION_ONLY -> "已完成会话表格汇总，暂无可刷新的证券代码"
+    }

@@ -1,5 +1,6 @@
 package com.guet.liang.stockchat.model
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal enum class ThemeMode(
     val displayName: String,
 ) {
@@ -8,6 +9,7 @@ internal enum class ThemeMode(
     DARK("深色"),
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class FontSizeSettings(
     val followsSystem: Boolean = true,
     val scale: Float = DEFAULT_SCALE,
@@ -19,6 +21,7 @@ internal data class FontSizeSettings(
     }
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal enum class TableStylePreset(
     val displayName: String,
     val description: String,
@@ -31,6 +34,7 @@ internal enum class TableStylePreset(
     DARK("深色", "深色行情表格"),
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class TableStyleSettings(
     val preset: TableStylePreset = TableStylePreset.DEFAULT,
     val showGridLines: Boolean = true,
@@ -42,6 +46,7 @@ internal data class TableStyleSettings(
     }
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class StockTablePreviewRow(
     val name: String,
     val symbol: String,
@@ -51,6 +56,7 @@ internal data class StockTablePreviewRow(
     val isPositive: Boolean,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal enum class BackgroundPreset(
     val displayName: String,
 ) {
@@ -61,6 +67,7 @@ internal enum class BackgroundPreset(
     SUNSET("暖阳"),
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal enum class ChatTextColorMode(
     val displayName: String,
 ) {
@@ -72,6 +79,7 @@ internal enum class ChatTextColorMode(
     ORANGE("橙色"),
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class ChatBackgroundSettings(
     val preset: BackgroundPreset = BackgroundPreset.DEFAULT,
     val customImageUri: String? = null,
@@ -97,6 +105,7 @@ internal data class ChatBackgroundSettings(
     }
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class AppearanceSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val fontSize: FontSizeSettings = FontSizeSettings(),
@@ -104,6 +113,7 @@ internal data class AppearanceSettings(
     val chatBackground: ChatBackgroundSettings = ChatBackgroundSettings(),
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class SharedChatRecord(
     val id: String,
     val sessionId: String,
@@ -114,6 +124,7 @@ internal data class SharedChatRecord(
     val isDemo: Boolean = false,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal enum class ModelCapability(
     val displayName: String,
 ) {
@@ -124,6 +135,7 @@ internal enum class ModelCapability(
     VOICE("语音"),
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class ModelOption(
     val id: String,
     val displayName: String,
@@ -131,6 +143,7 @@ internal data class ModelOption(
     val capabilities: Set<ModelCapability> = setOf(ModelCapability.CHAT),
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal enum class ModelProviderKind(
     val displayName: String,
 ) {
@@ -143,6 +156,7 @@ internal enum class ModelProviderKind(
     CUSTOM("自定义"),
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class ModelProviderConfig(
     val id: String,
     val kind: ModelProviderKind,
@@ -154,14 +168,22 @@ internal data class ModelProviderConfig(
     val isEnabled: Boolean = true,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class ModelConfiguration(
     val activeProviderId: String,
     val providers: List<ModelProviderConfig>,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class SettingsSnapshot(
     val appearance: AppearanceSettings,
     val sharedChats: List<SharedChatRecord>,
     val modelConfiguration: ModelConfiguration,
     val tablePreviewRows: List<StockTablePreviewRow>,
 )
+
+/** Result of loading the models exposed by an OpenAI-compatible endpoint. */
+internal sealed class ModelCatalogResult {
+    data class Success(val models: List<ModelOption>) : ModelCatalogResult()
+    data class Failure(val message: String, val statusCode: Int? = null) : ModelCatalogResult()
+}

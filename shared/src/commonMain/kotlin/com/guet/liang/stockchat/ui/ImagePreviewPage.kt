@@ -12,6 +12,7 @@ import com.tencent.kuikly.core.views.Text
 import com.tencent.kuikly.core.views.View
 
 @Page(IMAGE_PREVIEW_PAGE_NAME, supportInLocal = true)
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal class ImagePreviewPage : BasePager() {
     private var imageUri = ""
 

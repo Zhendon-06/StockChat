@@ -18,6 +18,6 @@ class FinancialEvidenceViewportTest {
         assertNull(financialEvidenceViewport(0, 0..0))
         assertNull(financialEvidenceViewport(10, -1..2))
         assertNull(financialEvidenceViewport(10, 2..10))
-        assertNull(financialEvidenceViewport(10, 5..2))
+        assertNull(financialEvidenceViewport(10, IntRange.EMPTY))
     }
 }

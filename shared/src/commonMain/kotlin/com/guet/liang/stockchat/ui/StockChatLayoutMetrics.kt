@@ -1,5 +1,10 @@
 package com.guet.liang.stockchat.ui
 
+import com.tencent.kuikly.core.pager.Pager
+
+internal fun Pager.contentWidth(): Float = (pagerData.pageViewWidth - 32f).coerceAtLeast(1f)
+
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal class StockChatLayoutMetrics(pageWidth: Float) {
     private val referenceWidth = 400f
     private val availableWidth = pageWidth.takeIf { it > 0f } ?: referenceWidth
@@ -30,23 +35,19 @@ internal class StockChatLayoutMetrics(pageWidth: Float) {
         hasAttachments: Boolean = false,
         extraInputLines: Int = 0,
     ): Float {
-        val baseHeight = if (focused || voiceMode || hasAttachments) {
-            composerExpandedHeight
-        } else {
-            composerCollapsedHeight
-        }
+        val baseHeight =
+            if (focused || voiceMode || hasAttachments) {
+                composerExpandedHeight
+            } else {
+                composerCollapsedHeight
+            }
         return baseHeight +
             composerInputLineHeight * extraInputLines.coerceAtLeast(0) +
             if (hasAttachments) composerAttachmentStripHeight else 0f
     }
 
-    fun composerDockHeight(
-        focused: Boolean,
-        voiceMode: Boolean = false,
-        hasAttachments: Boolean = false,
-        extraInputLines: Int = 0,
-    ): Float = composerPanelHeight(focused, voiceMode, hasAttachments, extraInputLines) +
-        composerFooterHeight
+    fun composerDockHeight(focused: Boolean, voiceMode: Boolean = false, hasAttachments: Boolean = false, extraInputLines: Int = 0): Float =
+        composerPanelHeight(focused, voiceMode, hasAttachments, extraInputLines) + composerFooterHeight
 
     // Android 某些系统/输入法会把 IME 高度暂时合并进 safeAreaInsets.bottom，
     // 键盘收起后这个值还可能滞后一帧。先把安全区限制在导航栏的合理范围，
@@ -60,8 +61,7 @@ internal class StockChatLayoutMetrics(pageWidth: Float) {
             return navigationBarInset
         }
         val duplicatedInset = (safeAreaBottom - navigationBarInset).coerceAtLeast(0f)
-        return (keyboardHeight - duplicatedInset).coerceAtLeast(0f) +
-            composerKeyboardClearance
+        return (keyboardHeight - duplicatedInset).coerceAtLeast(0f) + composerKeyboardClearance
     }
 
     fun composerContentBottom(
@@ -70,6 +70,5 @@ internal class StockChatLayoutMetrics(pageWidth: Float) {
         voiceMode: Boolean = false,
         hasAttachments: Boolean = false,
         extraInputLines: Int = 0,
-    ): Float = bottomInset + composerBottomGap +
-        composerDockHeight(focused, voiceMode, hasAttachments, extraInputLines)
+    ): Float = bottomInset + composerBottomGap + composerDockHeight(focused, voiceMode, hasAttachments, extraInputLines)
 }

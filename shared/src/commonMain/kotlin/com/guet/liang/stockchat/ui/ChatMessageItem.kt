@@ -17,6 +17,7 @@ import com.tencent.kuikly.core.views.Span
 import com.tencent.kuikly.core.views.Text
 import com.tencent.kuikly.core.views.View
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 private enum class MessageActionIcon {
     COPY,
     REGENERATE,
@@ -48,58 +49,7 @@ internal fun ViewContainer<*, *>.ChatMessageItem(
             marginBottom(18f * scale)
         }
         if (message.role == ChatRole.USER) {
-            View {
-                attr {
-                    flexDirectionRow()
-                    justifyContentFlexEnd()
-                }
-                View {
-                    attr {
-                        maxWidth(290f * scale)
-                    }
-                    message.blocks.forEach { block ->
-                        when (block) {
-                            is AnswerBlock.Markdown -> View {
-                                attr {
-                                    padding(
-                                        top = 12f * scale,
-                                        left = 16f * scale,
-                                        bottom = 12f * scale,
-                                        right = 16f * scale,
-                                    )
-                                    borderRadius(22f * scale)
-                                    backgroundColor(StockChatTheme.userBubble)
-                                    marginBottom(8f * scale)
-                                }
-                                RichText {
-                                    attr {
-                                        val fontSize = StockChatTheme.chatTextSizeSp * scale
-                                        // 气泡最大宽 290 - 左右内边距 16*2 = 258
-                                        val maxTextWidth = 258f * scale
-                                        // 超宽时给定确定宽度触发折行；短文本保持内容撑宽
-                                        if (estimateWrappedLineCount(
-                                                block.fallbackText,
-                                                fontSize,
-                                                maxTextWidth * 0.96f,
-                                            ) > 1
-                                        ) {
-                                            width(maxTextWidth)
-                                        }
-                                    }
-                                    Span {
-                                        text(block.fallbackText)
-                                        fontSize(StockChatTheme.chatTextSizeSp * scale)
-                                        lineHeight(StockChatTheme.chatTextSizeSp * 1.45f * scale)
-                                        color(StockChatTheme.chatTextColor)
-                                    }
-                                }
-                            }
-                            is AnswerBlock.ImageGallery -> MessageImageGallery(block.images, scale, onImageClick)
-                            is AnswerBlock.MarketQuote -> Unit
-                        }
-                    }
-                }
-            }
+            UserMessageContent(message, scale, onImageClick)
         } else {
             View {
                 attr {
@@ -360,4 +310,67 @@ private fun ViewContainer<*, *>.FailedMessage(
             }
         }
     }
+}
+
+private fun ViewContainer<*, *>.UserMessageContent(
+    message: ChatMessage,
+    scale: Float,
+    onImageClick: (String) -> Unit,
+) {
+    View {
+        attr {
+            flexDirectionRow()
+            justifyContentFlexEnd()
+        }
+        View {
+            attr {
+                maxWidth(290f * scale)
+            }
+            message.blocks.forEach { block ->
+                when (block) {
+                    is AnswerBlock.Markdown -> UserMarkdownBubble(block, scale)
+                    is AnswerBlock.ImageGallery -> MessageImageGallery(block.images, scale, onImageClick)
+                    is AnswerBlock.MarketQuote -> Unit
+                }
+            }
+        }
+    }
+}
+
+private fun ViewContainer<*, *>.UserMarkdownBubble(block: AnswerBlock.Markdown, scale: Float) {
+    View {
+                            attr {
+                                padding(
+                                    top = 12f * scale,
+                                    left = 16f * scale,
+                                    bottom = 12f * scale,
+                                    right = 16f * scale,
+                                )
+                                borderRadius(22f * scale)
+                                backgroundColor(StockChatTheme.userBubble)
+                                marginBottom(8f * scale)
+                            }
+                            RichText {
+                                attr {
+                                    val fontSize = StockChatTheme.chatTextSizeSp * scale
+                                    // 气泡最大宽 290 - 左右内边距 16*2 = 258
+                                    val maxTextWidth = 258f * scale
+                                    // 超宽时给定确定宽度触发折行；短文本保持内容撑宽
+                                    if (estimateWrappedLineCount(
+                                            block.fallbackText,
+                                            fontSize,
+                                            maxTextWidth * 0.96f,
+                                        ) > 1
+                                    ) {
+                                        width(maxTextWidth)
+                                    }
+                                }
+                                Span {
+                                    text(block.fallbackText)
+                                    fontSize(StockChatTheme.chatTextSizeSp * scale)
+                                    lineHeight(StockChatTheme.chatTextSizeSp * 1.45f * scale)
+                                    color(StockChatTheme.chatTextColor)
+                                }
+                            }
+                        }
 }

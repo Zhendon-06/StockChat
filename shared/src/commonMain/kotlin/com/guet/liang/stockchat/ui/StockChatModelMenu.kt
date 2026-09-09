@@ -1,12 +1,13 @@
 package com.guet.liang.stockchat.ui
 
+import com.guet.liang.stockchat.model.ChatModelOption
 import com.tencent.kuikly.core.base.Animation
 import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.core.base.Translate
 import com.tencent.kuikly.core.base.ViewContainer
-import com.tencent.kuikly.core.base.attr.ImageUri
 import com.tencent.kuikly.core.base.attr.CaptureRule
 import com.tencent.kuikly.core.base.attr.CaptureRuleDirection
+import com.tencent.kuikly.core.base.attr.ImageUri
 import com.tencent.kuikly.core.base.event.PanGestureParams
 import com.tencent.kuikly.core.directives.velse
 import com.tencent.kuikly.core.directives.vif
@@ -33,9 +34,7 @@ internal fun StockChatPage.ModelMenuOverlay(container: ViewContainer<*, *>) {
                 zIndex(13)
                 animation(Animation.easeOut(0.24f), ctx.modelMenuOpen)
             }
-            event {
-                click { ctx.closeModelMenu() }
-            }
+            event { click { ctx.closeModelMenu() } }
         }
         View {
             attr {
@@ -43,11 +42,7 @@ internal fun StockChatPage.ModelMenuOverlay(container: ViewContainer<*, *>) {
                 height(metrics.dp(466f) + pagerData.safeAreaInsets.bottom)
                 borderRadius(metrics.dp(28f), metrics.dp(28f), 0f, 0f)
                 backgroundColor(StockChatTheme.surface)
-                padding(
-                    left = metrics.dp(20f),
-                    right = metrics.dp(20f),
-                    bottom = pagerData.safeAreaInsets.bottom + metrics.dp(12f),
-                )
+                padding(left = metrics.dp(20f), right = metrics.dp(20f), bottom = pagerData.safeAreaInsets.bottom + metrics.dp(12f))
                 transform(Translate(0f, if (ctx.modelMenuOpen) 0f else 1f))
                 touchEnable(ctx.modelMenuOpen)
                 zIndex(14)
@@ -60,9 +55,7 @@ internal fun StockChatPage.ModelMenuOverlay(container: ViewContainer<*, *>) {
                     allCenter()
                     capture(CaptureRule.pan(CaptureRuleDirection.VERTICAL))
                 }
-                event {
-                    pan { params -> ctx.handleModelMenuPan(params) }
-                }
+                event { pan { params -> ctx.handleModelMenuPan(params) } }
                 View {
                     attr {
                         width(metrics.dp(44f))
@@ -89,12 +82,8 @@ internal fun StockChatPage.ModelMenuOverlay(container: ViewContainer<*, *>) {
                     showScrollerIndicator(false)
                     bouncesEnable(true)
                 }
-                vif({ ctx.modelMenuContentRevision % 2 == 0 }) {
-                    ctx.ModelMenuContent(this)
-                }
-                velse {
-                    ctx.ModelMenuContent(this)
-                }
+                vif({ ctx.modelMenuContentRevision % 2 == 0 }) { ctx.ModelMenuContent(this) }
+                velse { ctx.ModelMenuContent(this) }
             }
         }
     }
@@ -104,32 +93,14 @@ internal fun StockChatPage.ModelMenuContent(container: ViewContainer<*, *>) {
     val ctx = this
     val metrics = ctx.layoutMetrics
     with(container) {
-        vif({ ctx.drawerModelsLoading }) {
-            ctx.DrawerModelNotice(
-                this,
-                message = "正在从 Provider 拉取可用模型…",
-            )
+        vif({ ctx.drawerModelsLoading }) { ctx.DrawerModelNotice(this, message = "正在从 Provider 拉取可用模型…") }
+        vif({ !ctx.drawerModelsLoading && ctx.drawerModelsError.isNotBlank() }) {
+            ctx.DrawerModelNotice(this, message = ctx.drawerModelsError, actionText = "重试", onAction = { ctx.retryDrawerModels() })
         }
-        vif({
-            !ctx.drawerModelsLoading && ctx.drawerModelsError.isNotBlank()
-        }) {
-            ctx.DrawerModelNotice(
-                this,
-                message = ctx.drawerModelsError,
-                actionText = "重试",
-                onAction = { ctx.retryDrawerModels() },
-            )
-        }
-        vif({
-            !ctx.drawerModelsLoading &&
-                ctx.drawerModelsError.isBlank() &&
-                ctx.chatModelOptions.isEmpty()
-        }) {
+        vif({ !ctx.drawerModelsLoading && ctx.drawerModelsError.isBlank() && ctx.chatModelOptions.isEmpty() }) {
             ctx.DrawerModelEmptyState(this)
         }
-        ctx.chatModelOptions.forEach { option ->
-            ctx.ModelMenuItem(this, option)
-        }
+        ctx.chatModelOptions.forEach { option -> ctx.ModelMenuItem(this, option) }
         Text {
             attr {
                 text("模型选择会同步到设置，并影响后续回答")
@@ -143,10 +114,7 @@ internal fun StockChatPage.ModelMenuContent(container: ViewContainer<*, *>) {
     }
 }
 
-internal fun StockChatPage.ModelMenuItem(
-    container: ViewContainer<*, *>,
-    option: ChatModelOption,
-) {
+internal fun StockChatPage.ModelMenuItem(container: ViewContainer<*, *>, option: ChatModelOption) {
     val ctx = this
     val metrics = ctx.layoutMetrics
     with(container) {
@@ -165,9 +133,7 @@ internal fun StockChatPage.ModelMenuItem(
                     }
                 )
             }
-            event {
-                click { ctx.selectModel(option.id) }
-            }
+            event { click { ctx.selectModel(option.id) } }
             View {
                 attr {
                     size(metrics.dp(40f), metrics.dp(40f))
@@ -188,49 +154,7 @@ internal fun StockChatPage.ModelMenuItem(
                     flex(1f)
                     marginLeft(metrics.dp(12f))
                 }
-                View {
-                    attr {
-                        flexDirectionRow()
-                        alignItemsCenter()
-                    }
-                    Text {
-                        attr {
-                            text(option.displayName)
-                            fontSize(metrics.dp(17f))
-                            fontWeightBold()
-                            color(StockChatTheme.textPrimary)
-                        }
-                    }
-                    vif({ option.isLocked }) {
-                        Text {
-                            attr {
-                                text("🔒")
-                                fontSize(metrics.dp(12f))
-                                marginLeft(metrics.dp(6f))
-                            }
-                        }
-                    }
-                    View {
-                        attr {
-                            backgroundColor(Color(0xFFDDF5EC))
-                            borderRadius(metrics.dp(5f))
-                            padding(
-                                top = metrics.dp(2f),
-                                left = metrics.dp(5f),
-                                right = metrics.dp(5f),
-                                bottom = metrics.dp(2f),
-                            )
-                            marginLeft(metrics.dp(7f))
-                        }
-                        Text {
-                            attr {
-                                text(option.badge)
-                                fontSize(metrics.dp(11f))
-                                color(StockChatTheme.accent)
-                            }
-                        }
-                    }
-                }
+                ctx.ModelOptionTitle(this, option)
                 Text {
                     attr {
                         text(option.description)
@@ -269,12 +193,7 @@ internal fun StockChatPage.DrawerModelNotice(
                 marginBottom(metrics.dp(6f))
                 borderRadius(metrics.dp(14f))
                 backgroundColor(StockChatTheme.surfaceSoft)
-                padding(
-                    top = metrics.dp(12f),
-                    left = metrics.dp(14f),
-                    right = metrics.dp(14f),
-                    bottom = metrics.dp(12f),
-                )
+                padding(top = metrics.dp(12f), left = metrics.dp(14f), right = metrics.dp(14f), bottom = metrics.dp(12f))
                 flexDirectionRow()
                 alignItemsCenter()
             }
@@ -298,9 +217,7 @@ internal fun StockChatPage.DrawerModelNotice(
                         backgroundColor(StockChatTheme.accentSoft)
                         allCenter()
                     }
-                    event {
-                        click { onAction() }
-                    }
+                    event { click { onAction() } }
                     Text {
                         attr {
                             text(actionText)
@@ -357,9 +274,7 @@ internal fun StockChatPage.DrawerModelEmptyState(container: ViewContainer<*, *>)
                     backgroundColor(StockChatTheme.accent)
                     allCenter()
                 }
-                event {
-                    click { ctx.openModelConfiguration() }
-                }
+                event { click { ctx.openModelConfiguration() } }
                 Text {
                     attr {
                         text("前往模型配置")
@@ -402,15 +317,56 @@ internal fun StockChatPage.handleModelMenuPan(params: PanGestureParams) {
         "end" -> {
             val deltaX = params.pageX - modelMenuPanStartX
             val deltaY = params.pageY - modelMenuPanStartY
-            if (
-                modelMenuOpen &&
-                deltaY >= MODEL_MENU_DISMISS_DISTANCE &&
-                kotlin.math.abs(deltaY) > kotlin.math.abs(deltaX)
-            ) {
+            if (modelMenuOpen && deltaY >= MODEL_MENU_DISMISS_DISTANCE && kotlin.math.abs(deltaY) > kotlin.math.abs(deltaX)) {
                 closeModelMenu()
             }
             modelMenuPanStartX = 0f
             modelMenuPanStartY = 0f
+        }
+    }
+}
+
+private fun StockChatPage.ModelOptionTitle(container: ViewContainer<*, *>, option: ChatModelOption) {
+    val ctx = this
+    val metrics = ctx.layoutMetrics
+    with(container) {
+        View {
+            attr {
+                flexDirectionRow()
+                alignItemsCenter()
+            }
+            Text {
+                attr {
+                    text(option.displayName)
+                    fontSize(metrics.dp(17f))
+                    fontWeightBold()
+                    color(StockChatTheme.textPrimary)
+                }
+            }
+            vif({ option.isLocked }) {
+                Text {
+                    attr {
+                        text("🔒")
+                        fontSize(metrics.dp(12f))
+                        marginLeft(metrics.dp(6f))
+                    }
+                }
+            }
+            View {
+                attr {
+                    backgroundColor(Color(StockChatTheme.COLOR_FFDDF5EC))
+                    borderRadius(metrics.dp(5f))
+                    padding(top = metrics.dp(2f), left = metrics.dp(5f), right = metrics.dp(5f), bottom = metrics.dp(2f))
+                    marginLeft(metrics.dp(7f))
+                }
+                Text {
+                    attr {
+                        text(option.badge)
+                        fontSize(metrics.dp(11f))
+                        color(StockChatTheme.accent)
+                    }
+                }
+            }
         }
     }
 }

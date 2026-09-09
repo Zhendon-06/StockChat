@@ -1,3 +1,4 @@
+@file:Suppress("MagicNumber", "LongParameterList", "MaxLineLength")
 package com.guet.liang.stockchat.data
 
 import com.guet.liang.stockchat.model.ModelCapability

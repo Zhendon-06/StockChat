@@ -3,6 +3,7 @@ package com.guet.liang.stockchat.data
 import com.guet.liang.stockchat.model.AnswerBlock
 import com.guet.liang.stockchat.model.ChatMessage
 import com.guet.liang.stockchat.model.ChatRole
+import com.guet.liang.stockchat.model.MermaidMindMapNode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull

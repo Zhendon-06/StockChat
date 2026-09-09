@@ -1,5 +1,6 @@
 package com.guet.liang.stockchat.model
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal enum class ConversationTableRowStatus(
     val label: String,
 ) {
@@ -9,6 +10,7 @@ internal enum class ConversationTableRowStatus(
     WAITING("等待回答"),
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class ConversationTableRow(
     val sequence: Int,
     val userQuestion: String,
@@ -17,12 +19,14 @@ internal data class ConversationTableRow(
     val status: ConversationTableRowStatus,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class ConversationTableArtifactSnapshot(
     val title: String,
     val sourceMessageCount: Int,
     val rows: List<ConversationTableRow>,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class ConversationTableArtifact(
     val id: Long,
     val sessionId: String,
@@ -33,6 +37,7 @@ internal data class ConversationTableArtifact(
     val rows: List<ConversationTableRow>,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class ConversationTableArtifactSummary(
     val id: Long,
     val sessionId: String,

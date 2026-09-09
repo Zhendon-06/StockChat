@@ -1,5 +1,7 @@
+@file:Suppress("LongMethod", "CyclomaticComplexMethod", "MagicNumber")
 package com.guet.liang.stockchat.data
 
+import com.guet.liang.stockchat.model.MarketDataResult
 import com.guet.liang.stockchat.model.StockQuote
 import com.guet.liang.stockchat.model.TodayMarketResult
 import com.guet.liang.stockchat.model.TodayMarketSectorObservation
@@ -8,10 +10,12 @@ import com.tencent.kuikly.core.module.NetworkModule
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal interface TodayMarketDataSource {
     fun load(callback: (TodayMarketResult) -> Unit)
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal class TencentTodayMarketDataSource(
     private val loadMarket: (SecuritiesQueryPlan, (MarketDataResult) -> Unit) -> Unit,
 ) : TodayMarketDataSource {

@@ -13,15 +13,19 @@ public data class FinancialPoint(
     val close: Float,
     val volume: Float? = null,
     val average: Float? = null,
-    /** Exchange-session coordinate, allowing an unfinished session to leave future space empty. */
+/** Exchange-session coordinate, allowing an unfinished session to leave future space empty. */
     val slot: Float = 0f,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 public data class FinancialAxisLabel(val slot: Float, val text: String)
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 public enum class FinancialChartMode { INTRADAY, CANDLES, CLOSE_LINE }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 public data class FinancialInterval(val lower: Float, val upper: Float)
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 public class FinancialChartSpec {
     public var points: List<FinancialPoint> = emptyList()
     public var mode: FinancialChartMode = FinancialChartMode.CANDLES
@@ -58,14 +62,14 @@ public class FinancialChartSpec {
 public object FinancialChartMath {
     /** Invalid model bounds must never affect the axis or produce a filled band. */
     public fun validInterval(interval: FinancialInterval, close: Float): Boolean =
-        interval.lower.isFinite() && interval.upper.isFinite() && close.isFinite() &&
-            interval.lower > 0f && interval.lower <= close && interval.upper >= close
+    interval.lower.isFinite() && interval.upper.isFinite() && close.isFinite() &&
+    interval.lower > 0f && interval.lower <= close && interval.upper >= close
 
     public fun valid(point: FinancialPoint): Boolean =
-        listOf(point.open, point.high, point.low, point.close, point.slot).all(Float::isFinite) &&
-            point.low > 0f && point.high >= maxOf(point.open, point.close) &&
-            point.low <= minOf(point.open, point.close) &&
-            (point.volume == null || point.volume.isFinite() && point.volume >= 0f)
+    listOf(point.open, point.high, point.low, point.close, point.slot).all(Float::isFinite) &&
+    point.low > 0f && point.high >= maxOf(point.open, point.close) &&
+    point.low <= minOf(point.open, point.close) &&
+    (point.volume == null || point.volume.isFinite() && point.volume >= 0f)
 
     /** Warm-up uses history before the visible viewport; incomplete windows stay absent. */
     public fun movingAverage(points: List<FinancialPoint>, period: Int): List<Float?> {
@@ -82,7 +86,7 @@ public object FinancialChartMath {
         if (points.isEmpty()) return 0f to 1f
         val low = points.minOf { minOf(it.low, it.average?.takeIf { v -> v.isFinite() && v > 0f } ?: it.low) }
         val high = points.maxOf { maxOf(it.high, it.average?.takeIf { v -> v.isFinite() && v > 0f } ?: it.high) }
-        if (intraday && previousClose != null && previousClose.isFinite() && previousClose > 0f) {
+        if (intraday && previousClose?.takeIf { it.isFinite() && it > 0f } != null) {
             val radius = maxOf(abs(high - previousClose), abs(low - previousClose), previousClose * 0.005f) * 1.05f
             return previousClose - radius to previousClose + radius
         }
@@ -94,10 +98,16 @@ public object FinancialChartMath {
 public fun financialNumber(value: Float, decimals: Int = 2): String {
     if (!value.isFinite()) return "--"
     val places = decimals.coerceIn(0, 4)
-    val factor = when (places) { 0 -> 1L; 1 -> 10L; 2 -> 100L; 3 -> 1000L; else -> 10000L }
+    val factor = when (places) {
+        0 -> 1L
+        1 -> 10L
+        2 -> 100L
+        3 -> 1000L
+        else -> 10000L
+    }
     val scaled = (abs(value).toDouble() * factor).roundToLong()
     return (if (value < 0 && scaled != 0L) "-" else "") + (scaled / factor).toString() +
-        if (places == 0) "" else "." + (scaled % factor).toString().padStart(places, '0')
+    if (places == 0) "" else "." + (scaled % factor).toString().padStart(places, '0')
 }
 
 public fun financialVolume(value: Float): String = when {

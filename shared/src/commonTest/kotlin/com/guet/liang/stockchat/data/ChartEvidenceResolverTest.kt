@@ -1,7 +1,10 @@
+@file:Suppress("MagicNumber", "LongParameterList", "MaxLineLength")
 package com.guet.liang.stockchat.data
 
 import com.guet.liang.kuiklychart.finance.FinancialPoint
 import com.guet.liang.stockchat.model.ChartEvidenceReference
+import com.guet.liang.stockchat.model.ChartEvidenceResolution
+import com.guet.liang.stockchat.model.MarketPeriod
 import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import kotlin.test.*
 

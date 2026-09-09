@@ -1,5 +1,7 @@
 package com.guet.liang.stockchat.data
 
+import com.guet.liang.stockchat.model.CapitalFlowPoint
+
 /** Explicit, opt-in example based on the supplied screenshot. Never used as a live security response. */
 internal object CapitalFlowDemoData {
     val distribution = listOf(
@@ -20,4 +22,5 @@ internal object CapitalFlowDemoData {
     ).map { (date, net) -> CapitalFlowPoint("2026-$date", net, -net * 0.6f, -net * 0.4f, net * 0.45f, net * 0.55f) }
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class CapitalDistributionValue(val label: String, val amount: Float, val inflow: Boolean)

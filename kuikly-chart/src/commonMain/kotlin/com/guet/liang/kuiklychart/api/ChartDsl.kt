@@ -4,6 +4,7 @@ import com.tencent.kuikly.core.base.Color
 
 /** A single data series and its visual style. */
 @KuiklyChartDsl
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 public class ChartSeries internal constructor(
     public val type: ChartSeriesType,
     public var name: String,
@@ -15,22 +16,22 @@ public class ChartSeries internal constructor(
     private val mutablePointLabels: MutableList<String> = mutableListOf()
 
     public val values: List<Float?>
-        get() = mutableValues.toList()
+    get() = mutableValues.toList()
 
     public val pointColors: List<Color>
-        get() = mutablePointColors.toList()
+    get() = mutablePointColors.toList()
 
     public val pointLabels: List<String>
-        get() = mutablePointLabels.toList()
+    get() = mutablePointLabels.toList()
 
     internal val dataValues: List<Float?>
-        get() = mutableValues
+    get() = mutableValues
 
     internal val dataPointColors: List<Color>
-        get() = mutablePointColors
+    get() = mutablePointColors
 
     internal val dataPointLabels: List<String>
-        get() = mutablePointLabels
+    get() = mutablePointLabels
 
     public var color: Color = defaultColor
     public var fillColor: Color? = null
@@ -74,7 +75,9 @@ public class ChartSeries internal constructor(
         pointColors(colors)
     }
 
-    public fun pointLabels(vararg labels: String) {
+    public fun pointLabels(vararg labels: String) = pointLabels(labels.toList())
+
+    public fun pointLabels(labels: List<String>) {
         mutablePointLabels.clear()
         mutablePointLabels.addAll(labels)
     }
@@ -106,26 +109,17 @@ public class ChartSeries internal constructor(
 
 /** Complete chart description configured by the Kotlin DSL. */
 @KuiklyChartDsl
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 public class ChartSpec internal constructor(
-    public var defaultSeriesType: ChartSeriesType = ChartSeriesType.LINE,
-) {
+    defaultSeriesType: ChartSeriesType = ChartSeriesType.LINE,
+) : ChartSeriesCollection(defaultSeriesType) {
     private val mutableLabels: MutableList<String> = mutableListOf()
-    private val mutableSeries: MutableList<ChartSeries> = mutableListOf()
 
     public val labels: List<String>
-        get() = mutableLabels.toList()
-
-    public val series: List<ChartSeries>
-        get() = mutableSeries.toList()
+    get() = mutableLabels.toList()
 
     internal val dataLabels: List<String>
-        get() = mutableLabels
-
-    internal val dataSeries: List<ChartSeries>
-        get() = mutableSeries
-
-    internal val mutableDataSeries: MutableList<ChartSeries>
-        get() = mutableSeries
+    get() = mutableLabels
 
     public var title: String = ""
     public var subtitle: String = ""
@@ -147,79 +141,6 @@ public class ChartSpec internal constructor(
     public fun labels(labels: List<String>) {
         mutableLabels.clear()
         mutableLabels.addAll(labels)
-    }
-
-    public fun series(
-        name: String,
-        vararg values: Float,
-        init: ChartSeries.() -> Unit = {},
-    ): ChartSeries = addSeries(defaultSeriesType, name, values.map { it }, init)
-
-    public fun series(
-        name: String,
-        values: List<Float?>,
-        init: ChartSeries.() -> Unit = {},
-    ): ChartSeries = addSeries(defaultSeriesType, name, values, init)
-
-    public fun line(
-        name: String,
-        vararg values: Float,
-        init: ChartSeries.() -> Unit = {},
-    ): ChartSeries = addSeries(ChartSeriesType.LINE, name, values.map { it }, init)
-
-    public fun line(
-        name: String,
-        values: List<Float?>,
-        init: ChartSeries.() -> Unit = {},
-    ): ChartSeries = addSeries(ChartSeriesType.LINE, name, values, init)
-
-    public fun area(
-        name: String,
-        vararg values: Float,
-        init: ChartSeries.() -> Unit = {},
-    ): ChartSeries = addSeries(ChartSeriesType.AREA, name, values.map { it }, init)
-
-    public fun area(
-        name: String,
-        values: List<Float?>,
-        init: ChartSeries.() -> Unit = {},
-    ): ChartSeries = addSeries(ChartSeriesType.AREA, name, values, init)
-
-    public fun bars(
-        name: String,
-        vararg values: Float,
-        init: ChartSeries.() -> Unit = {},
-    ): ChartSeries = addSeries(ChartSeriesType.BAR, name, values.map { it }, init)
-
-    public fun bars(
-        name: String,
-        values: List<Float?>,
-        init: ChartSeries.() -> Unit = {},
-    ): ChartSeries = addSeries(ChartSeriesType.BAR, name, values, init)
-
-    public fun pie(
-        name: String,
-        vararg entries: PieEntry,
-        init: ChartSeries.() -> Unit = {},
-    ): ChartSeries = pie(name, entries.toList(), init)
-
-    public fun pie(
-        name: String,
-        entries: List<PieEntry>,
-        init: ChartSeries.() -> Unit = {},
-    ): ChartSeries {
-        val chartSeries = addSeries(
-            ChartSeriesType.PIE,
-            name,
-            entries.map { it.value },
-        ) {
-            pointLabels(*entries.map { it.label }.toTypedArray())
-            pointColors(entries.mapIndexed { index, entry ->
-                entry.color ?: ChartPalette.colors[index % ChartPalette.colors.size]
-            })
-            init()
-        }
-        return chartSeries
     }
 
     public fun theme(init: ChartTheme.() -> Unit) {
@@ -259,10 +180,6 @@ public class ChartSpec internal constructor(
         animation.apply(init)
     }
 
-    public fun clearSeries() {
-        mutableSeries.clear()
-    }
-
     internal fun dataCount(): Int {
         val labelCount = mutableLabels.size
         val seriesCount = mutableSeries.maxOfOrNull { it.dataValues.size } ?: 0
@@ -273,13 +190,4 @@ public class ChartSpec internal constructor(
         return mutableLabels.getOrNull(index) ?: (index + 1).toString()
     }
 
-    private fun addSeries(
-        type: ChartSeriesType,
-        name: String,
-        values: List<Float?>,
-        init: ChartSeries.() -> Unit,
-    ): ChartSeries {
-        val defaultColor = ChartPalette.colors[mutableSeries.size % ChartPalette.colors.size]
-        return ChartSeries(type, name, values, defaultColor).apply(init).also(mutableSeries::add)
-    }
 }

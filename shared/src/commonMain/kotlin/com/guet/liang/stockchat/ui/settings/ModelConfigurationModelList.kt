@@ -16,11 +16,7 @@ import com.tencent.kuikly.core.views.View
 internal fun ModelConfigurationPage.ModelList(container: ViewContainer<*, *>) {
     val ctx = this
     with(container) {
-        vif({
-            ctx.modelListLoading ||
-                ctx.modelListVisible ||
-                ctx.modelListError.isNotBlank()
-        }) {
+        vif({ ctx.modelListLoading || ctx.modelListVisible || ctx.modelListError.isNotBlank() }) {
             View {
                 attr {
                     width((ctx.pagerData.pageViewWidth - 40f.settingsDp()).coerceAtLeast(1f))
@@ -46,7 +42,7 @@ internal fun ModelConfigurationPage.ModelList(container: ViewContainer<*, *>) {
                                 ctx.modelListVisible -> "${ctx.availableModels.size} 个模型"
                                 ctx.modelListError.isNotBlank() -> "获取失败"
                                 else -> "待获取"
-                            },
+                            }
                         )
                         fontSize(12f.settingsDp())
                         color(ctx.palette().textSecondary)
@@ -71,17 +67,11 @@ internal fun ModelConfigurationPage.ModelList(container: ViewContainer<*, *>) {
             vif({ !ctx.modelListLoading && ctx.modelListError.isNotBlank() }) {
                 ctx.ModelCatalogStatus(this, ctx.modelListError, true)
             }
-            vif({
-                ctx.modelListVisible && ctx.availableModels.isEmpty()
-            }) {
+            vif({ ctx.modelListVisible && ctx.availableModels.isEmpty() }) {
                 ctx.ModelCatalogStatus(this, "该 Provider 暂未返回可用模型。", true)
             }
-            vif({
-                ctx.modelListVisible && ctx.availableModels.isNotEmpty()
-            }) {
-                ctx.availableModels.forEach { model ->
-                    ctx.ModelCard(this, model)
-                }
+            vif({ ctx.modelListVisible && ctx.availableModels.isNotEmpty() }) {
+                ctx.availableModels.forEach { model -> ctx.ModelCard(this, model) }
             }
         }
     }
@@ -119,7 +109,7 @@ internal fun ModelConfigurationPage.ModelCatalogStatus(
                                 ctx.palette().warning
                             } else {
                                 ctx.palette().textSecondary
-                            },
+                            }
                         )
                     }
                 }
@@ -134,9 +124,7 @@ internal fun ModelConfigurationPage.ModelCatalogStatus(
                             allCenter()
                             marginTop(8f.settingsDp())
                         }
-                        event {
-                            click { ctx.loadModels(force = true) }
-                        }
+                        event { click { ctx.loadModels(force = true) } }
                         Text {
                             attr {
                                 text("重试")
@@ -176,67 +164,11 @@ internal fun ModelConfigurationPage.ModelCard(container: ViewContainer<*, *>, mo
                             ctx.palette().accentSoft
                         } else {
                             ctx.palette().surface
-                        },
+                        }
                     )
                 }
-                event {
-                    click { ctx.chooseModel(model.id) }
-                }
-                View {
-                    attr { flex(1f) }
-                    Text {
-                        attr {
-                            text(model.displayName)
-                            fontSize(15f.settingsDp())
-                            fontWeightBold()
-                            color(ctx.palette().textPrimary)
-                            lines(1)
-                        }
-                    }
-                    Text {
-                        attr {
-                            text(model.id)
-                            fontSize(11f.settingsDp())
-                            color(ctx.palette().textSecondary)
-                            marginTop(4f.settingsDp())
-                            lines(1)
-                        }
-                    }
-                    View {
-                        attr {
-                            height(22f.settingsDp())
-                            flexDirectionRow()
-                            alignItemsCenter()
-                            marginTop(7f.settingsDp())
-                        }
-                        val capabilityLabels = buildList {
-                            add(
-                                if (ModelCapability.VISION in model.capabilities) {
-                                    "视觉理解"
-                                } else {
-                                    "仅文本"
-                                },
-                            )
-                            add(
-                                if (ModelCapability.STREAMING in model.capabilities) {
-                                    "流式输出"
-                                } else {
-                                    "非流式"
-                                },
-                            )
-                            model.capabilities
-                                .filterNot {
-                                    it == ModelCapability.CHAT ||
-                                        it == ModelCapability.VISION ||
-                                        it == ModelCapability.STREAMING
-                                }
-                                .forEach { capability -> add(capability.displayName) }
-                        }
-                        capabilityLabels.forEach { label ->
-                            ctx.CapabilityChip(this, label)
-                        }
-                    }
-                }
+                event { click { ctx.chooseModel(model.id) } }
+                ctx.ModelDescription(this, model)
                 View {
                     attr {
                         size(26f.settingsDp(), 26f.settingsDp())
@@ -250,14 +182,14 @@ internal fun ModelConfigurationPage.ModelCard(container: ViewContainer<*, *>, mo
                                 } else {
                                     ctx.palette().divider
                                 },
-                            ),
+                            )
                         )
                         backgroundColor(
                             if (ctx.selectedModelId == model.id) {
                                 ctx.palette().accent
                             } else {
                                 ctx.palette().surface
-                            },
+                            }
                         )
                         allCenter()
                     }
@@ -294,6 +226,68 @@ internal fun ModelConfigurationPage.CapabilityChip(container: ViewContainer<*, *
                     fontWeightMedium()
                     color(ctx.palette().textSecondary)
                 }
+            }
+        }
+    }
+}
+
+private fun ModelConfigurationPage.ModelDescription(
+    container: ViewContainer<*, *>,
+    model: ModelOption,
+) {
+    val ctx = this
+    with(container) {
+        View {
+            attr { flex(1f) }
+            Text {
+                attr {
+                    text(model.displayName)
+                    fontSize(15f.settingsDp())
+                    fontWeightBold()
+                    color(ctx.palette().textPrimary)
+                    lines(1)
+                }
+            }
+            Text {
+                attr {
+                    text(model.id)
+                    fontSize(11f.settingsDp())
+                    color(ctx.palette().textSecondary)
+                    marginTop(4f.settingsDp())
+                    lines(1)
+                }
+            }
+            View {
+                attr {
+                    height(22f.settingsDp())
+                    flexDirectionRow()
+                    alignItemsCenter()
+                    marginTop(7f.settingsDp())
+                }
+                val capabilityLabels = buildList {
+                    add(
+                        if (ModelCapability.VISION in model.capabilities) {
+                            "视觉理解"
+                        } else {
+                            "仅文本"
+                        }
+                    )
+                    add(
+                        if (ModelCapability.STREAMING in model.capabilities) {
+                            "流式输出"
+                        } else {
+                            "非流式"
+                        }
+                    )
+                    model.capabilities
+                        .filterNot {
+                            it == ModelCapability.CHAT ||
+                                it == ModelCapability.VISION ||
+                                it == ModelCapability.STREAMING
+                        }
+                        .forEach { capability -> add(capability.displayName) }
+                }
+                capabilityLabels.forEach { label -> ctx.CapabilityChip(this, label) }
             }
         }
     }

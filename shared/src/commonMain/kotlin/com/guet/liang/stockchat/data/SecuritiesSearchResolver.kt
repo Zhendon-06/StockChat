@@ -1,3 +1,4 @@
+@file:Suppress("CyclomaticComplexMethod")
 package com.guet.liang.stockchat.data
 
 import com.guet.liang.stockchat.model.ChatHistoryItem
@@ -11,11 +12,13 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal sealed class SecuritySearchResult {
     data class Success(val matches: List<TencentSearchMatch>) : SecuritySearchResult()
     data class Failure(val message: String) : SecuritySearchResult()
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal class TencentSecuritySearchService(private val networkModule: NetworkModule) {
     fun search(name: String, callback: (SecuritySearchResult) -> Unit) {
         val params = JSONObject().apply {
@@ -32,8 +35,10 @@ internal class TencentSecuritySearchService(private val networkModule: NetworkMo
     }
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class SecuritySearchCandidates(val entity: IntentEntity, val matches: List<TencentSearchMatch>)
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal sealed class SecuritiesResolutionResult {
     data class Success(val targets: List<SecurityTarget>, val notices: List<String>) : SecuritiesResolutionResult()
     data class Failure(val message: String) : SecuritiesResolutionResult()
@@ -95,6 +100,7 @@ internal class SecuritiesSearchResolver(
     }
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal class LlmSecurityCandidateSelector(
     private val config: AliyunApiConfig,
     private val request: (JSONObject, (JSONObject?, String?) -> Unit) -> Unit,

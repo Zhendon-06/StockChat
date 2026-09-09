@@ -1,6 +1,6 @@
 package com.guet.liang.stockchat.ui
 
-import com.guet.liang.stockchat.data.TencentMarketSnapshot
+import com.guet.liang.stockchat.model.TencentMarketSnapshot
 import com.tencent.kuikly.core.base.Animation
 import com.tencent.kuikly.core.base.Border
 import com.tencent.kuikly.core.base.BorderStyle
@@ -84,7 +84,7 @@ internal fun StockDetailPage.DetailTabSwitcher(container: ViewContainer<*, *>) {
                 padding(all = 3f)
                 borderRadius(20f)
                 backgroundColor(StockChatTheme.recessed)
-                border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
+                themedBorder()
                 flexDirectionRow()
             }
             View {
@@ -128,39 +128,7 @@ internal fun StockDetailPage.DetailTabSwitcher(container: ViewContainer<*, *>) {
                     zIndex(1)
                 }
                 DetailTab.values().forEach { tab ->
-                    View {
-                        attr {
-                            flex(1f)
-                            height(34f)
-                            alignItemsCenter()
-                            justifyContentCenter()
-                        }
-                        event {
-                            click {
-                                if (tab == DetailTab.MARKET) {
-                                    ctx.selectedChartPointIndex = -1
-                                }
-                                if (ctx.selectedDetailTab != tab) ctx.detailScroller?.view?.setContentOffset(0f, 0f, false)
-                                ctx.selectedDetailTab = tab
-                            }
-                        }
-                        Text {
-                            attr {
-                                text(tab.label)
-                                fontSize(scaledFontSize(13f))
-                                if (ctx.selectedDetailTab == tab) {
-                                    fontWeightBold()
-                                }
-                                color(
-                                    if (ctx.selectedDetailTab == tab) {
-                                        StockChatTheme.textPrimary
-                                    } else {
-                                        StockChatTheme.textSecondary
-                                    },
-                                )
-                            }
-                        }
-                    }
+                    ctx.DetailTabButton(this, tab)
                 }
             }
         }
@@ -177,6 +145,45 @@ internal fun StockDetailPage.MarketDisplayContent(
     with(container) {
         StockMarket(snapshot, reference, onGestureActiveChanged = { ctx.chartGestureActive = it }) { chartTop ->
             ctx.detailScroller?.view?.setContentOffset(0f, chartTop, false)
+        }
+    }
+}
+
+private fun StockDetailPage.DetailTabButton(container: ViewContainer<*, *>, tab: DetailTab) {
+    val ctx = this
+    with(container) {
+        View {
+            attr {
+                flex(1f)
+                height(34f)
+                alignItemsCenter()
+                justifyContentCenter()
+            }
+            event {
+                click {
+                    if (tab == DetailTab.MARKET) {
+                        ctx.selectedChartPointIndex = -1
+                    }
+                    if (ctx.selectedDetailTab != tab) ctx.detailScroller?.view?.setContentOffset(0f, 0f, false)
+                    ctx.selectedDetailTab = tab
+                }
+            }
+            Text {
+                attr {
+                    text(tab.label)
+                    fontSize(scaledFontSize(13f))
+                    if (ctx.selectedDetailTab == tab) {
+                        fontWeightBold()
+                    }
+                    color(
+                        if (ctx.selectedDetailTab == tab) {
+                            StockChatTheme.textPrimary
+                        } else {
+                            StockChatTheme.textSecondary
+                        },
+                    )
+                }
+            }
         }
     }
 }

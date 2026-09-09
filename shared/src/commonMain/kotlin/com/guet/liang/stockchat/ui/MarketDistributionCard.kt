@@ -1,18 +1,14 @@
 package com.guet.liang.stockchat.ui
 
-import com.guet.liang.kuiklychart.PieChart
 import com.guet.liang.kuiklychart.api.ChartLegendPosition
 import com.guet.liang.kuiklychart.api.PieEntry
 import com.guet.liang.kuiklychart.api.PieLabelMode
 import com.guet.liang.kuiklychart.finance.financialNumber
-import com.tencent.kuikly.core.base.Color
+import com.guet.liang.kuiklychart.ui.PieChart
 import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.views.Text
 import com.tencent.kuikly.core.views.View
 
-internal data class MarketDistributionEntry(val label: String, val magnitude: Float, val valueLabel: String, val color: Color)
-
-/** Labels remain outside the ring, legible on narrow phones; selection is shown in its center. */
 internal fun ViewContainer<*, *>.MarketDistributionCard(
     title: String,
     entries: List<MarketDistributionEntry>,
@@ -23,12 +19,31 @@ internal fun ViewContainer<*, *>.MarketDistributionCard(
     val valid = entries.filter { it.magnitude.isFinite() && it.magnitude >= 0f }
     val total = valid.sumOf { it.magnitude.toDouble() }.toFloat()
     View {
-        attr { padding(14f); marginTop(12f); borderRadius(16f); backgroundColor(StockChatTheme.surface) }
-        Text { attr { text(title); fontSize(16f); fontWeightMedium(); color(StockChatTheme.textPrimary) } }
+        attr {
+            padding(14f)
+            marginTop(12f)
+            borderRadius(16f)
+            backgroundColor(StockChatTheme.surface)
+        }
+        Text {
+            attr {
+                text(title)
+                fontSize(16f)
+                fontWeightMedium()
+                color(StockChatTheme.textPrimary)
+            }
+        }
         View {
-            attr { flexDirectionRow(); alignItemsCenter(); marginTop(8f) }
+            attr {
+                flexDirectionRow()
+                alignItemsCenter()
+                marginTop(8f)
+            }
             PieChart {
-                attr { width(146f); height(182f) }
+                attr {
+                    width(146f)
+                    height(182f)
+                }
                 chart {
                     emptyText = "暂无分布数据"
                     pie("占比", valid.map { PieEntry(it.label, it.magnitude, it.color) })
@@ -49,26 +64,70 @@ internal fun ViewContainer<*, *>.MarketDistributionCard(
                     tooltip { enabled = false }
                 }
             }
-            View {
-                attr { flex(1f); marginLeft(8f) }
-                valid.forEach { entry ->
-                    View {
-                        attr { marginTop(7f); marginBottom(7f) }
+            DistributionLegend(valid, total)
+        }
+        Text {
+            attr {
+                text(note)
+                fontSize(10f)
+                lineHeight(16f)
+                color(StockChatTheme.textTertiary)
+                marginTop(3f)
+            }
+        }
+    }
+}
+
+private fun ViewContainer<*, *>.DistributionLegend(valid: List<MarketDistributionEntry>, total: Float) {
+                View {
+                    attr {
+                        flex(1f)
+                        marginLeft(8f)
+                    }
+                    valid.forEach { entry ->
                         View {
-                            attr { flexDirectionRow(); alignItemsCenter() }
-                            View { attr { size(6f, 6f); borderRadius(3f); backgroundColor(entry.color); marginRight(5f) } }
-                            Text { attr { text(entry.label); fontSize(10f); color(StockChatTheme.textSecondary) } }
-                        }
-                        Text {
                             attr {
-                                text(entry.valueLabel + if (total > 0) "  ${financialNumber(entry.magnitude / total * 100f, 1)}%" else "  --")
-                                fontSize(11f); fontWeightMedium(); color(entry.color); marginTop(4f)
+                                marginTop(7f)
+                                marginBottom(7f)
+                            }
+                            View {
+                                attr {
+                                    flexDirectionRow()
+                                    alignItemsCenter()
+                                }
+                                View {
+                                    attr {
+                                        size(6f, 6f)
+                                        borderRadius(3f)
+                                        backgroundColor(entry.color)
+                                        marginRight(5f)
+                                    }
+                                }
+                                Text {
+                                    attr {
+                                        text(entry.label)
+                                        fontSize(10f)
+                                        color(StockChatTheme.textSecondary)
+                                    }
+                                }
+                            }
+                            Text {
+                                attr {
+                                    text(
+                                        entry.valueLabel +
+                                            if (total > 0) {
+                                                "  ${financialNumber(entry.magnitude / total * 100f, 1)}%"
+                                            } else {
+                                                "  --"
+                                            }
+                                    )
+                                    fontSize(11f)
+                                    fontWeightMedium()
+                                    color(entry.color)
+                                    marginTop(4f)
+                                }
                             }
                         }
                     }
                 }
-            }
-        }
-        Text { attr { text(note); fontSize(10f); lineHeight(16f); color(StockChatTheme.textTertiary); marginTop(3f) } }
-    }
 }

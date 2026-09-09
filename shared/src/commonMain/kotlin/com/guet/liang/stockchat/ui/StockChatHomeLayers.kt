@@ -2,8 +2,8 @@ package com.guet.liang.stockchat.ui
 
 import com.tencent.kuikly.core.base.Animation
 import com.tencent.kuikly.core.base.Border
-import com.tencent.kuikly.core.base.BoxShadow
 import com.tencent.kuikly.core.base.BorderStyle
+import com.tencent.kuikly.core.base.BoxShadow
 import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.core.base.ColorStop
 import com.tencent.kuikly.core.base.Direction
@@ -23,61 +23,61 @@ internal fun StockChatPage.MainLayer(container: ViewContainer<*, *>) {
     val metrics = ctx.layoutMetrics
     val drawerWidth = metrics.drawerWidth
     with(container) {
-    View {
-        attr {
-            absolutePositionAllZero()
-            backgroundColor(StockChatTheme.background)
-            zIndex(2)
-            transform(Translate(0f, 0f, if (ctx.drawerOpen) drawerWidth else 0f, 0f))
-            animation(Animation.springEaseOut(0.38f, 0.9f, 0.2f), ctx.drawerOpen)
-            capture(CaptureRule.pan(CaptureRuleDirection.HORIZONTAL))
-        }
-        event {
-            pan { params -> ctx.handleDrawerPan(params) }
-            // 点输入框以外的任意区域（顶栏/聊天区/欢迎区等，凡是没被子视图
-            // 消费的点击都会冒泡到这里）：键盘弹起时先收键盘（面板保持展开）；
-            // 键盘已收起时再点，面板才收缩还给页面空间。输入 dock 自己吞掉
-            // 区域内的点击，不会冒泡到这
-            click {
-                if (ctx.selectedHomeTab == HOME_TAB_CHAT) {
-                    ctx.handleBlankAreaTap()
-                }
-            }
-        }
-        ctx.ChatLayer(this)
-        ctx.TodayMarketLayer(this)
-        ctx.ConversationTopBar(this)
-        ctx.HomeTabCapsule(this)
-        ctx.ComposerDock(this)
-        vif({
-            ctx.selectedHomeTab == HOME_TAB_CHAT &&
-                ctx.homeState.chatStage == StockChatHomeChatStage.CONVERSATION &&
-                !ctx.messageListNearBottom
-        }) {
-            ctx.ScrollToBottomButton(this)
-        }
-        vif({ ctx.selectedHomeTab == HOME_TAB_CHAT }) {
-            ctx.VoiceRecordingOverlay(this)
-            ctx.MessageMenuOverlay(this)
-            ctx.ModelMenuOverlay(this)
-            ctx.ConversationMenuOverlay(this)
-        }
         View {
             attr {
                 absolutePositionAllZero()
-                backgroundColor(Color(0xFF141A18))
-                opacity(if (ctx.drawerOpen) 0.34f else 0f)
-                touchEnable(ctx.drawerOpen)
-                zIndex(9)
-                animation(Animation.easeOut(0.3f), ctx.drawerOpen)
+                backgroundColor(StockChatTheme.background)
+                zIndex(2)
+                transform(Translate(0f, 0f, if (ctx.drawerOpen) drawerWidth else 0f, 0f))
+                animation(Animation.springEaseOut(0.38f, 0.9f, 0.2f), ctx.drawerOpen)
                 capture(CaptureRule.pan(CaptureRuleDirection.HORIZONTAL))
             }
             event {
-                click { ctx.closeDrawer() }
                 pan { params -> ctx.handleDrawerPan(params) }
+                // 点输入框以外的任意区域（顶栏/聊天区/欢迎区等，凡是没被子视图
+                // 消费的点击都会冒泡到这里）：键盘弹起时先收键盘（面板保持展开）；
+                // 键盘已收起时再点，面板才收缩还给页面空间。输入 dock 自己吞掉
+                // 区域内的点击，不会冒泡到这
+                click {
+                    if (ctx.selectedHomeTab == HOME_TAB_CHAT) {
+                        ctx.handleBlankAreaTap()
+                    }
+                }
+            }
+            ctx.ChatLayer(this)
+            ctx.TodayMarketLayer(this)
+            ctx.ConversationTopBar(this)
+            ctx.HomeTabCapsule(this)
+            ctx.ComposerDock(this)
+            vif({
+                ctx.selectedHomeTab == HOME_TAB_CHAT &&
+                    ctx.homeState.chatStage == StockChatHomeChatStage.CONVERSATION &&
+                    !ctx.messageListNearBottom
+            }) {
+                ctx.ScrollToBottomButton(this)
+            }
+            vif({ ctx.selectedHomeTab == HOME_TAB_CHAT }) {
+                ctx.VoiceRecordingOverlay(this)
+                ctx.MessageMenuOverlay(this)
+                ctx.ModelMenuOverlay(this)
+                ctx.ConversationMenuOverlay(this)
+            }
+            View {
+                attr {
+                    absolutePositionAllZero()
+                    backgroundColor(Color(StockChatTheme.COLOR_FF141A18))
+                    opacity(if (ctx.drawerOpen) 0.34f else 0f)
+                    touchEnable(ctx.drawerOpen)
+                    zIndex(9)
+                    animation(Animation.easeOut(0.3f), ctx.drawerOpen)
+                    capture(CaptureRule.pan(CaptureRuleDirection.HORIZONTAL))
+                }
+                event {
+                    click { ctx.closeDrawer() }
+                    pan { params -> ctx.handleDrawerPan(params) }
+                }
             }
         }
-    }
     }
 }
 
@@ -89,9 +89,7 @@ internal fun StockChatPage.HomeContentLayer(container: ViewContainer<*, *>) {
             attr {
                 absolutePositionAllZero()
                 overflow(true)
-                val visible =
-                    ctx.homeState.chatStage == StockChatHomeChatStage.WELCOME &&
-                        !ctx.homeState.welcomeObscured
+                val visible = ctx.homeState.chatStage == StockChatHomeChatStage.WELCOME && !ctx.homeState.welcomeObscured
                 visibility(visible)
                 opacity(if (visible) 1f else 0f)
                 touchEnable(visible)
@@ -109,21 +107,9 @@ internal fun StockChatPage.TodayMarketLayer(container: ViewContainer<*, *>) {
         View {
             attr {
                 val active = ctx.selectedHomeTab == HOME_TAB_TODAY_MARKET
-                absolutePosition(
-                    top = pagerData.statusBarHeight + metrics.dp(66f),
-                    left = 0f,
-                    right = 0f,
-                    bottom = 0f,
-                )
+                absolutePosition(top = pagerData.statusBarHeight + metrics.dp(66f), left = 0f, right = 0f, bottom = 0f)
                 opacity(if (active) 1f else 0f)
-                transform(
-                    Translate(
-                        0f,
-                        0f,
-                        0f,
-                        if (active) 0f else metrics.dp(12f),
-                    )
-                )
+                transform(Translate(0f, 0f, 0f, if (active) 0f else metrics.dp(12f)))
                 touchEnable(active)
                 zIndex(if (active) 2 else 0)
                 animate(
@@ -135,9 +121,7 @@ internal fun StockChatPage.TodayMarketLayer(container: ViewContainer<*, *>) {
                     ctx.selectedHomeTab,
                 )
             }
-            event {
-                click { }
-            }
+            event { click {} }
             TodayMarketContent(
                 state = { ctx.todayMarketState },
                 pageWidth = ctx.pagerData.pageViewWidth,
@@ -146,10 +130,7 @@ internal fun StockChatPage.TodayMarketLayer(container: ViewContainer<*, *>) {
                 touchEnabled = { ctx.selectedHomeTab == HOME_TAB_TODAY_MARKET },
                 onQuoteClick = { quote ->
                     if (ctx.selectedHomeTab == HOME_TAB_TODAY_MARKET) {
-                        ctx.openStockDetail(
-                            quote,
-                            HOME_TAB_TODAY_MARKET,
-                        )
+                        ctx.openStockDetail(quote, HOME_TAB_TODAY_MARKET)
                     }
                 },
                 onRetry = {
@@ -174,14 +155,7 @@ internal fun StockChatPage.ChatLayer(container: ViewContainer<*, *>) {
                 val active = ctx.selectedHomeTab == HOME_TAB_CHAT
                 absolutePositionAllZero()
                 opacity(if (active) 1f else 0f)
-                transform(
-                    Translate(
-                        0f,
-                        0f,
-                        0f,
-                        if (active) 0f else -metrics.dp(12f),
-                    )
-                )
+                transform(Translate(0f, 0f, 0f, if (active) 0f else -metrics.dp(12f)))
                 touchEnable(active)
                 zIndex(if (active) 2 else 0)
                 backgroundLinearGradient(
@@ -229,62 +203,9 @@ internal fun StockChatPage.ChatLayer(container: ViewContainer<*, *>) {
                     touchEnable(false)
                 }
             }
-            View {
-                attr {
-                    absolutePosition(
-                        top = pagerData.statusBarHeight + metrics.dp(66f),
-                        left = 0f,
-                        right = 0f,
-                        bottom = metrics.composerContentBottom(
-                            metrics.composerBottomInset(
-                                ctx.keyboardHeight,
-                                pagerData.safeAreaInsets.bottom,
-                            ),
-                            ctx.composerExpanded,
-                            ctx.voiceMode,
-                            ctx.selectedImageCount > 0,
-                            ctx.composerExtraInputLines(),
-                        ) + (ctx.composerDockNudge % 2) * 0.1f,
-                    )
-                    animate(Animation.easeOut(ctx.keyboardAnimDuration), ctx.keyboardHeight)
-                    animate(Animation.easeOut(0.2f), ctx.composerExpanded)
-                }
-                ctx.HomeContentLayer(this)
-                vif({ ctx.homeState.chatStage == StockChatHomeChatStage.CONVERSATION }) {
-                    ctx.MessageList(this)
-                }
-            }
+            ctx.ChatConversationContent(this)
             vif({ ctx.homeState.chatStage == StockChatHomeChatStage.CONVERSATION }) {
-                View {
-                    attr {
-                        absolutePosition(
-                            left = 0f,
-                            right = 0f,
-                            bottom = metrics.composerContentBottom(
-                                metrics.composerBottomInset(
-                                    ctx.keyboardHeight,
-                                    pagerData.safeAreaInsets.bottom,
-                                ),
-                                ctx.composerExpanded,
-                                ctx.voiceMode,
-                                ctx.selectedImageCount > 0,
-                                ctx.composerExtraInputLines(),
-                            ) + (ctx.composerDockNudge % 2) * 0.1f,
-                        )
-                        height(metrics.composerContentFadeHeight)
-                        backgroundLinearGradient(
-                            Direction.TO_BOTTOM,
-                            // 两端保持同一 RGB，只改变 alpha，避免鸿蒙插值透明黑
-                            // 与浅色背景时在消息底部产生灰黑色横条。
-                            ColorStop(StockChatTheme.chatBackgroundEnd.opacity(0f), 0f),
-                            ColorStop(StockChatTheme.chatBackgroundEnd, 1f),
-                        )
-                        touchEnable(false)
-                        zIndex(5)
-                        animate(Animation.easeOut(ctx.keyboardAnimDuration), ctx.keyboardHeight)
-                        animate(Animation.easeOut(0.2f), ctx.composerExpanded)
-                    }
-                }
+                ctx.ChatBottomFade(this)
                 ctx.ConversationHeader(this)
             }
         }
@@ -295,11 +216,7 @@ internal fun StockChatPage.requestTodayMarket(requestId: Int) {
     if (!todayMarketDataSourceReady) {
         return
     }
-    todayMarketDataSource.load { result ->
-        dispatchHome(
-            StockChatHomeEvent.TodayMarketLoadCompleted(requestId, result)
-        )
-    }
+    todayMarketDataSource.load { result -> dispatchHome(StockChatHomeEvent.TodayMarketLoadCompleted(requestId, result)) }
 }
 
 internal fun StockChatPage.ConversationTopBar(container: ViewContainer<*, *>) {
@@ -308,20 +225,13 @@ internal fun StockChatPage.ConversationTopBar(container: ViewContainer<*, *>) {
     with(container) {
         View {
             attr {
-                val interactive = ctx.selectedHomeTab == HOME_TAB_CHAT ||
-                    ctx.selectedHomeTab == HOME_TAB_TODAY_MARKET
-                absolutePosition(
-                    top = pagerData.statusBarHeight + metrics.dp(14f),
-                    left = metrics.dp(18f),
-                )
+                val interactive = ctx.selectedHomeTab == HOME_TAB_CHAT || ctx.selectedHomeTab == HOME_TAB_TODAY_MARKET
+                absolutePosition(top = pagerData.statusBarHeight + metrics.dp(14f), left = metrics.dp(18f))
                 touchEnable(interactive)
                 zIndex(8)
             }
             HamburgerButton(scale = metrics.scale) {
-                if (
-                    ctx.selectedHomeTab != HOME_TAB_CHAT &&
-                    ctx.selectedHomeTab != HOME_TAB_TODAY_MARKET
-                ) {
+                if (ctx.selectedHomeTab != HOME_TAB_CHAT && ctx.selectedHomeTab != HOME_TAB_TODAY_MARKET) {
                     return@HamburgerButton
                 }
                 if (ctx.inputRefReady) {
@@ -339,11 +249,7 @@ internal fun StockChatPage.ConversationHeader(container: ViewContainer<*, *>) {
     with(container) {
         View {
             attr {
-                absolutePosition(
-                    top = pagerData.statusBarHeight + metrics.dp(14f),
-                    left = metrics.dp(78f),
-                    right = metrics.dp(145f),
-                )
+                absolutePosition(top = pagerData.statusBarHeight + metrics.dp(14f), left = metrics.dp(78f), right = metrics.dp(145f))
                 height(metrics.dp(52f))
                 allCenter()
                 zIndex(4)
@@ -363,42 +269,19 @@ internal fun StockChatPage.ConversationHeader(container: ViewContainer<*, *>) {
         }
         View {
             attr {
-                absolutePosition(
-                    top = pagerData.statusBarHeight + metrics.dp(14f),
-                    right = metrics.dp(18f),
-                )
+                absolutePosition(top = pagerData.statusBarHeight + metrics.dp(14f), right = metrics.dp(18f))
                 width(metrics.dp(127f))
                 height(metrics.dp(52f))
                 borderRadius(metrics.dp(26f))
                 backgroundColor(StockChatTheme.surface)
-                boxShadow(
-                    BoxShadow(
-                        metrics.dp(1f),
-                        metrics.dp(5f),
-                        metrics.dp(14f),
-                        Color(0x1A000000),
-                    )
-                )
+                boxShadow(BoxShadow(metrics.dp(1f), metrics.dp(5f), metrics.dp(14f), Color(0x1A000000)))
                 flexDirectionRow()
                 alignItemsCenter()
                 justifyContentSpaceAround()
                 padding(left = metrics.dp(7f), right = metrics.dp(7f))
                 zIndex(5)
             }
-            View {
-                attr {
-                    size(metrics.dp(44f), metrics.dp(44f))
-                    allCenter()
-                }
-                event {
-                    click {
-                        if (ctx.selectedHomeTab == HOME_TAB_CHAT) {
-                            ctx.startNewChat()
-                        }
-                    }
-                }
-                ctx.NewConversationMark(this, metrics.scale)
-            }
+            ctx.ConversationNewButton(this)
             View {
                 attr {
                     size(metrics.dp(44f), metrics.dp(44f))
@@ -471,6 +354,90 @@ internal fun StockChatPage.MoreMark(container: ViewContainer<*, *>, scale: Float
                     }
                 }
             }
+        }
+    }
+}
+
+private fun StockChatPage.ChatConversationContent(container: ViewContainer<*, *>) {
+    val ctx = this
+    val metrics = ctx.layoutMetrics
+    with(container) {
+        View {
+            attr {
+                absolutePosition(
+                    top = pagerData.statusBarHeight + metrics.dp(66f),
+                    left = 0f,
+                    right = 0f,
+                    bottom =
+                        metrics.composerContentBottom(
+                            metrics.composerBottomInset(ctx.keyboardHeight, pagerData.safeAreaInsets.bottom),
+                            ctx.composerExpanded,
+                            ctx.voiceMode,
+                            ctx.selectedImageCount > 0,
+                            ctx.composerExtraInputLines(),
+                        ) + (ctx.composerDockNudge % 2) * 0.1f,
+                )
+                animate(Animation.easeOut(ctx.keyboardAnimDuration), ctx.keyboardHeight)
+                animate(Animation.easeOut(0.2f), ctx.composerExpanded)
+            }
+            ctx.HomeContentLayer(this)
+            vif({ ctx.homeState.chatStage == StockChatHomeChatStage.CONVERSATION }) { ctx.MessageList(this) }
+        }
+    }
+}
+
+private fun StockChatPage.ChatBottomFade(container: ViewContainer<*, *>) {
+    val ctx = this
+    val metrics = ctx.layoutMetrics
+    with(container) {
+        View {
+            attr {
+                absolutePosition(
+                    left = 0f,
+                    right = 0f,
+                    bottom =
+                        metrics.composerContentBottom(
+                            metrics.composerBottomInset(ctx.keyboardHeight, pagerData.safeAreaInsets.bottom),
+                            ctx.composerExpanded,
+                            ctx.voiceMode,
+                            ctx.selectedImageCount > 0,
+                            ctx.composerExtraInputLines(),
+                        ) + (ctx.composerDockNudge % 2) * 0.1f,
+                )
+                height(metrics.composerContentFadeHeight)
+                backgroundLinearGradient(
+                    Direction.TO_BOTTOM,
+                    // 两端保持同一 RGB，只改变 alpha，避免鸿蒙插值透明黑
+                    // 与浅色背景时在消息底部产生灰黑色横条。
+                    ColorStop(StockChatTheme.chatBackgroundEnd.opacity(0f), 0f),
+                    ColorStop(StockChatTheme.chatBackgroundEnd, 1f),
+                )
+                touchEnable(false)
+                zIndex(5)
+                animate(Animation.easeOut(ctx.keyboardAnimDuration), ctx.keyboardHeight)
+                animate(Animation.easeOut(0.2f), ctx.composerExpanded)
+            }
+        }
+    }
+}
+
+private fun StockChatPage.ConversationNewButton(container: ViewContainer<*, *>) {
+    val ctx = this
+    val metrics = ctx.layoutMetrics
+    with(container) {
+        View {
+            attr {
+                size(metrics.dp(44f), metrics.dp(44f))
+                allCenter()
+            }
+            event {
+                click {
+                    if (ctx.selectedHomeTab == HOME_TAB_CHAT) {
+                        ctx.startNewChat()
+                    }
+                }
+            }
+            ctx.NewConversationMark(this, metrics.scale)
         }
     }
 }

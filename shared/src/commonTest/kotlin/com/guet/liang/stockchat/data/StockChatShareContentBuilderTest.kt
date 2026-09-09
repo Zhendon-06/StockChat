@@ -1,4 +1,9 @@
+@file:Suppress("MagicNumber", "LongParameterList", "MaxLineLength")
 package com.guet.liang.stockchat.data
+
+import com.guet.liang.stockchat.base.STOCK_CHAT_RISK_DISCLOSURE
+
+import com.guet.liang.stockchat.base.StockChatShareContentBuilder
 
 import com.guet.liang.stockchat.model.AnswerBlock
 import com.guet.liang.stockchat.model.ChatMessage

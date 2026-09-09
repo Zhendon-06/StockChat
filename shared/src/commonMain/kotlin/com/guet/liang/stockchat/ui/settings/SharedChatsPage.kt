@@ -4,10 +4,11 @@ import com.guet.liang.stockchat.base.BasePager
 import com.guet.liang.stockchat.base.ShareModule
 import com.guet.liang.stockchat.base.bridgeModule
 import com.guet.liang.stockchat.base.closePage
-import com.guet.liang.stockchat.data.StockChatSettingsStore
+import com.guet.liang.stockchat.controller.SettingsController
 import com.guet.liang.stockchat.model.ShareResult
 import com.guet.liang.stockchat.model.SharedChatRecord
 import com.guet.liang.stockchat.model.ThemeMode
+import com.guet.liang.stockchat.ui.settingsController
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.core.base.ViewBuilder
@@ -21,13 +22,16 @@ import com.tencent.kuikly.core.views.Text
 import com.tencent.kuikly.core.views.View
 
 @Page(SHARED_CHATS_PAGE_NAME, supportInLocal = true)
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal class SharedChatsPage : BasePager() {
-    private var records by observableList<SharedChatRecord>()
-    private var expandedRecordId by observable("")
-    private var themeMode by observable(ThemeMode.SYSTEM)
+    private lateinit var controller: SettingsController
+    internal var records by observableList<SharedChatRecord>()
+    internal var expandedRecordId by observable("")
+    internal var themeMode by observable(ThemeMode.SYSTEM)
 
     override fun created() {
         super.created()
+        controller = settingsController()
         reloadRecords()
     }
 
@@ -39,9 +43,7 @@ internal class SharedChatsPage : BasePager() {
     override fun body(): ViewBuilder {
         val ctx = this
         return {
-            attr {
-                backgroundColor(ctx.palette().background)
-            }
+            attr { backgroundColor(ctx.palette().background) }
             SettingsPageHeader(
                 statusBarHeight = ctx.pagerData.statusBarHeight,
                 title = "我的分享",
@@ -57,9 +59,7 @@ internal class SharedChatsPage : BasePager() {
                         bottom = ctx.pagerData.safeAreaInsets.bottom,
                     )
                 }
-                vif({ ctx.records.isEmpty() }) {
-                    ctx.EmptyState(this)
-                }
+                vif({ ctx.records.isEmpty() }) { ctx.EmptyState(this) }
                 vif({ ctx.records.isNotEmpty() }) {
                     Scroller {
                         attr {
@@ -69,12 +69,14 @@ internal class SharedChatsPage : BasePager() {
                             bouncesEnable(true)
                         }
                         ctx.SummaryCard(this)
-                        vfor({ ctx.records }) { record ->
-                            ctx.SharedRecordCard(this, record)
-                        }
+                        vfor({ ctx.records }) { record -> ctx.SharedRecordCard(this, record) }
                         Text {
                             attr {
-                                width((ctx.pagerData.pageViewWidth - 44f.settingsDp()).coerceAtLeast(1f))
+                                width(
+                                    (ctx.pagerData.pageViewWidth - 44f.settingsDp()).coerceAtLeast(
+                                        1f
+                                    )
+                                )
                                 alignSelfCenter()
                                 text("点击分享后会先保存记录；是否最终发送由系统分享面板决定。")
                                 fontSize(11f.settingsDp())
@@ -142,7 +144,9 @@ internal class SharedChatsPage : BasePager() {
                         }
                         Text {
                             attr {
-                                text(if (realCount > 0) "本机真实记录 $realCount 条" else "当前展示股票问答 Demo 记录")
+                                text(
+                                    if (realCount > 0) "本机真实记录 $realCount 条" else "当前展示股票问答 Demo 记录"
+                                )
                                 fontSize(12f.settingsDp())
                                 color(ctx.palette().textSecondary)
                                 marginTop(5f.settingsDp())
@@ -154,10 +158,7 @@ internal class SharedChatsPage : BasePager() {
         }
     }
 
-    private fun SharedRecordCard(
-        container: ViewContainer<*, *>,
-        record: SharedChatRecord,
-    ) {
+    private fun SharedRecordCard(container: ViewContainer<*, *>, record: SharedChatRecord) {
         val ctx = this
         with(container) {
             SettingsCard(
@@ -174,52 +175,7 @@ internal class SharedChatsPage : BasePager() {
                             bottom = 14f.settingsDp(),
                         )
                     }
-                    View {
-                        attr {
-                            flexDirectionRow()
-                            alignItemsCenter()
-                        }
-                        event {
-                            click { ctx.toggleRecord(record.id) }
-                        }
-                        View {
-                            attr {
-                                height(24f.settingsDp())
-                                borderRadius(12f.settingsDp())
-                                padding(left = 9f.settingsDp(), right = 9f.settingsDp())
-                                backgroundColor(
-                                    if (record.isDemo) ctx.palette().surfaceMuted else ctx.palette().accentSoft,
-                                )
-                                allCenter()
-                            }
-                            Text {
-                                attr {
-                                    text(if (record.isDemo) "演示" else record.destinationLabel)
-                                    fontSize(10f.settingsDp())
-                                    fontWeightMedium()
-                                    color(if (record.isDemo) ctx.palette().textSecondary else ctx.palette().accent)
-                                }
-                            }
-                        }
-                        View {
-                            attr { flex(1f) }
-                        }
-                        Text {
-                            attr {
-                                text(ctx.formatSharedAt(record.sharedAtEpochMillis))
-                                fontSize(10f.settingsDp())
-                                color(ctx.palette().textTertiary)
-                            }
-                        }
-                        Text {
-                            attr {
-                                text(if (ctx.expandedRecordId == record.id) "⌃" else "⌄")
-                                fontSize(17f.settingsDp())
-                                color(ctx.palette().textTertiary)
-                                marginLeft(7f.settingsDp())
-                            }
-                        }
-                    }
+                    ctx.SharedRecordHeader(this, record)
                     Text {
                         attr {
                             text(record.question.ifBlank { record.content.title })
@@ -250,55 +206,13 @@ internal class SharedChatsPage : BasePager() {
                             lines(if (ctx.expandedRecordId == record.id) 20 else 3)
                         }
                     }
-                    vif({ ctx.expandedRecordId == record.id }) {
-                        View {
-                            attr {
-                                height(1f.settingsDp())
-                                backgroundColor(ctx.palette().divider)
-                                marginTop(14f.settingsDp())
-                            }
-                        }
-                        View {
-                            attr {
-                                height(52f.settingsDp())
-                                flexDirectionRow()
-                                alignItemsFlexEnd()
-                            }
-                            ctx.RecordActionButton(this, "复制", secondary = true) {
-                                ctx.bridgeModule.copyToPasteboard(record.content.text)
-                                ctx.bridgeModule.toast("分享内容已复制")
-                            }
-                            ctx.RecordActionButton(this, "再次分享", secondary = false) {
-                                ctx.shareAgain(record)
-                            }
-                            View {
-                                attr { flex(1f) }
-                            }
-                            View {
-                                attr {
-                                    height(44f.settingsDp())
-                                    padding(left = 10f.settingsDp(), right = 4f.settingsDp())
-                                    allCenter()
-                                }
-                                event {
-                                    click { ctx.deleteRecord(record.id) }
-                                }
-                                Text {
-                                    attr {
-                                        text("删除")
-                                        fontSize(12f.settingsDp())
-                                        color(ctx.palette().negative)
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    ctx.SharedRecordActions(this, record)
                 }
             }
         }
     }
 
-    private fun RecordActionButton(
+    internal fun RecordActionButton(
         container: ViewContainer<*, *>,
         label: String,
         secondary: Boolean,
@@ -312,12 +226,12 @@ internal class SharedChatsPage : BasePager() {
                     borderRadius(17f.settingsDp())
                     padding(left = 13f.settingsDp(), right = 13f.settingsDp())
                     marginRight(8f.settingsDp())
-                    backgroundColor(if (secondary) ctx.palette().surfaceMuted else ctx.palette().accent)
+                    backgroundColor(
+                        if (secondary) ctx.palette().surfaceMuted else ctx.palette().accent
+                    )
                     allCenter()
                 }
-                event {
-                    click { onClick() }
-                }
+                event { click { onClick() } }
                 Text {
                     attr {
                         text(label)
@@ -330,7 +244,7 @@ internal class SharedChatsPage : BasePager() {
         }
     }
 
-    private fun EmptyState(container: ViewContainer<*, *>) {
+    internal fun EmptyState(container: ViewContainer<*, *>) {
         val ctx = this
         with(container) {
             View {
@@ -377,20 +291,21 @@ internal class SharedChatsPage : BasePager() {
         }
     }
 
-    private fun shareAgain(record: SharedChatRecord) {
-        val newRecord = StockChatSettingsStore.repository.recordSharedChat(
-            sessionId = record.sessionId,
-            question = record.question,
-            content = record.content,
-            destinationLabel = "再次分享",
-        )
+    internal fun shareAgain(record: SharedChatRecord) {
+        val newRecord =
+            controller.recordSharedChat(
+                sessionId = record.sessionId,
+                question = record.question,
+                content = record.content,
+                destinationLabel = "再次分享",
+            )
         reloadRecords()
         acquireModule<ShareModule>(ShareModule.MODULE_NAME).share(record.content) { result ->
             when (result) {
                 ShareResult.Success,
                 ShareResult.Cancelled -> Unit
                 is ShareResult.Failure -> {
-                    StockChatSettingsStore.repository.deleteSharedChat(newRecord.id)
+                    controller.deleteSharedChat(newRecord.id)
                     reloadRecords()
                     bridgeModule.toast(result.errorMessage)
                 }
@@ -398,31 +313,129 @@ internal class SharedChatsPage : BasePager() {
         }
     }
 
-    private fun toggleRecord(recordId: String) {
+    internal fun toggleRecord(recordId: String) {
         expandedRecordId = if (expandedRecordId == recordId) "" else recordId
     }
 
-    private fun deleteRecord(recordId: String) {
-        if (StockChatSettingsStore.repository.deleteSharedChat(recordId)) {
+    internal fun deleteRecord(recordId: String) {
+        if (controller.deleteSharedChat(recordId)) {
             expandedRecordId = ""
             reloadRecords()
         }
     }
 
     private fun reloadRecords() {
-        val snapshot = StockChatSettingsStore.repository.loadSnapshot()
+        val snapshot = controller.snapshot()
         themeMode = snapshot.appearance.themeMode
         records.clear()
         records.addAll(snapshot.sharedChats)
     }
 
-    private fun formatSharedAt(epochMillis: Long): String {
+    internal fun formatSharedAt(epochMillis: Long): String {
         if (epochMillis <= 0L) {
             return "时间未知"
         }
-        return bridgeModule.dateFormatter(epochMillis, "yyyy-MM-dd HH:mm")
-            .ifBlank { "分享记录" }
+        return bridgeModule.dateFormatter(epochMillis, "yyyy-MM-dd HH:mm").ifBlank { "分享记录" }
     }
 
-    private fun palette(): SettingsPalette = settingsPalette(themeMode)
+    internal fun palette(): SettingsPalette = settingsPalette(themeMode)
+}
+
+private fun SharedChatsPage.SharedRecordHeader(
+    container: ViewContainer<*, *>,
+    record: SharedChatRecord,
+) {
+    val ctx = this
+    with(container) {
+        View {
+            attr {
+                flexDirectionRow()
+                alignItemsCenter()
+            }
+            event { click { ctx.toggleRecord(record.id) } }
+            View {
+                attr {
+                    height(24f.settingsDp())
+                    borderRadius(12f.settingsDp())
+                    padding(left = 9f.settingsDp(), right = 9f.settingsDp())
+                    backgroundColor(
+                        if (record.isDemo) ctx.palette().surfaceMuted else ctx.palette().accentSoft
+                    )
+                    allCenter()
+                }
+                Text {
+                    attr {
+                        text(if (record.isDemo) "演示" else record.destinationLabel)
+                        fontSize(10f.settingsDp())
+                        fontWeightMedium()
+                        color(
+                            if (record.isDemo) ctx.palette().textSecondary else ctx.palette().accent
+                        )
+                    }
+                }
+            }
+            View { attr { flex(1f) } }
+            Text {
+                attr {
+                    text(ctx.formatSharedAt(record.sharedAtEpochMillis))
+                    fontSize(10f.settingsDp())
+                    color(ctx.palette().textTertiary)
+                }
+            }
+            Text {
+                attr {
+                    text(if (ctx.expandedRecordId == record.id) "⌃" else "⌄")
+                    fontSize(17f.settingsDp())
+                    color(ctx.palette().textTertiary)
+                    marginLeft(7f.settingsDp())
+                }
+            }
+        }
+    }
+}
+
+private fun SharedChatsPage.SharedRecordActions(
+    container: ViewContainer<*, *>,
+    record: SharedChatRecord,
+) {
+    val ctx = this
+    with(container) {
+        vif({ ctx.expandedRecordId == record.id }) {
+            View {
+                attr {
+                    height(1f.settingsDp())
+                    backgroundColor(ctx.palette().divider)
+                    marginTop(14f.settingsDp())
+                }
+            }
+            View {
+                attr {
+                    height(52f.settingsDp())
+                    flexDirectionRow()
+                    alignItemsFlexEnd()
+                }
+                ctx.RecordActionButton(this, "复制", secondary = true) {
+                    ctx.bridgeModule.copyToPasteboard(record.content.text)
+                    ctx.bridgeModule.toast("分享内容已复制")
+                }
+                ctx.RecordActionButton(this, "再次分享", secondary = false) { ctx.shareAgain(record) }
+                View { attr { flex(1f) } }
+                View {
+                    attr {
+                        height(44f.settingsDp())
+                        padding(left = 10f.settingsDp(), right = 4f.settingsDp())
+                        allCenter()
+                    }
+                    event { click { ctx.deleteRecord(record.id) } }
+                    Text {
+                        attr {
+                            text("删除")
+                            fontSize(12f.settingsDp())
+                            color(ctx.palette().negative)
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

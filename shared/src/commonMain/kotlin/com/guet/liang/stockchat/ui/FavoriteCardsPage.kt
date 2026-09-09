@@ -1,9 +1,11 @@
 package com.guet.liang.stockchat.ui
 
+import com.guet.liang.stockchat.controller.ArtifactController
+import com.guet.liang.stockchat.controller.artifactController
+
+import com.guet.liang.stockchat.base.openRoute
 import com.guet.liang.stockchat.base.BasePager
 import com.guet.liang.stockchat.base.closePage
-import com.guet.liang.stockchat.data.FavoriteCardsStore
-import com.guet.liang.stockchat.data.providerSymbolForQuote
 import com.guet.liang.stockchat.model.StockQuote
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.base.Border
@@ -11,7 +13,6 @@ import com.tencent.kuikly.core.base.BorderStyle
 import com.tencent.kuikly.core.base.ViewBuilder
 import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.directives.vif
-import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.reactive.handler.observable
 import com.tencent.kuikly.core.views.Scroller
@@ -21,11 +22,14 @@ import com.tencent.kuikly.core.views.View
 internal const val FAVORITE_CARDS_PAGE_NAME = "favorite_cards"
 
 @Page(FAVORITE_CARDS_PAGE_NAME, supportInLocal = true)
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal class FavoriteCardsPage : BasePager() {
     private var refreshRevision by observable(0)
+    private lateinit var artifactController: ArtifactController
 
     override fun created() {
         super.created()
+        artifactController = artifactController()
         refreshRevision += 1
     }
 
@@ -49,7 +53,7 @@ internal class FavoriteCardsPage : BasePager() {
                     )
                 }
                 ctx.refreshRevision
-                val favorites = FavoriteCardsStore.all()
+                val favorites = ctx.artifactController.favorites()
                 vif({ favorites.isEmpty() }) {
                     ctx.EmptyState(this)
                 }
@@ -76,7 +80,7 @@ internal class FavoriteCardsPage : BasePager() {
                         size(44f, 44f)
                         borderRadius(22f)
                         backgroundColor(StockChatTheme.surface)
-                        border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
+                        themedBorder()
                         allCenter()
                     }
                     event { click { ctx.closePage() } }
@@ -169,11 +173,11 @@ internal class FavoriteCardsPage : BasePager() {
 
     private fun openStockDetail(quote: StockQuote) {
         val params = JSONObject()
-        params.put("symbol", providerSymbolForQuote(quote) ?: quote.symbol)
+        params.put("symbol", artifactController.providerSymbol(quote))
         pageData.params.optString("qwenApiKey").trim()
             .takeIf(String::isNotBlank)
             ?.let { params.put("qwenApiKey", it) }
-        acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
+        openRoute(
             STOCK_DETAIL_PAGE_NAME,
             params,
         )

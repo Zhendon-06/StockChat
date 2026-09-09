@@ -24,7 +24,7 @@ internal fun TableStyleSettings.toKuiklyTableStyleOptions(): TableStyleOptions {
             presetOptions.rowBackgroundColor
         },
         headerTextColor = if (highlightHeader) {
-            if (customColorArgb.isLightColor()) Color(0xFF1D2027) else Color.WHITE
+            if (customColorArgb.isLightColor()) Color(StockChatTheme.COLOR_FF1D2027) else Color.WHITE
         } else {
             presetOptions.textColor
         },

@@ -5,6 +5,7 @@ import com.guet.liang.stockchat.model.ConversationMindMapArtifactSnapshot
 import com.guet.liang.stockchat.model.ConversationMindMapBranch
 import com.guet.liang.stockchat.model.ConversationTableRowStatus
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal object ConversationMindMapArtifactGenerator {
     fun generate(
         title: String,
@@ -41,6 +42,7 @@ internal object ConversationMindMapArtifactGenerator {
     private const val MIND_MAP_ARTIFACT_TITLE_SUFFIX = " · 思维导图"
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal object MermaidMindMapSourceGenerator {
     fun generate(
         title: String,

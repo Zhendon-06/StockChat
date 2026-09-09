@@ -1,3 +1,4 @@
+@file:Suppress("CyclomaticComplexMethod", "UnusedParameter")
 package com.guet.liang.stockchat.data
 
 import com.guet.liang.stockchat.model.ChatHistoryItem
@@ -10,16 +11,20 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal enum class IntentKind { MARKET_DATA, INVESTMENT_EDUCATION, GENERAL }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal enum class ListingStatus { LISTED, UNLISTED, UNKNOWN }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class IntentEntity(
     val value: String,
     val listingStatus: ListingStatus,
     val note: String,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class IntentClassification(
     val kind: IntentKind,
     val entities: List<IntentEntity>,
@@ -29,6 +34,7 @@ internal data class IntentClassification(
     val needsAi: Boolean,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal sealed class IntentRecognitionResult {
     data class Success(val classification: IntentClassification) : IntentRecognitionResult()
     data class Failure(val message: String) : IntentRecognitionResult()

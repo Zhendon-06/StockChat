@@ -181,20 +181,7 @@ public class KuiklyTableView<RowT> internal constructor(
                     lineHeight = sideHeight,
                 )
             }
-            when {
-                options.header -> renderHorizontalGridBorder(
-                    border = border,
-                    top = (context.spec.header.height - border.width).coerceAtLeast(0f),
-                    lineWidth = context.spec.contentWidth,
-                )
-                options.outer -> vif({ context.reactiveRows.isEmpty() }) {
-                    renderHorizontalGridBorder(
-                        border = border,
-                        top = (context.spec.header.height - border.width).coerceAtLeast(0f),
-                        lineWidth = context.spec.contentWidth,
-                    )
-                }
-            }
+            context.renderHeaderGridBorder(this)
             if (options.column || options.header) {
                 val separatorHeight: () -> Float = if (options.column) {
                     { context.visibleGridBottom() }
@@ -206,6 +193,28 @@ public class KuiklyTableView<RowT> internal constructor(
                         border = border,
                         left = (offset - border.width).coerceAtLeast(0f),
                         lineHeight = separatorHeight,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun renderHeaderGridBorder(container: ViewContainer<*, *>) {
+        val context = this
+        val options = spec.style.borders
+        val border = spec.style.border
+        with(container) {
+            when {
+                options.header -> renderHorizontalGridBorder(
+                    border = border,
+                    top = (context.spec.header.height - border.width).coerceAtLeast(0f),
+                    lineWidth = context.spec.contentWidth,
+                )
+                options.outer -> vif({ context.reactiveRows.isEmpty() }) {
+                    renderHorizontalGridBorder(
+                        border = border,
+                        top = (context.spec.header.height - border.width).coerceAtLeast(0f),
+                        lineWidth = context.spec.contentWidth,
                     )
                 }
             }
@@ -520,49 +529,6 @@ internal fun calculateLazyRowWindow(
         .toInt()
 }
 
-public fun <RowT> ViewContainer<*, *>.KuiklyTable(
-    spec: TableSpec<RowT>,
-    viewportHeight: Float,
-    metrics: TableMetrics = TableMetrics(),
-    style: TableStyleOptions? = null,
-    init: KuiklyTableView<RowT>.() -> Unit = {},
-) {
-    val effectiveSpec = style?.let(spec::withStyle) ?: spec
-    require(viewportHeight > effectiveSpec.header.height) {
-        "Table viewportHeight must be greater than header height"
-    }
-    addChild(KuiklyTableView(effectiveSpec, metrics, viewportHeight)) {
-        attr {
-            height(viewportHeight)
-            alignSelfStretch()
-        }
-        init()
-    }
-}
-
-/**
- * Compose-style convenience entry point. It creates the specification and mounts
- * the table in one expression while keeping the style as an explicit parameter.
- */
-public fun <RowT> ViewContainer<*, *>.KuiklyTable(
-    rows: ObservableList<RowT>,
-    viewportHeight: Float,
-    style: TableStyleOptions = TableStyleOptions(),
-    metrics: TableMetrics = TableMetrics(),
-    configure: TableSpecBuilder<RowT>.() -> Unit,
-    init: KuiklyTableView<RowT>.() -> Unit = {},
-) {
-    KuiklyTable(
-        spec = tableSpec {
-            rows(rows)
-            style(style)
-            configure()
-        },
-        viewportHeight = viewportHeight,
-        metrics = metrics,
-        init = init,
-    )
-}
 
 private fun ContainerAttr.applyHorizontalAlignment(alignment: TableAlignment) {
     when (alignment) {

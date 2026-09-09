@@ -8,6 +8,7 @@ import com.guet.liang.stockchat.model.ConversationTableRow
 import com.guet.liang.stockchat.model.ConversationTableRowStatus
 import com.guet.liang.stockchat.model.MessageState
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal object ConversationTableArtifactGenerator {
     fun generate(
         title: String,

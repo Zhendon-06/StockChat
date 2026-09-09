@@ -25,6 +25,7 @@ import com.tencent.kuiklybase.config.MarkdownConfig
 import com.tencent.kuiklybase.config.MarkdownTypography
 import com.tencent.kuiklybase.config.TextStyleConfig
 
+/** Renders Markdown with native text selection and a shared copy-selection menu. */
 internal class SelectableMarkdownView(
     private val source: String,
     private val fallbackText: String,
@@ -111,6 +112,13 @@ internal class SelectableMarkdownView(
                 }
             }
 
+            context.CopyMenu(this)
+        }
+    }
+
+    private fun CopyMenu(container: ViewContainer<*, *>) {
+        val context = this
+        with(container) {
             View {
                 attr {
                     width(COPY_MENU_WIDTH * context.scale)
@@ -120,7 +128,7 @@ internal class SelectableMarkdownView(
                         left = context.copyMenuLeft,
                     )
                     borderRadius(9f * context.scale)
-                    backgroundColor(Color(0xFF252826))
+                    backgroundColor(Color(StockChatTheme.COLOR_FF252826))
                     opacity(if (context.copyMenuVisible) 1f else 0f)
                     touchEnable(context.copyMenuVisible)
                     zIndex(100)
@@ -199,13 +207,13 @@ internal class SelectableMarkdownView(
         return MarkdownConfig(
             colors = MarkdownColors(
                 text = textColor,
-                codeBackground = if (dark) 0xFF252D29 else 0xFFF5F6F5,
-                inlineCodeBackground = if (dark) 0xFF303A35 else 0xFFE8ECE9,
-                dividerColor = if (dark) 0xFF414C46 else 0xFFD9DFDC,
-                tableBackground = if (dark) 0xFF222925 else 0xFFF8FAF9,
-                blockQuoteBar = if (dark) 0xFF35D1A2 else 0xFF13A87A,
-                blockQuoteBackground = if (dark) 0xFF173B32 else 0xFFE8F7F1,
-                linkColor = if (dark) 0xFF76B7FF else 0xFF1A73E8,
+                codeBackground = if (dark) StockChatTheme.COLOR_FF252D29 else StockChatTheme.COLOR_FFF5F6F5,
+                inlineCodeBackground = if (dark) StockChatTheme.COLOR_FF303A35 else StockChatTheme.COLOR_FFE8ECE9,
+                dividerColor = if (dark) StockChatTheme.COLOR_FF414C46 else StockChatTheme.COLOR_FFD9DFDC,
+                tableBackground = if (dark) StockChatTheme.COLOR_FF222925 else StockChatTheme.COLOR_FFF8FAF9,
+                blockQuoteBar = if (dark) StockChatTheme.COLOR_FF35D1A2 else StockChatTheme.COLOR_FF13A87A,
+                blockQuoteBackground = if (dark) StockChatTheme.COLOR_FF173B32 else StockChatTheme.COLOR_FFE8F7F1,
+                linkColor = if (dark) StockChatTheme.COLOR_FF76B7FF else StockChatTheme.COLOR_FF1A73E8,
                 codeText = textColor,
             ),
             typography = MarkdownTypography(

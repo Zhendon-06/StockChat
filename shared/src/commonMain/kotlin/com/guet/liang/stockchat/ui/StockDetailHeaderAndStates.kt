@@ -1,7 +1,6 @@
 package com.guet.liang.stockchat.ui
 
-import com.tencent.kuikly.core.base.Border
-import com.tencent.kuikly.core.base.BorderStyle
+import com.guet.liang.stockchat.controller.StockDetailControllerState
 import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.module.RouterModule
@@ -16,11 +15,7 @@ internal fun StockDetailPage.DetailHeader(container: ViewContainer<*, *>) {
         View {
             attr {
                 height(pagerData.statusBarHeight + 68f)
-                padding(
-                    top = pagerData.statusBarHeight + 12f,
-                    left = 18f,
-                    right = 18f,
-                )
+                padding(top = pagerData.statusBarHeight + 12f, left = 18f, right = 18f)
                 backgroundColor(StockChatTheme.background)
                 flexDirectionRow()
                 alignItemsCenter()
@@ -30,13 +25,11 @@ internal fun StockDetailPage.DetailHeader(container: ViewContainer<*, *>) {
                     size(44f, 44f)
                     borderRadius(22f)
                     backgroundColor(StockChatTheme.surface)
-                    border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
+                    themedBorder()
                     allCenter()
                 }
                 event {
-                    click {
-                        ctx.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
-                    }
+                    click { ctx.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
                 }
                 Text {
                     attr {
@@ -48,45 +41,7 @@ internal fun StockDetailPage.DetailHeader(container: ViewContainer<*, *>) {
                 }
             }
             ctx.DetailTabSwitcher(this)
-            View {
-                attr {
-                    size(36f, 36f)
-                    borderRadius(18f)
-                    marginLeft(8f)
-                    backgroundColor(
-                        if (ctx.currentDetailQuote()?.let(ctx::isFavorite) == true) {
-                            StockChatTheme.warningSoft
-                        } else {
-                            StockChatTheme.surface
-                        },
-                    )
-                    border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
-                    allCenter()
-                    touchEnable(ctx.currentDetailQuote() != null)
-                }
-                event {
-                    click { ctx.currentDetailQuote()?.let(ctx::toggleFavorite) }
-                }
-                Text {
-                    attr {
-                        text(
-                            if (ctx.currentDetailQuote()?.let(ctx::isFavorite) == true) {
-                                "★"
-                            } else {
-                                "☆"
-                            },
-                        )
-                        fontSize(21f)
-                        color(
-                            if (ctx.currentDetailQuote()?.let(ctx::isFavorite) == true) {
-                                StockChatTheme.warning
-                            } else {
-                                StockChatTheme.accent
-                            },
-                        )
-                    }
-                }
-            }
+            ctx.DetailFavoriteButton(this)
             View {
                 attr {
                     height(36f)
@@ -94,12 +49,10 @@ internal fun StockDetailPage.DetailHeader(container: ViewContainer<*, *>) {
                     padding(left = 13f, right = 13f)
                     marginLeft(8f)
                     backgroundColor(StockChatTheme.surface)
-                    border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
+                    themedBorder()
                     allCenter()
                 }
-                event {
-                    click { ctx.shareQuote() }
-                }
+                event { click { ctx.shareQuote() } }
                 Text {
                     attr {
                         text("分享")
@@ -115,116 +68,157 @@ internal fun StockDetailPage.DetailHeader(container: ViewContainer<*, *>) {
 
 internal fun StockDetailPage.LoadingState(container: ViewContainer<*, *>) {
     with(container) {
-    View {
-        attr {
-            absolutePositionAllZero()
-            allCenter()
-        }
         View {
             attr {
-                size(42f, 42f)
-                borderRadius(21f)
-                backgroundColor(StockChatTheme.accentSoft)
+                absolutePositionAllZero()
                 allCenter()
+            }
+            View {
+                attr {
+                    size(42f, 42f)
+                    borderRadius(21f)
+                    backgroundColor(StockChatTheme.accentSoft)
+                    allCenter()
+                }
+                Text {
+                    attr {
+                        text("…")
+                        fontSize(22f)
+                        color(StockChatTheme.accent)
+                        marginBottom(8f)
+                    }
+                }
             }
             Text {
                 attr {
-                    text("…")
-                    fontSize(22f)
-                    color(StockChatTheme.accent)
-                    marginBottom(8f)
+                    text("正在加载行情")
+                    fontSize(scaledFontSize(14f))
+                    color(StockChatTheme.textSecondary)
+                    marginTop(14f)
                 }
             }
         }
-        Text {
-            attr {
-                text("正在加载行情")
-                fontSize(scaledFontSize(14f))
-                color(StockChatTheme.textSecondary)
-                marginTop(14f)
-            }
-        }
-    }
     }
 }
 
 internal fun StockDetailPage.EmptyState(container: ViewContainer<*, *>) {
     with(container) {
-    View {
-        attr {
-            absolutePositionAllZero()
-            allCenter()
-            padding(left = 32f, right = 32f)
-        }
-        Text {
+        View {
             attr {
-                text("暂无该标的行情")
-                fontSize(scaledFontSize(19f))
-                fontWeightBold()
-                color(StockChatTheme.textPrimary)
+                absolutePositionAllZero()
+                allCenter()
+                padding(left = 32f, right = 32f)
+            }
+            Text {
+                attr {
+                    text("暂无该标的行情")
+                    fontSize(scaledFontSize(19f))
+                    fontWeightBold()
+                    color(StockChatTheme.textPrimary)
+                }
+            }
+            Text {
+                attr {
+                    text("暂未收录该股票或指数的行情信息。")
+                    fontSize(scaledFontSize(14f))
+                    color(StockChatTheme.textSecondary)
+                    marginTop(8f)
+                    textAlignCenter()
+                }
             }
         }
-        Text {
-            attr {
-                text("暂未收录该股票或指数的行情信息。")
-                fontSize(scaledFontSize(14f))
-                color(StockChatTheme.textSecondary)
-                marginTop(8f)
-                textAlignCenter()
-            }
-        }
-    }
     }
 }
 
 internal fun StockDetailPage.ErrorState(container: ViewContainer<*, *>) {
     val ctx = this
     with(container) {
-    View {
-        attr {
-            absolutePositionAllZero()
-            allCenter()
-            padding(left = 32f, right = 32f)
-        }
-        Text {
-            attr {
-                text("行情加载失败")
-                fontSize(scaledFontSize(19f))
-                fontWeightBold()
-                color(StockChatTheme.textPrimary)
-            }
-        }
-        Text {
-            attr {
-                text((ctx.detailState as? DetailUiState.Error)?.message ?: "请稍后重试")
-                fontSize(scaledFontSize(14f))
-                lineHeight(scaledFontSize(21f))
-                color(StockChatTheme.textSecondary)
-                marginTop(8f)
-                textAlignCenter()
-            }
-        }
         View {
             attr {
-                height(40f)
-                borderRadius(20f)
-                padding(left = 20f, right = 20f)
-                marginTop(20f)
-                backgroundColor(StockChatTheme.accent)
+                absolutePositionAllZero()
                 allCenter()
-            }
-            event {
-                click { ctx.loadDetail() }
+                padding(left = 32f, right = 32f)
             }
             Text {
                 attr {
-                    text("重新加载")
+                    text("行情加载失败")
+                    fontSize(scaledFontSize(19f))
+                    fontWeightBold()
+                    color(StockChatTheme.textPrimary)
+                }
+            }
+            Text {
+                attr {
+                    text((ctx.detailState as? StockDetailControllerState.Error)?.message ?: "请稍后重试")
                     fontSize(scaledFontSize(14f))
-                    fontWeightMedium()
-                    color(Color.WHITE)
+                    lineHeight(scaledFontSize(21f))
+                    color(StockChatTheme.textSecondary)
+                    marginTop(8f)
+                    textAlignCenter()
+                }
+            }
+            View {
+                attr {
+                    height(40f)
+                    borderRadius(20f)
+                    padding(left = 20f, right = 20f)
+                    marginTop(20f)
+                    backgroundColor(StockChatTheme.accent)
+                    allCenter()
+                }
+                event { click { ctx.loadDetail() } }
+                Text {
+                    attr {
+                        text("重新加载")
+                        fontSize(scaledFontSize(14f))
+                        fontWeightMedium()
+                        color(Color.WHITE)
+                    }
                 }
             }
         }
     }
+}
+
+private fun StockDetailPage.DetailFavoriteButton(container: ViewContainer<*, *>) {
+    val ctx = this
+    with(container) {
+        View {
+            attr {
+                size(36f, 36f)
+                borderRadius(18f)
+                marginLeft(8f)
+                backgroundColor(
+                    if (ctx.currentDetailQuote()?.let(ctx::isFavorite) == true) {
+                        StockChatTheme.warningSoft
+                    } else {
+                        StockChatTheme.surface
+                    }
+                )
+                themedBorder()
+                allCenter()
+                touchEnable(ctx.currentDetailQuote() != null)
+            }
+            event { click { ctx.currentDetailQuote()?.let(ctx::toggleFavorite) } }
+            Text {
+                attr {
+                    text(
+                        if (ctx.currentDetailQuote()?.let(ctx::isFavorite) == true) {
+                            "★"
+                        } else {
+                            "☆"
+                        }
+                    )
+                    fontSize(21f)
+                    color(
+                        if (ctx.currentDetailQuote()?.let(ctx::isFavorite) == true) {
+                            StockChatTheme.warning
+                        } else {
+                            StockChatTheme.accent
+                        }
+                    )
+                }
+            }
+        }
     }
 }

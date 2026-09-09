@@ -66,14 +66,15 @@ class FinancialViewportMathTest {
         var viewport = FinancialViewport(100f, 60f)
         var velocity = -0.2f
         var frames = 0
-        while (true) {
+        var finished = false
+        while (!finished) {
             val step = FinancialViewportMath.fling(viewport, velocity, 16f, plotWidth, size) ?: break
             assertTrue(abs(step.velocity) < abs(velocity) || step.finished)
             viewport = step.viewport
             velocity = step.velocity
             frames++
-            if (step.finished) break
-            assertTrue(frames < 1000, "fling must terminate")
+            finished = step.finished
+            if (!finished) assertTrue(frames < 1000, "fling must terminate")
         }
         assertTrue(frames > 5, "a fast fling coasts over several frames")
         assertTrue(viewport.start < 100f)

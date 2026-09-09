@@ -1,7 +1,8 @@
 package com.guet.liang.stockchat.ui.settings
 
 import com.guet.liang.stockchat.base.bridgeModule
-import com.guet.liang.stockchat.data.StockChatSettingsStore
+import com.guet.liang.stockchat.controller.ModelProviderDraft
+import com.guet.liang.stockchat.controller.ModelProviderDraftResult
 import com.guet.liang.stockchat.model.ModelProviderConfig
 import com.guet.liang.stockchat.model.ModelProviderKind
 import com.tencent.kuikly.core.module.RouterModule
@@ -30,8 +31,8 @@ internal fun ModelConfigurationPage.selectedProvider(): ModelProviderConfig {
 
 internal fun ModelConfigurationPage.saveProvider() {
     val updated = currentDraftProvider() ?: return
-    StockChatSettingsStore.repository.saveModelProvider(updated)
-    StockChatSettingsStore.repository.selectModel(updated.id, updated.selectedModelId)
+    controller.saveProvider(updated)
+    controller.selectModel(updated.id, updated.selectedModelId)
     reloadConfiguration(updated.id)
     bridgeModule.toast("模型配置已保存")
 }
@@ -39,8 +40,8 @@ internal fun ModelConfigurationPage.saveProvider() {
 internal fun ModelConfigurationPage.chooseModel(modelId: String) {
     selectedModelId = modelId
     val updated = currentDraftProvider() ?: return
-    StockChatSettingsStore.repository.saveModelProvider(updated)
-    StockChatSettingsStore.repository.selectModel(updated.id, modelId)
+    controller.saveProvider(updated)
+    controller.selectModel(updated.id, modelId)
     reloadConfiguration(updated.id)
 }
 
@@ -50,12 +51,12 @@ internal fun ModelConfigurationPage.switchProvider(providerId: String) {
     }
     if (selectedProvider().kind != ModelProviderKind.DEFAULT) {
         val currentDraft = currentDraftProvider() ?: return
-        StockChatSettingsStore.repository.saveModelProvider(currentDraft)
+        controller.saveProvider(currentDraft)
     }
-    configuration = StockChatSettingsStore.repository.loadSnapshot().modelConfiguration
+    configuration = controller.snapshot().modelConfiguration
     val provider = configuration.providers.firstOrNull { it.id == providerId } ?: return
-    StockChatSettingsStore.repository.selectModel(provider.id, provider.selectedModelId)
-    configuration = StockChatSettingsStore.repository.loadSnapshot().modelConfiguration
+    controller.selectModel(provider.id, provider.selectedModelId)
+    configuration = controller.snapshot().modelConfiguration
     selectProvider(configuration.activeProviderId)
 }
 
@@ -75,34 +76,27 @@ internal fun ModelConfigurationPage.updateBaseUrl(value: String) {
     resetModelCatalog()
 }
 
-internal fun ModelConfigurationPage.currentDraftProvider(): ModelProviderConfig? {
-    val normalizedName = providerName.trim()
-    if (normalizedName.isEmpty()) {
-        bridgeModule.toast("请输入 Provider 名称")
-        return null
-    }
-    val normalizedBaseUrl = baseUrl.trim()
-    if (normalizedBaseUrl.isEmpty()) {
-        if (selectedProvider().kind == ModelProviderKind.DEFAULT) {
-            return selectedProvider().copy(
-                displayName = normalizedName.ifBlank { selectedProvider().kind.displayName },
-                selectedModelId = selectedModelId,
-            )
-        }
-        bridgeModule.toast("请输入 Base URL")
-        return null
-    }
-    return selectedProvider().copy(
-        displayName = normalizedName,
-        baseUrl = normalizedBaseUrl,
-        apiKey = apiKey.trim(),
+internal fun ModelConfigurationPage.providerDraft(): ModelProviderDraft =
+    ModelProviderDraft(
+        provider = selectedProvider(),
+        displayName = providerName,
+        baseUrl = baseUrl,
+        apiKey = apiKey,
         selectedModelId = selectedModelId,
-        isEnabled = true,
     )
+
+internal fun ModelConfigurationPage.currentDraftProvider(): ModelProviderConfig? {
+    return when (val result = modelController.validateDraft(providerDraft())) {
+        is ModelProviderDraftResult.Valid -> result.provider
+        is ModelProviderDraftResult.Invalid -> {
+            bridgeModule.toast(result.message)
+            null
+        }
+    }
 }
 
 internal fun ModelConfigurationPage.reloadConfiguration(providerId: String) {
-    configuration = StockChatSettingsStore.repository.loadSnapshot().modelConfiguration
+    configuration = controller.snapshot().modelConfiguration
     val provider = configuration.providers.firstOrNull { it.id == providerId }
     if (provider == null) {
         selectProvider(providerId)
@@ -117,15 +111,8 @@ internal fun ModelConfigurationPage.reloadConfiguration(providerId: String) {
 }
 
 internal fun ModelConfigurationPage.hasUnsavedChanges(): Boolean {
-    val persistedProvider = configuration.providers.firstOrNull { it.id == selectedProviderId }
-        ?: return false
-    val draftProvider = persistedProvider.copy(
-        displayName = providerName.trim().ifBlank { persistedProvider.kind.displayName },
-        baseUrl = baseUrl.trim().trimEnd('/'),
-        apiKey = apiKey.trim(),
-        selectedModelId = selectedModelId,
-    )
-    return draftProvider != persistedProvider
+    return configuration.providers.any { it.id == selectedProviderId } &&
+        modelController.hasUnsavedChanges(providerDraft())
 }
 
 internal fun ModelConfigurationPage.saveAndClose() {

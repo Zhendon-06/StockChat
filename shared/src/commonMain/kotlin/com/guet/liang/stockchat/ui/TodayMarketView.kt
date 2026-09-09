@@ -2,8 +2,6 @@ package com.guet.liang.stockchat.ui
 
 import com.guet.liang.stockchat.model.StockQuote
 import com.guet.liang.stockchat.model.TodayMarketUiState
-import com.tencent.kuikly.core.base.Border
-import com.tencent.kuikly.core.base.BorderStyle
 import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.directives.vif
 import com.tencent.kuikly.core.views.Scroller
@@ -59,26 +57,16 @@ internal fun ViewContainer<*, *>.TodayMarketContent(
                 )
             }
             event {
-                scroll { params ->
-                    onScroll?.invoke(params.offsetY)
-                }
+                scroll { params -> onScroll?.invoke(params.offsetY) }
                 contentSizeChanged { _, _ ->
                     if (restoreOffsetY > 0f) {
                         marketScroller?.view?.setContentOffset(0f, restoreOffsetY, false)
                     }
                 }
             }
-            TodayMarketHeader(
-                state = state,
-                scale = scale,
-                onRetry = onRetry,
-            )
-            vif({ state() is TodayMarketUiState.Loading }) {
-                TodayMarketLoading(scale)
-            }
-            vif({ state() is TodayMarketUiState.Empty }) {
-                TodayMarketEmpty(scale, onRetry)
-            }
+            TodayMarketHeader(state = state, scale = scale, onRetry = onRetry)
+            vif({ state() is TodayMarketUiState.Loading }) { TodayMarketLoading(scale) }
+            vif({ state() is TodayMarketUiState.Empty }) { TodayMarketEmpty(scale, onRetry) }
             vif({ state() is TodayMarketUiState.Error }) {
                 TodayMarketError(
                     message = (state() as? TodayMarketUiState.Error)?.message.orEmpty(),
@@ -113,9 +101,7 @@ private fun ViewContainer<*, *>.TodayMarketHeader(
             marginBottom(16f * scale)
         }
         View {
-            attr {
-                flex(1f)
-            }
+            attr { flex(1f) }
             Text {
                 attr {
                     text("今日市场")
@@ -139,12 +125,10 @@ private fun ViewContainer<*, *>.TodayMarketHeader(
                 borderRadius(17f * scale)
                 padding(left = 12f * scale, right = 12f * scale)
                 backgroundColor(StockChatTheme.surface)
-                border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
+                themedBorder()
                 allCenter()
             }
-            event {
-                click { onRetry() }
-            }
+            event { click { onRetry() } }
             Text {
                 attr {
                     text("刷新")
@@ -155,6 +139,13 @@ private fun ViewContainer<*, *>.TodayMarketHeader(
             }
         }
     }
+    TodayMarketSnapshotStatus(state, scale)
+}
+
+private fun ViewContainer<*, *>.TodayMarketSnapshotStatus(
+    state: () -> TodayMarketUiState,
+    scale: Float,
+) {
     vif({ state() is TodayMarketUiState.Content }) {
         val snapshot = (state() as TodayMarketUiState.Content).snapshot
         View {
@@ -169,7 +160,8 @@ private fun ViewContainer<*, *>.TodayMarketHeader(
                     borderRadius(12f * scale)
                     padding(left = 9f * scale, right = 9f * scale)
                     backgroundColor(
-                        if (snapshot.isDemo) StockChatTheme.warningSoft else StockChatTheme.accentSoft
+                        if (snapshot.isDemo) StockChatTheme.warningSoft
+                        else StockChatTheme.accentSoft
                     )
                     allCenter()
                 }

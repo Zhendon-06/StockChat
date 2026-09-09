@@ -1,5 +1,8 @@
+@file:Suppress("MagicNumber", "LongParameterList", "MaxLineLength")
 package com.guet.liang.stockchat.data
 
+import com.guet.liang.stockchat.model.MarketDataResult
+import com.guet.liang.stockchat.model.TencentMarketSnapshot
 import com.guet.liang.stockchat.model.TodayMarketResult
 import kotlin.test.Test
 import kotlin.test.assertEquals

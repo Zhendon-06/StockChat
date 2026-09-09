@@ -53,10 +53,10 @@ internal fun calculateChartLayout(
     }
     return ChartLayout(
         plot = ChartRect(
-            plotLeft.coerceAtMost(contentRight),
-            contentTop.coerceAtMost(plotBottom),
-            contentRight,
-            plotBottom.coerceAtLeast(contentTop),
+        plotLeft.coerceAtMost(contentRight),
+        contentTop.coerceAtMost(plotBottom),
+        contentRight,
+        plotBottom.coerceAtLeast(contentTop),
         ),
         titleLeft = contentLeft,
         titleTop = titleTop,
@@ -105,7 +105,7 @@ internal fun createLegendItems(spec: ChartSpec, pieMode: Boolean): List<LegendIt
         }
     }
     return spec.dataSeries.filter { it.type != ChartSeriesType.PIE && it.name.isNotEmpty() }
-        .map { LegendItem(it.name, it.color) }
+    .map { LegendItem(it.name, it.color) }
 }
 
 internal fun calculateLegendLayout(
@@ -179,22 +179,26 @@ internal fun categoryLabelIndices(spec: ChartSpec, geometry: ChartRenderGeometry
     )
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class LegendItem(
     val label: String,
     val color: Color,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class LegendPlacement(
     val item: LegendItem,
     val horizontal: Float,
     val baseline: Float,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class LegendLayout(
     val placements: List<LegendPlacement>,
     val height: Float,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class ChartLayout(
     val plot: ChartRect,
     val titleLeft: Float,

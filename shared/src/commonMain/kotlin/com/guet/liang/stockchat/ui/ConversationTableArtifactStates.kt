@@ -1,5 +1,7 @@
 package com.guet.liang.stockchat.ui
 
+import com.guet.liang.stockchat.controller.ComparisonDetailUiState
+
 import com.guet.liang.stockchat.base.closePage
 import com.tencent.kuikly.core.base.Border
 import com.tencent.kuikly.core.base.BorderStyle
@@ -30,7 +32,7 @@ internal fun ConversationTableArtifactPage.PageHeader(container: ViewContainer<*
                     size(44f, 44f)
                     borderRadius(22f)
                     backgroundColor(StockChatTheme.surface)
-                    border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
+                    themedBorder()
                     allCenter()
                 }
                 event {

@@ -32,12 +32,15 @@ StockChat 是一个基于 Kotlin Multiplatform 与 Kuikly 构建的 AI 股票问
 shared/src/commonMain
 ├── model/   跨端消息、行情、预测和设置模型
 ├── data/    AI、行情、语音、会话持久化及产物数据源
+├── controller/ 页面状态与数据源编排，供 Kuikly 页面注入
+├── base/     路由、日志与跨端基础适配
 └── ui/      Kuikly 聊天、详情、市场、表格、脑图和设置页面
 
 androidApp/  Android 启动容器、原生桥接、录音/图片选择和路由适配
 iosApp/      iOS Kuikly 容器与原生桥接
 ohosApp/     OpenHarmony 容器与原生桥接
-table-core/  跨端表格能力
+kuikly-chart/ 跨端金融图表组件库
+table-core/  跨端表格组件库
 static_server/  Web 静态资源本地服务
 ```
 
@@ -56,6 +59,9 @@ AnswerBlock（Markdown / MarketQuote / ImageGallery）
       │
       └─ 行情卡片点击 ─► RouterModule ─► StockDetailPage
 ```
+
+共享业务遵循 `ui → controller → data → model` 的单向依赖，页面只负责 Kuikly 布局和事件转发；
+`kuikly-chart` 与 `table-core` 作为独立组件库复用，平台工程仅提供容器和原生桥接。
 
 ## 环境要求
 

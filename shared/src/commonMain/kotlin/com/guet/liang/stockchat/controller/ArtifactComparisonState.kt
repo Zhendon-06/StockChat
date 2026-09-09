@@ -1,9 +1,10 @@
-package com.guet.liang.stockchat.ui
+package com.guet.liang.stockchat.controller
 
 import com.guet.liang.stockchat.model.ConversationStockComparisonSnapshot
 
 // 对比表格详情页 UI 状态模型。
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal enum class ComparisonRefreshPhase {
     REFRESHING,
     CURRENT,
@@ -12,6 +13,7 @@ internal enum class ComparisonRefreshPhase {
     SESSION_ONLY,
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class ComparisonContentUi(
     val snapshot: ConversationStockComparisonSnapshot,
     val refreshPhase: ComparisonRefreshPhase,
@@ -20,6 +22,7 @@ internal data class ComparisonContentUi(
     val refreshTargetCount: Int,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal sealed class ComparisonDetailUiState {
     data object Loading : ComparisonDetailUiState()
     data object NotFound : ComparisonDetailUiState()

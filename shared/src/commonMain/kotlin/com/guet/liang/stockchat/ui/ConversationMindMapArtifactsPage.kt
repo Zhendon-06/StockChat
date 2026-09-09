@@ -1,8 +1,12 @@
 package com.guet.liang.stockchat.ui
 
+import com.guet.liang.stockchat.controller.ArtifactController
+import com.guet.liang.stockchat.controller.artifactController
+import com.guet.liang.stockchat.controller.ArtifactResult
+
+import com.guet.liang.stockchat.base.openRoute
 import com.guet.liang.stockchat.base.BasePager
 import com.guet.liang.stockchat.base.closePage
-import com.guet.liang.stockchat.data.ChatHistoryDatabase
 import com.guet.liang.stockchat.model.ConversationMindMapArtifactSummary
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.base.Border
@@ -13,7 +17,6 @@ import com.tencent.kuikly.core.base.ViewBuilder
 import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.base.attr.ImageUri
 import com.tencent.kuikly.core.directives.vif
-import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.reactive.handler.observable
 import com.tencent.kuikly.core.views.Image
@@ -25,6 +28,7 @@ internal const val CONVERSATION_MIND_MAP_ARTIFACTS_PAGE_NAME = "conversation_min
 internal const val CONVERSATION_MIND_MAP_ARTIFACT_PAGE_NAME = "conversation_mind_map_artifact"
 internal const val CONVERSATION_MIND_MAP_ARTIFACT_ID_PARAM = "artifactId"
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 private sealed class MindMapArtifactListUiState {
     data object Loading : MindMapArtifactListUiState()
     data object Empty : MindMapArtifactListUiState()
@@ -33,11 +37,14 @@ private sealed class MindMapArtifactListUiState {
 }
 
 @Page(CONVERSATION_MIND_MAP_ARTIFACTS_PAGE_NAME, supportInLocal = true)
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal class ConversationMindMapArtifactsPage : BasePager() {
+    private lateinit var artifactController: ArtifactController
     private var uiState by observable<MindMapArtifactListUiState>(MindMapArtifactListUiState.Loading)
 
     override fun created() {
         super.created()
+        artifactController = artifactController()
         loadArtifacts()
     }
 
@@ -96,7 +103,7 @@ internal class ConversationMindMapArtifactsPage : BasePager() {
                         size(44f, 44f)
                         borderRadius(22f)
                         backgroundColor(StockChatTheme.surface)
-                        border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
+                        themedBorder()
                         allCenter()
                     }
                     event {
@@ -335,7 +342,7 @@ internal class ConversationMindMapArtifactsPage : BasePager() {
                     minHeight(112f)
                     borderRadius(20f)
                     backgroundColor(StockChatTheme.surface)
-                    border(Border(1f, BorderStyle.SOLID, StockChatTheme.border))
+                    themedBorder()
                     boxShadow(BoxShadow(0f, 5f, 16f, Color(0x12000000)))
                     padding(top = 16f, left = 16f, right = 14f, bottom = 16f)
                     marginTop(14f)
@@ -398,22 +405,20 @@ internal class ConversationMindMapArtifactsPage : BasePager() {
 
     private fun loadArtifacts() {
         uiState = MindMapArtifactListUiState.Loading
-        uiState = try {
-            val artifacts = ChatHistoryDatabase.mindMapArtifactRepository().listAll()
-            if (artifacts.isEmpty()) {
+        uiState = when (val result = artifactController.mindMapArtifacts()) {
+            is ArtifactResult.Failure -> MindMapArtifactListUiState.Error(result.message)
+            is ArtifactResult.Success -> if (result.value.isEmpty()) {
                 MindMapArtifactListUiState.Empty
             } else {
-                MindMapArtifactListUiState.Content(artifacts)
+                MindMapArtifactListUiState.Content(result.value)
             }
-        } catch (_: Throwable) {
-            MindMapArtifactListUiState.Error("本地思维导图暂时无法读取，请稍后重试。")
         }
     }
 
     private fun openArtifact(artifactId: Long) {
         val params = JSONObject()
         params.put(CONVERSATION_MIND_MAP_ARTIFACT_ID_PARAM, artifactId.toString())
-        acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
+        openRoute(
             CONVERSATION_MIND_MAP_ARTIFACT_PAGE_NAME,
             params,
         )

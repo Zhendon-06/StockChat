@@ -1,5 +1,6 @@
 package com.guet.liang.stockchat.ui
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal enum class StockChatBackLayer {
     RENAME_DIALOG,
     VOICE_RECORDING,
@@ -12,6 +13,7 @@ internal enum class StockChatBackLayer {
     PAGE,
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class StockChatBackState(
     val renameDialogOpen: Boolean = false,
     val voiceRecording: Boolean = false,
@@ -23,16 +25,18 @@ internal data class StockChatBackState(
     val composerOpen: Boolean = false,
 )
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal object StockChatBackStack {
-    fun topLayer(state: StockChatBackState): StockChatBackLayer = when {
-        state.renameDialogOpen -> StockChatBackLayer.RENAME_DIALOG
-        state.voiceRecording -> StockChatBackLayer.VOICE_RECORDING
-        state.modelMenuOpen -> StockChatBackLayer.MODEL_MENU
-        state.conversationMenuOpen -> StockChatBackLayer.CONVERSATION_MENU
-        state.messageMenuOpen -> StockChatBackLayer.MESSAGE_MENU
-        state.imagePickerOpen -> StockChatBackLayer.IMAGE_PICKER
-        state.drawerOpen -> StockChatBackLayer.DRAWER
-        state.composerOpen -> StockChatBackLayer.COMPOSER
-        else -> StockChatBackLayer.PAGE
-    }
+    fun topLayer(state: StockChatBackState): StockChatBackLayer =
+        when {
+            state.renameDialogOpen -> StockChatBackLayer.RENAME_DIALOG
+            state.voiceRecording -> StockChatBackLayer.VOICE_RECORDING
+            state.modelMenuOpen -> StockChatBackLayer.MODEL_MENU
+            state.conversationMenuOpen -> StockChatBackLayer.CONVERSATION_MENU
+            state.messageMenuOpen -> StockChatBackLayer.MESSAGE_MENU
+            state.imagePickerOpen -> StockChatBackLayer.IMAGE_PICKER
+            state.drawerOpen -> StockChatBackLayer.DRAWER
+            state.composerOpen -> StockChatBackLayer.COMPOSER
+            else -> StockChatBackLayer.PAGE
+        }
 }

@@ -1,7 +1,10 @@
 package com.guet.liang.stockchat.ui
 
 import com.guet.liang.stockchat.base.bridgeModule
+import com.guet.liang.stockchat.base.cancelVoiceRecording
 import com.guet.liang.stockchat.base.setTimeout
+import com.guet.liang.stockchat.base.startVoiceRecording
+import com.guet.liang.stockchat.base.stopVoiceRecording
 import com.guet.liang.stockchat.model.SpeechRecognitionResult
 import com.guet.liang.stockchat.model.VoiceInputState
 import com.tencent.kuikly.core.base.Animation
@@ -33,11 +36,11 @@ internal fun StockChatPage.VoiceRecordingOverlay(container: ViewContainer<*, *>)
                         ColorStop(Color(0x00F6F7F4), 0f),
                         // 中段起完全不透明：输入面板顶缘约在遮罩 48% 处，往下必须实色盖住输入框
                         ColorStop(
-                            if (ctx.voicePressCanceled) Color(0xFFE7B35A) else Color(0xFF43D7BB),
+                            if (ctx.voicePressCanceled) Color(StockChatTheme.COLOR_FFE7B35A) else Color(StockChatTheme.COLOR_FF43D7BB),
                             0.48f,
                         ),
                         ColorStop(
-                            if (ctx.voicePressCanceled) Color(0xFFE2A13C) else Color(0xFF32C9AA),
+                            if (ctx.voicePressCanceled) Color(StockChatTheme.COLOR_FFE2A13C) else Color(StockChatTheme.COLOR_FF32C9AA),
                             1f,
                         ),
                     )
@@ -46,11 +49,7 @@ internal fun StockChatPage.VoiceRecordingOverlay(container: ViewContainer<*, *>)
                 }
                 Text {
                     attr {
-                        absolutePosition(
-                            top = metrics.dp(122f),
-                            left = metrics.dp(24f),
-                            right = metrics.dp(24f),
-                        )
+                        absolutePosition(top = metrics.dp(122f), left = metrics.dp(24f), right = metrics.dp(24f))
                         text(if (ctx.voicePressCanceled) "松手取消" else "松手发送，上移取消")
                         fontSize(metrics.dp(17f))
                         fontWeightMedium()
@@ -60,11 +59,7 @@ internal fun StockChatPage.VoiceRecordingOverlay(container: ViewContainer<*, *>)
                 }
                 View {
                     attr {
-                        absolutePosition(
-                            top = metrics.dp(184f),
-                            left = metrics.dp(22f),
-                            right = metrics.dp(22f),
-                        )
+                        absolutePosition(top = metrics.dp(184f), left = metrics.dp(22f), right = metrics.dp(22f))
                         height(metrics.dp(58f))
                         flexDirectionRow()
                         alignItemsCenter()
@@ -74,12 +69,8 @@ internal fun StockChatPage.VoiceRecordingOverlay(container: ViewContainer<*, *>)
                         View {
                             attr {
                                 val phase = ctx.voiceWavePhase.toFloat()
-                                val primary = kotlin.math.abs(
-                                    kotlin.math.sin((barIndex * 0.58f + phase * 0.42f).toDouble())
-                                ).toFloat()
-                                val secondary = kotlin.math.abs(
-                                    kotlin.math.sin((barIndex * 0.21f - phase * 0.31f).toDouble())
-                                ).toFloat()
+                                val primary = kotlin.math.abs(kotlin.math.sin((barIndex * 0.58f + phase * 0.42f).toDouble())).toFloat()
+                                val secondary = kotlin.math.abs(kotlin.math.sin((barIndex * 0.21f - phase * 0.31f).toDouble())).toFloat()
                                 width(metrics.dp(4f))
                                 height(metrics.dp(10f + primary * 31f + secondary * 11f))
                                 borderRadius(metrics.dp(2f))
@@ -136,11 +127,7 @@ internal fun StockChatPage.toggleVoiceMode() {
 // 非语音模式下，输入框未输入（无文字、无附件、未聚焦）时长按也进入按住说话；
 // 有草稿时不触发，把长按留给文本相关操作
 internal fun StockChatPage.composerHoldToTalkReady(): Boolean =
-    !voiceMode &&
-        selectedHomeTab == HOME_TAB_CHAT &&
-        !composerFocused &&
-        inputText.isEmpty() &&
-        selectedImageCount == 0
+    !voiceMode && selectedHomeTab == HOME_TAB_CHAT && !composerFocused && inputText.isEmpty() && selectedImageCount == 0
 
 // 识别结果落到输入框由用户确认后发送，不直接发出；追加在已有草稿之后。
 // 状态顺序与 toggleVoiceMode 关闭分支一致：展开先触发、键盘动画后接管
@@ -216,11 +203,7 @@ internal fun StockChatPage.cancelVoicePress() {
 internal fun StockChatPage.startVoiceWaveAnimation() {
     stopVoiceWaveAnimation()
     voiceWavePhase = 0
-    voiceWaveTimer = Timer().also { timer ->
-        timer.schedule(0, 120) {
-            voiceWavePhase = (voiceWavePhase + 1) % 120
-        }
-    }
+    voiceWaveTimer = Timer().also { timer -> timer.schedule(0, 120) { voiceWavePhase = (voiceWavePhase + 1) % 120 } }
 }
 
 internal fun StockChatPage.stopVoiceWaveAnimation() {
@@ -246,10 +229,7 @@ internal fun StockChatPage.startVoiceInput() {
     voicePressReleaseRequested = false
     voiceInputState = VoiceInputState.STARTING
     setTimeout(30_000) {
-        if (
-            currentVoiceToken == voiceRequestToken &&
-            voiceInputState == VoiceInputState.STARTING
-        ) {
+        if (currentVoiceToken == voiceRequestToken && voiceInputState == VoiceInputState.STARTING) {
             cancelVoiceInput()
             bridgeModule.toast("麦克风启动超时，请检查权限后重试")
         }
@@ -267,10 +247,7 @@ internal fun StockChatPage.startVoiceInput() {
                 return@startVoiceRecording
             }
             setTimeout(30_000) {
-                if (
-                    currentVoiceToken == voiceRequestToken &&
-                    voiceInputState == VoiceInputState.RECORDING
-                ) {
+                if (currentVoiceToken == voiceRequestToken && voiceInputState == VoiceInputState.RECORDING) {
                     voicePressActive = false
                     voicePressCanceled = false
                     stopVoiceWaveAnimation()
@@ -283,11 +260,7 @@ internal fun StockChatPage.startVoiceInput() {
             voicePressReleaseRequested = false
             stopVoiceWaveAnimation()
             voiceInputState = VoiceInputState.IDLE
-            bridgeModule.toast(
-                result?.optString("errorMessage").orEmpty().ifBlank {
-                    "无法启动麦克风，请检查录音权限"
-                }
-            )
+            bridgeModule.toast(result?.optString("errorMessage").orEmpty().ifBlank { "无法启动麦克风，请检查录音权限" })
         }
     }
 }
@@ -306,52 +279,46 @@ internal fun StockChatPage.stopVoiceInput() {
         val audioBase64 = result?.optString("audioBase64").orEmpty()
         if (result?.optInt("success") != 1 || audioBase64.isBlank()) {
             voiceInputState = VoiceInputState.IDLE
-            bridgeModule.toast(
-                result?.optString("errorMessage").orEmpty().ifBlank {
-                    "没有录到有效语音，请重试"
-                }
-            )
+            bridgeModule.toast(result?.optString("errorMessage").orEmpty().ifBlank { "没有录到有效语音，请重试" })
             return@stopVoiceRecording
         }
         runCatching {
-            speechRecognitionService.transcribe(
-                audioBase64 = audioBase64,
-                mimeType = result.optString("mimeType").ifBlank { "audio/wav" },
-            ) { recognitionResult ->
-                if (currentVoiceToken != voiceRequestToken) {
-                    return@transcribe
-                }
-                voiceInputState = VoiceInputState.IDLE
-                when (recognitionResult) {
-                    is SpeechRecognitionResult.Success -> {
-                        val recognizedText = recognitionResult.text.trim()
-                        if (recognizedText.isEmpty()) {
-                            bridgeModule.toast("没有识别到有效内容，请重试")
-                        } else {
-                            fillComposerWithVoiceResult(recognizedText)
+                speechRecognitionService.transcribe(
+                    audioBase64 = audioBase64,
+                    mimeType = result.optString("mimeType").ifBlank { "audio/wav" },
+                ) { recognitionResult ->
+                    if (currentVoiceToken != voiceRequestToken) {
+                        return@transcribe
+                    }
+                    voiceInputState = VoiceInputState.IDLE
+                    when (recognitionResult) {
+                        is SpeechRecognitionResult.Success -> {
+                            val recognizedText = recognitionResult.text.trim()
+                            if (recognizedText.isEmpty()) {
+                                bridgeModule.toast("没有识别到有效内容，请重试")
+                            } else {
+                                fillComposerWithVoiceResult(recognizedText)
+                            }
+                        }
+                        is SpeechRecognitionResult.Failure -> {
+                            bridgeModule.toast(recognitionResult.message)
                         }
                     }
-                    is SpeechRecognitionResult.Failure -> {
-                        bridgeModule.toast(recognitionResult.message)
-                    }
                 }
             }
-        }.onFailure {
-            if (currentVoiceToken == voiceRequestToken) {
-                voiceInputState = VoiceInputState.IDLE
-                bridgeModule.toast("MiMo 语音识别暂时不可用，请稍后重试")
+            .onFailure {
+                if (currentVoiceToken == voiceRequestToken) {
+                    voiceInputState = VoiceInputState.IDLE
+                    bridgeModule.toast("MiMo 语音识别暂时不可用，请稍后重试")
+                }
             }
-        }
     }
 }
 
 internal fun StockChatPage.cancelVoiceInput() {
     voiceRequestToken += 1
     stopVoiceWaveAnimation()
-    if (
-        voiceInputState == VoiceInputState.STARTING ||
-        voiceInputState == VoiceInputState.RECORDING
-    ) {
+    if (voiceInputState == VoiceInputState.STARTING || voiceInputState == VoiceInputState.RECORDING) {
         bridgeModule.cancelVoiceRecording()
     }
     voicePressActive = false

@@ -1,23 +1,20 @@
+@file:Suppress("MagicNumber")
 package com.guet.liang.stockchat.data
 
+import com.guet.liang.stockchat.controller.ChatSessionRepository
 import com.guet.liang.stockchat.database.StockChatDatabase
 import com.guet.liang.stockchat.model.AnswerBlock
 import com.guet.liang.stockchat.model.ChatMessage
 import com.guet.liang.stockchat.model.ChatRole
+import com.guet.liang.stockchat.model.ChatSessionSummary
 import com.guet.liang.stockchat.model.MessageState
 import com.guet.liang.stockchat.model.StockQuote
 import com.tencent.kuikly.core.datetime.DateTime
 
-internal data class ChatSessionSummary(
-    val id: String,
-    val title: String,
-    val updatedAt: Long,
-    val isArchived: Boolean = false,
-)
-
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal class ChatHistoryRepository(
     private val database: StockChatDatabase,
-) {
+) : ChatSessionRepository {
     private val queries = database.chatHistoryQueries
     // OHOS currently uses a no-op SQLDelight driver. Keep a process-local
     // fallback so switching pages or recreating the Kuikly pager does not
@@ -25,7 +22,7 @@ internal class ChatHistoryRepository(
     private val fallbackMessages = linkedMapOf<String, List<ChatMessage>>()
     private val fallbackSessions = linkedMapOf<String, ChatSessionSummary>()
 
-    fun loadSessions(): List<ChatSessionSummary> {
+    override fun loadSessions(): List<ChatSessionSummary> {
         val stored = queries.selectSessions().executeAsList().map {
             ChatSessionSummary(
                 id = it.id,
@@ -37,7 +34,7 @@ internal class ChatHistoryRepository(
         return stored.ifEmpty { fallbackSessions.values.filterNot { it.isArchived } }
     }
 
-    fun loadArchivedSessions(): List<ChatSessionSummary> {
+    override fun loadArchivedSessions(): List<ChatSessionSummary> {
         val stored = queries.selectArchivedSessions().executeAsList().map {
             ChatSessionSummary(
                 id = it.id,
@@ -49,7 +46,7 @@ internal class ChatHistoryRepository(
         return stored.ifEmpty { fallbackSessions.values.filter { it.isArchived } }
     }
 
-    fun loadMessages(sessionId: String): List<ChatMessage> {
+    override fun loadMessages(sessionId: String): List<ChatMessage> {
         val stored = queries.selectMessages(sessionId).executeAsList().mapNotNull { storedMessage ->
             val role = enumValueOrNull<ChatRole>(storedMessage.role) ?: return@mapNotNull null
             val state = enumValueOrNull<MessageState>(storedMessage.state) ?: MessageState.DELIVERED
@@ -66,7 +63,7 @@ internal class ChatHistoryRepository(
         return stored.ifEmpty { fallbackMessages[sessionId].orEmpty() }
     }
 
-    fun replaceMessages(sessionId: String, messages: List<ChatMessage>) {
+    override fun replaceMessages(sessionId: String, messages: List<ChatMessage>) {
         fallbackMessages[sessionId] = messages.toList()
         fallbackSessions[sessionId] = ChatSessionSummary(
             id = sessionId,
@@ -95,7 +92,7 @@ internal class ChatHistoryRepository(
         }
     }
 
-    fun clearSession(sessionId: String) {
+    override fun clearSession(sessionId: String) {
         fallbackMessages.remove(sessionId)
         fallbackSessions.remove(sessionId)
         database.transaction {
@@ -104,12 +101,12 @@ internal class ChatHistoryRepository(
         }
     }
 
-    fun renameSession(sessionId: String, title: String) {
+    override fun renameSession(sessionId: String, title: String) {
         fallbackSessions[sessionId]?.let { fallbackSessions[sessionId] = it.copy(title = title) }
         queries.renameSession(title, sessionId)
     }
 
-    fun archiveSession(sessionId: String): Boolean {
+    override fun archiveSession(sessionId: String): Boolean {
         if (sessionId.isBlank()) {
             return false
         }
@@ -253,6 +250,7 @@ internal class ChatHistoryRepository(
     }
 }
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal object ChatHistoryDatabase {
     private var repository: ChatHistoryRepository? = null
     private var artifactRepository: ConversationTableArtifactRepository? = null

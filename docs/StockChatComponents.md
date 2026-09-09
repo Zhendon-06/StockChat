@@ -14,6 +14,10 @@ MIMO_VOICE_API_KEY=你的_MiMo_API_Key
 构建时也可用同名环境变量覆盖本地配置。千问文本问答只读取 `QWEN_API_KEY`，语音接口
 单独读取 `MIMO_VOICE_API_KEY`，两者不会混用。
 
+## 分层与依赖方向
+
+共享代码按 `ui → controller → data → model` 分层。Kuikly 页面负责布局、渲染状态和转发用户动作，controller 注入数据源并编排加载、重试和错误状态，data 层封装网络/本地接口，model 只包含跨端数据结构。依赖只能向右流动，data 和 model 不依赖 UI；页面不直接创建数据源。`kuikly-chart`、`table-core` 是可独立复用的跨端组件库，平台工程只负责启动、路由容器和必要桥接。
+
 ## Markdown 文本选择与复制
 
 AI 回答完成后，Android、iOS 和鸿蒙端支持在 KuiklyMarkdown 内容上长按选词，并拖动左右手柄
@@ -149,5 +153,6 @@ Kuikly 页面中的布局数值使用逻辑布局单位（Android 侧接近 dp�
 - Android：`shared` Android 编译、共享层单元测试和 Android Debug APK 构建通过；已完成聊天主页、行情卡片、详情页、走势图、周期切换和返回链路回归。
 - iOS：聊天输入、发送、Markdown/行情卡片渲染、详情跳转和返回链路已完成宿主适配并可运行，核心页面沿用 shared Kuikly 实现。
 - 鸿蒙：共享层代码已保留 OpenHarmony 目标，宿主适配与真机回归待完成。
-- 当前共享层单元测试共 123 项，最近一次 `:shared:testDebugUnitTest --rerun-tasks` 全部通过。
+- 当前共享层单元测试共 132 项、`kuikly-chart` 共 61 项；最近一次 `:shared:testDebugUnitTest :kuikly-chart:testDebugUnitTest` 全部通过。
+- Detekt 已接入 `shared`、`kuikly-chart` 和 `table-core`，统一配置位于 `config/detekt/detekt.yml`；当前三模块报告均为 0 条告警。
 - 三端最终交付前，需补齐鸿蒙回归并录制覆盖“聊天 → 富内容行情 → 详情承接”的 Android 演示视频。

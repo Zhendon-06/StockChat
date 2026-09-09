@@ -1,10 +1,9 @@
 package com.guet.liang.stockchat.ui
 
-import com.guet.liang.kuiklytableview.table.KuiklyTable
 import com.guet.liang.kuiklytableview.table.TableAlignment
 import com.guet.liang.kuiklytableview.table.TableStyleOptions
 import com.guet.liang.kuiklytableview.table.tableSpec
-import com.guet.liang.stockchat.data.StockChatSettingsStore
+import com.guet.liang.kuiklytableview.ui.KuiklyTable
 import com.guet.liang.stockchat.model.ConversationStockComparisonRow
 import com.guet.liang.stockchat.model.TableStylePreset
 import com.tencent.kuikly.core.base.Color
@@ -17,30 +16,25 @@ internal const val STOCK_COMPARISON_TABLE_HEADER_HEIGHT = 48f
 internal const val STOCK_COMPARISON_TABLE_ROW_HEIGHT = 82f
 private const val STOCK_COMPARISON_TABLE_VERTICAL_PADDING = 7f
 
-private data class ComparisonTableLayout(
-    val rowHeight: Float,
-    val verticalPadding: Float,
-)
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
+private data class ComparisonTableLayout(val rowHeight: Float, val verticalPadding: Float)
 
-private fun comparisonTableLayout(preset: TableStylePreset): ComparisonTableLayout = when (preset) {
-    TableStylePreset.COMPACT -> ComparisonTableLayout(
-        rowHeight = 74f,
-        verticalPadding = 4f,
-    )
-    TableStylePreset.SPACIOUS -> ComparisonTableLayout(
-        rowHeight = 94f,
-        verticalPadding = 10f,
-    )
-    TableStylePreset.DEFAULT,
-    TableStylePreset.MINIMAL,
-    TableStylePreset.BLUE,
-    TableStylePreset.DARK -> ComparisonTableLayout(
-        rowHeight = STOCK_COMPARISON_TABLE_ROW_HEIGHT,
-        verticalPadding = STOCK_COMPARISON_TABLE_VERTICAL_PADDING,
-    )
-}
+private fun comparisonTableLayout(preset: TableStylePreset): ComparisonTableLayout =
+    when (preset) {
+        TableStylePreset.COMPACT -> ComparisonTableLayout(rowHeight = 74f, verticalPadding = 4f)
+        TableStylePreset.SPACIOUS -> ComparisonTableLayout(rowHeight = 94f, verticalPadding = 10f)
+        TableStylePreset.DEFAULT,
+        TableStylePreset.MINIMAL,
+        TableStylePreset.BLUE,
+        TableStylePreset.DARK ->
+            ComparisonTableLayout(
+                rowHeight = STOCK_COMPARISON_TABLE_ROW_HEIGHT,
+                verticalPadding = STOCK_COMPARISON_TABLE_VERTICAL_PADDING,
+            )
+    }
 
-private data class ComparisonTableContentColors(
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
+internal data class ComparisonTableContentColors(
     val primary: Color,
     val secondary: Color,
     val placeholder: Color,
@@ -60,25 +54,25 @@ private fun comparisonTableContentColors(
     return if (isDarkPreset) {
         ComparisonTableContentColors(
             primary = tableStyle.textColor,
-            secondary = Color(0xFFCBD5E1),
-            placeholder = Color(0xFF94A3B8),
-            positive = Color(0xFFFF746D),
-            negative = Color(0xFF42C79E),
-            userBadgeBackground = Color(0xFF1E3A5F),
-            userBadgeText = Color(0xFF93C5FD),
-            aiBadgeBackground = Color(0xFF174C3C),
-            aiBadgeText = Color(0xFF6EE7B7),
-            sourceBadgeBackground = Color(0xFF334155),
+            secondary = Color(StockChatTheme.COLOR_FFCBD5E1),
+            placeholder = Color(StockChatTheme.COLOR_FF94A3B8),
+            positive = Color(StockChatTheme.COLOR_FFFF746D),
+            negative = Color(StockChatTheme.COLOR_FF42C79E),
+            userBadgeBackground = Color(StockChatTheme.COLOR_FF1E3A5F),
+            userBadgeText = Color(StockChatTheme.COLOR_FF93C5FD),
+            aiBadgeBackground = Color(StockChatTheme.COLOR_FF174C3C),
+            aiBadgeText = Color(StockChatTheme.COLOR_FF6EE7B7),
+            sourceBadgeBackground = Color(StockChatTheme.COLOR_FF334155),
         )
     } else {
         ComparisonTableContentColors(
             primary = tableStyle.textColor,
-            secondary = Color(0xFF64748B),
-            placeholder = Color(0xFF94A3B8),
+            secondary = Color(StockChatTheme.COLOR_FF64748B),
+            placeholder = Color(StockChatTheme.COLOR_FF94A3B8),
             positive = StockChatTheme.positive,
             negative = StockChatTheme.negative,
-            userBadgeBackground = Color(0xFFEAF2FF),
-            userBadgeText = Color(0xFF356AA0),
+            userBadgeBackground = Color(StockChatTheme.COLOR_FFEAF2FF),
+            userBadgeText = Color(StockChatTheme.COLOR_FF356AA0),
             aiBadgeBackground = StockChatTheme.accentSoft,
             aiBadgeText = StockChatTheme.accent,
             sourceBadgeBackground = StockChatTheme.recessed,
@@ -91,174 +85,55 @@ internal fun ViewContainer<*, *>.ConversationStockComparisonTable(
     viewportHeight: Float,
     onRowClick: (ConversationStockComparisonRow) -> Unit,
 ) {
-    val tableStyleSettings = StockChatSettingsStore.repository
-        .loadSnapshot()
-        .appearance
-        .tableStyle
+    val tableStyleSettings = savedSettingsSnapshot().appearance.tableStyle
     val tableStyle = tableStyleSettings.toKuiklyTableStyleOptions()
-    val contentColors = comparisonTableContentColors(
-        tableStyle = tableStyle,
-        isDarkPreset = tableStyleSettings.preset == TableStylePreset.DARK,
-    )
+    val contentColors =
+        comparisonTableContentColors(
+            tableStyle = tableStyle,
+            isDarkPreset = tableStyleSettings.preset == TableStylePreset.DARK,
+        )
     val tableLayout = comparisonTableLayout(tableStyleSettings.preset)
-    val tableSpec = tableSpec<ConversationStockComparisonRow> {
-        rows(rows)
-        rowKey { row -> "${row.providerSymbol}:${row.symbol}:${row.displayName}" }
-        rowHeight = tableLayout.rowHeight
-        padding(horizontal = 10f, vertical = tableLayout.verticalPadding)
-        style(tableStyle)
-        header {
-            height = STOCK_COMPARISON_TABLE_HEADER_HEIGHT
-        }
-        columns {
-            column("instrument", "表格 / 会话来源", width = 210f) {
-                value { row -> row.displayName }
-                cell { cell -> ComparisonInstrumentCell(cell.row, contentColors, onRowClick) }
+    val tableSpec =
+        tableSpec<ConversationStockComparisonRow> {
+            rows(rows)
+            rowKey { row -> "${row.providerSymbol}:${row.symbol}:${row.displayName}" }
+            rowHeight = tableLayout.rowHeight
+            padding(horizontal = 10f, vertical = tableLayout.verticalPadding)
+            style(tableStyle)
+            header { height = STOCK_COMPARISON_TABLE_HEADER_HEIGHT }
+            columns {
+                comparisonIdentityColumns(contentColors, onRowClick)
+                comparisonRangeColumns(contentColors, onRowClick)
+                comparisonMetricColumns(contentColors, onRowClick)
+                comparisonTradingColumns(contentColors, onRowClick)
             }
-            column("price", "最新价", width = 96f) {
-                alignment = TableAlignment.End
-                value { row -> row.price.orPlaceholder() }
-                cell { cell ->
-                    ComparisonValueCell(
-                        row = cell.row,
-                        primary = cell.row.price.orPlaceholder(),
-                        secondary = cell.row.dataSource.label,
-                        alignment = TableAlignment.End,
-                        colors = contentColors,
-                        onRowClick = onRowClick,
-                    )
-                }
-            }
-            column("change", "涨跌", width = 112f) {
-                alignment = TableAlignment.End
-                value { row -> row.changePercent.orPlaceholder() }
-                cell { cell -> ComparisonChangeCell(cell.row, contentColors, onRowClick) }
-            }
-            column("open", "今开 / 昨收", width = 112f) {
-                alignment = TableAlignment.End
-                value { row -> row.open.orPlaceholder() }
-                cell { cell ->
-                    ComparisonValueCell(
-                        row = cell.row,
-                        primary = cell.row.open.orPlaceholder(),
-                        secondary = "昨 ${cell.row.previousClose.orPlaceholder()}",
-                        alignment = TableAlignment.End,
-                        colors = contentColors,
-                        onRowClick = onRowClick,
-                    )
-                }
-            }
-            column("range", "最高 / 最低", width = 118f) {
-                alignment = TableAlignment.End
-                value { row -> row.high.orPlaceholder() }
-                cell { cell ->
-                    ComparisonValueCell(
-                        row = cell.row,
-                        primary = "高 ${cell.row.high.orPlaceholder()}",
-                        secondary = "低 ${cell.row.low.orPlaceholder()}",
-                        alignment = TableAlignment.End,
-                        colors = contentColors,
-                        onRowClick = onRowClick,
-                    )
-                }
-            }
-            column("amplitude", "振幅", width = 92f) {
-                alignment = TableAlignment.End
-                value { row -> row.amplitude.asPercent() }
-                cell { cell ->
-                    ComparisonValueCell(
-                        row = cell.row,
-                        primary = cell.row.amplitude.asPercent(),
-                        alignment = TableAlignment.End,
-                        colors = contentColors,
-                        onRowClick = onRowClick,
-                    )
-                }
-            }
-            column("turnover", "换手率", width = 98f) {
-                alignment = TableAlignment.End
-                value { row -> row.turnoverRate.asPercent() }
-                cell { cell ->
-                    ComparisonValueCell(
-                        row = cell.row,
-                        primary = cell.row.turnoverRate.asPercent(),
-                        alignment = TableAlignment.End,
-                        colors = contentColors,
-                        onRowClick = onRowClick,
-                    )
-                }
-            }
-            column("pe", "市盈率", width = 96f) {
-                alignment = TableAlignment.End
-                value { row -> row.priceEarningsRatio.orPlaceholder() }
-                cell { cell ->
-                    ComparisonValueCell(
-                        row = cell.row,
-                        primary = cell.row.priceEarningsRatio.orPlaceholder(),
-                        alignment = TableAlignment.End,
-                        colors = contentColors,
-                        onRowClick = onRowClick,
-                    )
-                }
-            }
-            column("amount", "成交额", width = 136f) {
-                alignment = TableAlignment.End
-                value { row -> row.amount.withUnit(row.amountUnit) }
-                cell { cell ->
-                    ComparisonValueCell(
-                        row = cell.row,
-                        primary = cell.row.amount.withUnit(cell.row.amountUnit),
-                        secondary = cell.row.volume.withUnit(cell.row.volumeUnit, "量 "),
-                        alignment = TableAlignment.End,
-                        colors = contentColors,
-                        onRowClick = onRowClick,
-                    )
-                }
-            }
-            column("trend", "近期走势", width = 128f) {
-                alignment = TableAlignment.Center
-                value { row -> row.trendPoints.size.toString() }
-                cell { cell -> ComparisonTrendCell(cell.row, contentColors, onRowClick) }
-            }
-            column("updated", "数据时间", width = 172f) {
-                value { row -> row.updatedAt.orPlaceholder() }
-                cell { cell ->
-                    ComparisonValueCell(
-                        row = cell.row,
-                        primary = cell.row.updatedAt.orPlaceholder(),
-                        secondary = "点击查看详情  ›",
-                        colors = contentColors,
-                        onRowClick = onRowClick,
-                    )
-                }
-            }
-        }
-        emptyState {
-            View {
-                attr {
-                    width(STOCK_COMPARISON_TABLE_CONTENT_WIDTH)
-                    height((viewportHeight - STOCK_COMPARISON_TABLE_HEADER_HEIGHT).coerceAtLeast(1f))
-                    backgroundColor(tableStyle.rowBackgroundColor)
-                    allCenter()
-                }
-                Text {
+            emptyState {
+                View {
                     attr {
-                        text("该会话暂未识别到可对比的股票或指数")
-                        fontSize(14f)
-                        color(contentColors.placeholder)
+                        width(STOCK_COMPARISON_TABLE_CONTENT_WIDTH)
+                        height(
+                            (viewportHeight - STOCK_COMPARISON_TABLE_HEADER_HEIGHT).coerceAtLeast(
+                                1f
+                            )
+                        )
+                        backgroundColor(tableStyle.rowBackgroundColor)
+                        allCenter()
+                    }
+                    Text {
+                        attr {
+                            text("该会话暂未识别到可对比的股票或指数")
+                            fontSize(14f)
+                            color(contentColors.placeholder)
+                        }
                     }
                 }
             }
         }
-    }
 
-    KuiklyTable(
-        spec = tableSpec,
-        viewportHeight = viewportHeight,
-    )
+    KuiklyTable(spec = tableSpec, viewportHeight = viewportHeight)
 }
 
-private fun ViewContainer<*, *>.ComparisonInstrumentCell(
+internal fun ViewContainer<*, *>.ComparisonInstrumentCell(
     row: ConversationStockComparisonRow,
     colors: ComparisonTableContentColors,
     onRowClick: (ConversationStockComparisonRow) -> Unit,
@@ -275,7 +150,11 @@ private fun ViewContainer<*, *>.ComparisonInstrumentCell(
         }
         Text {
             attr {
-                text(listOf(row.marketLabel, row.symbol).filter(String::isNotBlank).joinToString(" · "))
+                text(
+                    listOf(row.marketLabel, row.symbol)
+                        .filter(String::isNotBlank)
+                        .joinToString(" · ")
+                )
                 fontSize(11f)
                 color(colors.secondary)
                 marginTop(2f)
@@ -328,16 +207,17 @@ private fun ViewContainer<*, *>.ComparisonSourceBadge(
     }
 }
 
-private fun ViewContainer<*, *>.ComparisonChangeCell(
+internal fun ViewContainer<*, *>.ComparisonChangeCell(
     row: ConversationStockComparisonRow,
     colors: ComparisonTableContentColors,
     onRowClick: (ConversationStockComparisonRow) -> Unit,
 ) {
-    val changeColor = when {
-        row.change.startsWith("-") || row.changePercent.startsWith("-") -> colors.negative
-        row.change.isBlank() && row.changePercent.isBlank() -> colors.placeholder
-        else -> colors.positive
-    }
+    val changeColor =
+        when {
+            row.change.startsWith("-") || row.changePercent.startsWith("-") -> colors.negative
+            row.change.isBlank() && row.changePercent.isBlank() -> colors.placeholder
+            else -> colors.positive
+        }
     ComparisonClickableCell(row, onRowClick, alignEnd = true) {
         Text {
             attr {
@@ -362,7 +242,7 @@ private fun ViewContainer<*, *>.ComparisonChangeCell(
     }
 }
 
-private fun ViewContainer<*, *>.ComparisonValueCell(
+internal fun ViewContainer<*, *>.ComparisonValueCell(
     row: ConversationStockComparisonRow,
     primary: String,
     secondary: String = "",
@@ -397,7 +277,7 @@ private fun ViewContainer<*, *>.ComparisonValueCell(
     }
 }
 
-private fun ViewContainer<*, *>.ComparisonTrendCell(
+internal fun ViewContainer<*, *>.ComparisonTrendCell(
     row: ConversationStockComparisonRow,
     colors: ComparisonTableContentColors,
     onRowClick: (ConversationStockComparisonRow) -> Unit,
@@ -427,11 +307,7 @@ private fun ViewContainer<*, *>.ComparisonSparkline(
     positive: Boolean,
     colors: ComparisonTableContentColors,
 ) {
-    Canvas({
-        attr {
-            size(104f, 42f)
-        }
-    }) { context, canvasWidth, canvasHeight ->
+    Canvas({ attr { size(104f, 42f) } }) { context, canvasWidth, canvasHeight ->
         val minimum = points.minOrNull() ?: 0f
         val maximum = points.maxOrNull() ?: 1f
         val range = (maximum - minimum).takeIf { it > 0f } ?: 1f
@@ -467,17 +343,15 @@ private fun ViewContainer<*, *>.ComparisonClickableCell(
             if (alignEnd) alignItemsFlexEnd()
         }
         if (row.providerSymbol.isNotBlank() || row.symbol.isNotBlank()) {
-            event {
-                click { onRowClick(row) }
-            }
+            event { click { onRowClick(row) } }
         }
         content()
     }
 }
 
-private fun String.orPlaceholder(): String = trim().ifBlank { "—" }
+internal fun String.orPlaceholder(): String = trim().ifBlank { "—" }
 
-private fun String.asPercent(): String {
+internal fun String.asPercent(): String {
     val normalized = trim()
     return when {
         normalized.isBlank() -> "—"
@@ -486,7 +360,7 @@ private fun String.asPercent(): String {
     }
 }
 
-private fun String.withUnit(unit: String, prefix: String = ""): String {
+internal fun String.withUnit(unit: String, prefix: String = ""): String {
     val normalized = trim()
     if (normalized.isBlank()) {
         return "—"

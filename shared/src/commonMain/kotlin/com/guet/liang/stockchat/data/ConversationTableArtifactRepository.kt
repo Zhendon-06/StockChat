@@ -1,5 +1,6 @@
 package com.guet.liang.stockchat.data
 
+import com.guet.liang.stockchat.controller.TableArtifactStore
 import com.guet.liang.stockchat.database.StockChatDatabase
 import com.guet.liang.stockchat.model.ConversationTableArtifact
 import com.guet.liang.stockchat.model.ConversationTableArtifactSnapshot
@@ -7,12 +8,13 @@ import com.guet.liang.stockchat.model.ConversationTableArtifactSummary
 import com.guet.liang.stockchat.model.ConversationTableRow
 import com.guet.liang.stockchat.model.ConversationTableRowStatus
 
+/** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal class ConversationTableArtifactRepository(
     private val database: StockChatDatabase,
-) {
+) : TableArtifactStore {
     private val queries = database.chatHistoryQueries
 
-    fun upsert(
+    override fun upsert(
         sessionId: String,
         snapshot: ConversationTableArtifactSnapshot,
     ): Long {
@@ -57,7 +59,7 @@ internal class ConversationTableArtifactRepository(
         return artifactId
     }
 
-    fun load(artifactId: Long): ConversationTableArtifact? {
+    override fun load(artifactId: Long): ConversationTableArtifact? {
         val storedArtifact = queries
             .selectConversationTableArtifact(artifactId)
             .executeAsOneOrNull()
@@ -73,7 +75,7 @@ internal class ConversationTableArtifactRepository(
         )
     }
 
-    fun listAll(): List<ConversationTableArtifactSummary> {
+    override fun listAll(): List<ConversationTableArtifactSummary> {
         return queries.selectConversationTableArtifacts().executeAsList().map { storedArtifact ->
             ConversationTableArtifactSummary(
                 id = storedArtifact.id,
