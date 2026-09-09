@@ -6,10 +6,12 @@ import com.tencent.kuikly.core.views.TextAlign
 import kotlin.math.abs
 
 internal object FinancialChartRenderer {
-    fun draw(c: CanvasContext, width: Float, height: Float, s: FinancialChartSpec, start: Int, count: Int, selected: Int, forecastProgress: Float = 1f, evidenceRange: IntRange? = null) {
+    fun draw(c: CanvasContext, width: Float, height: Float, s: FinancialChartSpec, viewport: FinancialViewport, selected: Int, forecastProgress: Float = 1f, evidenceRange: IntRange? = null) {
         val lineMode = s.mode == FinancialChartMode.INTRADAY
         val closeLine = s.mode == FinancialChartMode.CLOSE_LINE
-        val indices = if (lineMode) s.points.indices.toList() else (start until (start + count).coerceAtMost(s.points.size)).toList()
+        // Fractional viewport: candles cut by either plot edge are still drawn so pans stay continuous.
+        val indices = if (lineMode) s.points.indices.toList() else viewport.visibleIndices(s.points.size).toList()
+        val count = viewport.count.coerceAtLeast(1f)
         val points = indices.map { s.points[it] }
         val forecastIntervals = if (closeLine) s.forecastIntervals.filter { (index, interval) ->
             index in s.points.indices && s.forecastStartIndex?.let { index >= it } == true &&
@@ -42,7 +44,7 @@ internal object FinancialChartRenderer {
         }
         fun x(index: Int): Float = left + if (lineMode) {
             s.points[index].slot / s.sessionSlots.coerceAtLeast(1f) * (right - left)
-        } else (index - start + 0.5f) / count.coerceAtLeast(1) * (right - left)
+        } else viewport.ratioOf(index) * (right - left)
         fun y(value: Float): Float = top + (high - value) / (high - low).coerceAtLeast(0.0001f) * (bottom - top)
         fun movement(value: Float): Color = when {
             s.previousClose == null -> s.mutedColor
@@ -114,7 +116,7 @@ internal object FinancialChartRenderer {
             val forecastIndices = indices.filter { it >= boundary }
             fun segmentProgress(a: Int): Float = (revealEnd - a).coerceIn(0f, 1f)
             if (forecastIndices.isNotEmpty()) {
-                val boundaryX = x((boundary - 1).coerceAtLeast(start)).coerceIn(left, right)
+                val boundaryX = x((boundary - 1).coerceAtLeast(indices.first())).coerceIn(left, right)
                 rect(c, boundaryX, top, (right - boundaryX) * forecastProgress, bottom - top, s.forecastColor.opacity(0.05f))
                 line(c, boundaryX, top, boundaryX, bottom, s.forecastColor, dashed = true)
                 text(c, "AI 预测", right - 3f, top + 12f, s.forecastColor, alignRight = true, size = 10f)
@@ -171,7 +173,10 @@ internal object FinancialChartRenderer {
             line(c, left, lastY, right, lastY, s.averageColor, dashed = true)
         }
         val labels = if (lineMode) s.sessionLabels.map { it.slot / s.sessionSlots.coerceAtLeast(1f) to it.text }
-            else listOf(0f to points.first().label, 0.5f to points[points.size / 2].label, 1f to points.last().label)
+            else listOf(0f, 0.5f, 1f).map { fraction ->
+                // Anchor time labels to the candle actually under each position, not to partially visible edge candles.
+                fraction to s.points[viewport.indexAt(fraction, s.points.size).coerceIn(indices.first(), indices.last())].label
+            }
         labels.forEach { (fraction, label) ->
             text(c, label, left + (right - left) * fraction, bottom + 17f, s.mutedColor,
                 center = fraction > 0f && fraction < 1f, alignRight = fraction == 1f, size = 10f)

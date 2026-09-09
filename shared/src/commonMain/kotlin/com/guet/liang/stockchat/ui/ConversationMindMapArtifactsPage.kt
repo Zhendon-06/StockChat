@@ -1,6 +1,7 @@
 package com.guet.liang.stockchat.ui
 
 import com.guet.liang.stockchat.base.BasePager
+import com.guet.liang.stockchat.base.closePage
 import com.guet.liang.stockchat.data.ChatHistoryDatabase
 import com.guet.liang.stockchat.model.ConversationMindMapArtifactSummary
 import com.tencent.kuikly.core.annotations.Page
@@ -416,10 +417,6 @@ internal class ConversationMindMapArtifactsPage : BasePager() {
             CONVERSATION_MIND_MAP_ARTIFACT_PAGE_NAME,
             params,
         )
-    }
-
-    private fun closePage() {
-        acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
     }
 
     private companion object {

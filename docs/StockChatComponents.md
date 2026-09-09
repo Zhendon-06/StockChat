@@ -143,3 +143,11 @@ Kuikly 页面中的布局数值使用逻辑布局单位（Android 侧接近 dp�
 已评估 `KuiklyChartView`：该组件当前没有与本项目 OpenHarmony target 对应的发布变体，
 为一个固定尺寸的走势图引入它会阻断跨端变体解析。因此保留 Canvas 作为跨端实现；
 后续需要 Tooltip 或多序列时，可在补齐 OHOS 变体后替换为 `KuiklyChartView`。
+
+## 当前验证状态
+
+- Android：`shared` Android 编译、共享层单元测试和 Android Debug APK 构建通过；已完成聊天主页、行情卡片、详情页、走势图、周期切换和返回链路回归。
+- iOS：聊天输入、发送、Markdown/行情卡片渲染、详情跳转和返回链路已完成宿主适配并可运行，核心页面沿用 shared Kuikly 实现。
+- 鸿蒙：共享层代码已保留 OpenHarmony 目标，宿主适配与真机回归待完成。
+- 当前共享层单元测试共 123 项，最近一次 `:shared:testDebugUnitTest --rerun-tasks` 全部通过。
+- 三端最终交付前，需补齐鸿蒙回归并录制覆盖“聊天 → 富内容行情 → 详情承接”的 Android 演示视频。

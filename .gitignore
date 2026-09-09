@@ -10,6 +10,7 @@
 .cxx
 local.properties
 *.so
+.ohos-build
 *.js
 node_modules
 Pods
@@ -37,3 +38,7 @@ Kotlin-js-store
 *.xcscmblueprint
 *.xcbkptlist
 *.pyc
+
+# OpenHarmony build output and generated local resources
+ohosApp/**/oh-package-lock.json5
+ohosApp/entry/src/main/ets/kuikly/StockChatLocalConfig.ets

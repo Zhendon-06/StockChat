@@ -73,13 +73,6 @@ class SkinIniFile(private val context: Context) {
         return section.values[sectionKey] ?: defaultValue
     }
 
-    /**
-     * 同步获取 [sectionName] 对应的结点中的所有的 key 列表, 如果没有找到，返回空列表
-     */
-    fun getAllSectionsKey(sectionName: String): List<String> {
-        return sections[sectionName]?.values?.keys?.toList() ?: emptyList()
-    }
-
     private fun readEachLine(cleanLineStr: String, sectionName: String): String {
         var curSectionName = sectionName
         if (sectionPattern.matcher(cleanLineStr).matches()) {

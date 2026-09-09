@@ -13,9 +13,6 @@ internal data class StockPredictionInput(
     val forecastHorizon: Int = DEFAULT_STOCK_PREDICTION_HORIZON,
     val sourceUpdatedAt: String = quote.updatedAt,
 ) {
-    val historyPoints: List<StockPredictionHistoryPoint>
-        get() = history
-
     companion object {
         const val DEFAULT_STOCK_PREDICTION_HORIZON = 8
     }

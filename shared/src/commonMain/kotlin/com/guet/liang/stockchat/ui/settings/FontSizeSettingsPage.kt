@@ -1,6 +1,7 @@
 package com.guet.liang.stockchat.ui.settings
 
 import com.guet.liang.stockchat.base.BasePager
+import com.guet.liang.stockchat.base.closePage
 import com.guet.liang.stockchat.data.StockChatSettingsStore
 import com.guet.liang.stockchat.model.ChatBackgroundSettings
 import com.guet.liang.stockchat.model.FontSizeSettings
@@ -10,7 +11,6 @@ import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.core.base.Size
 import com.tencent.kuikly.core.base.ViewBuilder
 import com.tencent.kuikly.core.base.ViewContainer
-import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.reactive.handler.observable
 import com.tencent.kuikly.core.views.Scroller
 import com.tencent.kuikly.core.views.Slider
@@ -319,14 +319,7 @@ internal class FontSizeSettingsPage : BasePager() {
         closePage()
     }
 
-    private fun palette(): SettingsPalette {
-        val isDark = when (themeMode) {
-            ThemeMode.SYSTEM -> isNightMode()
-            ThemeMode.LIGHT -> false
-            ThemeMode.DARK -> true
-        }
-        return if (isDark) SettingsPalettes.Dark else SettingsPalettes.Light
-    }
+    private fun palette(): SettingsPalette = settingsPalette(themeMode)
 
     private fun pagePalette(): SettingsPalette {
         val basePalette = palette()
@@ -342,10 +335,6 @@ internal class FontSizeSettingsPage : BasePager() {
 
     private fun fontPageContentWidth(): Float {
         return (pagerData.pageViewWidth - PAGE_HORIZONTAL_MARGIN * 2f).coerceAtLeast(1f)
-    }
-
-    private fun closePage() {
-        acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
     }
 
     private companion object {

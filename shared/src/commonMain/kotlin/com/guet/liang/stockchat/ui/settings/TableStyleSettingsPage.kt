@@ -1,6 +1,7 @@
 package com.guet.liang.stockchat.ui.settings
 
 import com.guet.liang.stockchat.base.BasePager
+import com.guet.liang.stockchat.base.closePage
 import com.guet.liang.stockchat.data.StockChatSettingsStore
 import com.guet.liang.stockchat.model.TableStylePreset
 import com.guet.liang.stockchat.model.TableStyleSettings
@@ -16,7 +17,6 @@ import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.base.attr.CaptureRule
 import com.tencent.kuikly.core.base.attr.CaptureRuleDirection
 import com.tencent.kuikly.core.base.event.PanGestureParams
-import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.reactive.handler.observable
 import com.tencent.kuikly.core.views.Canvas
 import com.tencent.kuikly.core.views.CanvasContext
@@ -619,18 +619,7 @@ internal class TableStyleSettingsPage : BasePager() {
         closePage()
     }
 
-    private fun palette(): SettingsPalette {
-        val isDark = when (themeMode) {
-            ThemeMode.SYSTEM -> isNightMode()
-            ThemeMode.LIGHT -> false
-            ThemeMode.DARK -> true
-        }
-        return if (isDark) SettingsPalettes.Dark else SettingsPalettes.Light
-    }
-
-    private fun closePage() {
-        acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
-    }
+    private fun palette(): SettingsPalette = settingsPalette(themeMode)
 
     private fun previewChoice(preset: TableStylePreset): StockTableStyleChoice {
         return when (preset) {
@@ -655,13 +644,6 @@ internal class TableStyleSettingsPage : BasePager() {
 
     private fun formatHexColor(colorArgb: Long): String {
         return "#${colorArgb.toString(16).takeLast(6).padStart(6, '0').uppercase()}"
-    }
-
-    private fun isLightColor(colorArgb: Long): Boolean {
-        val red = (colorArgb shr 16 and 0xFF).toInt()
-        val green = (colorArgb shr 8 and 0xFF).toInt()
-        val blue = (colorArgb and 0xFF).toInt()
-        return red * 299 + green * 587 + blue * 114 >= 150_000
     }
 
     private fun hsvToArgb(hue: Float, saturation: Float, brightness: Float): Long {

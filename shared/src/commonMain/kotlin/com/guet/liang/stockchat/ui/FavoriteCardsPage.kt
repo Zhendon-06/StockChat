@@ -1,6 +1,7 @@
 package com.guet.liang.stockchat.ui
 
 import com.guet.liang.stockchat.base.BasePager
+import com.guet.liang.stockchat.base.closePage
 import com.guet.liang.stockchat.data.FavoriteCardsStore
 import com.guet.liang.stockchat.data.providerSymbolForQuote
 import com.guet.liang.stockchat.model.StockQuote
@@ -173,13 +174,9 @@ internal class FavoriteCardsPage : BasePager() {
             .takeIf(String::isNotBlank)
             ?.let { params.put("qwenApiKey", it) }
         acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
-            "stock_detail",
+            STOCK_DETAIL_PAGE_NAME,
             params,
         )
-    }
-
-    private fun closePage() {
-        acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
     }
 
     private companion object {

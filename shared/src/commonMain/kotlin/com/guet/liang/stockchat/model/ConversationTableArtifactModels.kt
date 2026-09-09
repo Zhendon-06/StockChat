@@ -1,16 +1,5 @@
 package com.guet.liang.stockchat.model
 
-internal enum class ConversationTableColumn(
-    val key: String,
-    val title: String,
-) {
-    SEQUENCE("sequence", "序号"),
-    USER_QUESTION("user_question", "用户问题"),
-    AI_ANSWER_SUMMARY("ai_answer_summary", "AI 回答摘要"),
-    RELATED_INSTRUMENT("related_instrument", "相关标的"),
-    STATUS("status", "状态"),
-}
-
 internal enum class ConversationTableRowStatus(
     val label: String,
 ) {
@@ -26,17 +15,7 @@ internal data class ConversationTableRow(
     val aiAnswerSummary: String,
     val relatedInstrument: String,
     val status: ConversationTableRowStatus,
-) {
-    fun valueFor(column: ConversationTableColumn): String {
-        return when (column) {
-            ConversationTableColumn.SEQUENCE -> sequence.toString()
-            ConversationTableColumn.USER_QUESTION -> userQuestion
-            ConversationTableColumn.AI_ANSWER_SUMMARY -> aiAnswerSummary
-            ConversationTableColumn.RELATED_INSTRUMENT -> relatedInstrument
-            ConversationTableColumn.STATUS -> status.label
-        }
-    }
-}
+)
 
 internal data class ConversationTableArtifactSnapshot(
     val title: String,

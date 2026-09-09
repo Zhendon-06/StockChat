@@ -63,13 +63,6 @@ internal object ConversationStockComparisonGenerator {
         )
     }
 
-    fun generateArtifact(
-        title: String,
-        messages: List<ChatMessage>,
-    ): ConversationTableArtifactSnapshot {
-        return toArtifactSnapshot(generate(title, messages))
-    }
-
     fun toArtifactSnapshot(
         snapshot: ConversationStockComparisonSnapshot,
     ): ConversationTableArtifactSnapshot {

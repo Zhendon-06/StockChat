@@ -25,6 +25,7 @@ internal class StockMarketPanel : ComposeView<ComposeAttr, ComposeEvent>() {
     lateinit var snapshot: TencentMarketSnapshot
     var initialEvidence: ChartEvidenceReference? = null
     var onEvidenceLocated: ((Float) -> Unit)? = null
+    var onGestureActiveChanged: ((Boolean) -> Unit)? = null
     private var chartTop: (() -> Float)? = null
     private var pendingEvidence: ChartEvidenceReference? = null
     private var selectedIndex by observable<Int?>(null)
@@ -155,6 +156,7 @@ internal class StockMarketPanel : ComposeView<ComposeAttr, ComposeEvent>() {
                                 attr { height(422f) }
                                 onEvidenceCleared = { owner.evidenceActive = false; owner.evidenceStatus = "" }
                                 onSelectionChanged = { owner.selectedIndex = it }
+                                onGestureActiveChanged = owner.onGestureActiveChanged
                                 chart {
                                     points = data.points
                                     valueLabel = if (isMarketIndex(owner.snapshot.providerSymbol)) "点位" else "价格"
@@ -187,7 +189,7 @@ internal class StockMarketPanel : ComposeView<ComposeAttr, ComposeEvent>() {
                                     Text { attr { text("清除区间高亮"); fontSize(12f); color(StockChatTheme.accent) } }
                                 }
                             }
-                            Text { attr { text(if (requested.isIntraday) (if (isMarketIndex(owner.snapshot.providerSymbol)) "点选查看指数点位及分钟成交量" else "点选查看价格、均价及分钟成交量") else "点选查看开高低收 · 双指缩放 · 横拖查看历史"); fontSize(10f); color(StockChatTheme.textTertiary); marginTop(5f) } }
+                            Text { attr { text(if (requested.isIntraday) (if (isMarketIndex(owner.snapshot.providerSymbol)) "点选后左右滑动查看指数点位及分钟成交量" else "点选后左右滑动查看价格、均价及分钟成交量") else "点选后左右滑动查看开高低收 · 双指缩放 · 横拖查看历史"); fontSize(10f); color(StockChatTheme.textTertiary); marginTop(5f) } }
                         }
                     }
                 }
@@ -583,11 +585,13 @@ private fun amount(value: String, unit: String): String = value.toFloatOrNull()?
 internal fun ViewContainer<*, *>.StockMarket(
     snapshot: TencentMarketSnapshot,
     initialEvidence: ChartEvidenceReference? = null,
+    onGestureActiveChanged: ((Boolean) -> Unit)? = null,
     onEvidenceLocated: ((Float) -> Unit)? = null,
 ) {
     addChild(StockMarketPanel()) {
         this.snapshot = snapshot
         this.initialEvidence = initialEvidence
+        this.onGestureActiveChanged = onGestureActiveChanged
         this.onEvidenceLocated = onEvidenceLocated
     }
 }

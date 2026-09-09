@@ -69,7 +69,7 @@ AnswerBlock（Markdown / MarketQuote / ImageGallery）
 
 ## API Key 配置
 
-本地 Android 调试可在项目根目录创建未提交的 `local.properties`，仅填写以下键：
+本地 Android 和鸿蒙调试可在项目根目录的未提交文件 `local.properties` 中配置以下键：
 
 ```properties
 QWEN_API_KEY=你的百炼_API_Key
@@ -83,7 +83,9 @@ export QWEN_API_KEY="你的百炼_API_Key"
 export MIMO_VOICE_API_KEY="你的_MiMo_API_Key"
 ```
 
-`QWEN_API_KEY` 用于 DashScope 文本/视觉问答、意图识别和 AI 预测；`MIMO_VOICE_API_KEY` 仅用于 MiMo 语音识别与合成。聊天中的企业识别使用同一百炼 Key 下支持联网搜索的 `qwen-plus`，再通过腾讯证券名称搜索与当前模型确认候选；未配置模型 Key 时提示配置，不再通过本地名称匹配生成卡片。详情页与今日行情等固定入口仍可独立访问腾讯行情服务。API Key 会进入当前 Android 构建产物，因此该方式只适合本地 Demo，正式环境应改为服务端代理或短期凭证。
+`QWEN_API_KEY` 用于 DashScope 文本/视觉问答、意图识别和 AI 预测；`MIMO_VOICE_API_KEY` 仅用于 MiMo 语音识别与合成。聊天中的企业识别使用同一百炼 Key 下支持联网搜索的 `qwen-plus`，再通过腾讯证券名称搜索与当前模型确认候选；未配置模型 Key 时提示配置，不再通过本地名称匹配生成卡片。详情页与今日行情等固定入口仍可独立访问腾讯行情服务。API Key 会进入当前调试构建产物，因此该方式只适合本地 Demo，正式环境应改为服务端代理或短期凭证。
+
+鸿蒙的 Hvigor 构建任务会在每次 Debug 构建时读取上述配置并生成 HAP 内的本地资源，DevEco Run 和 `ohosApp/runOhosApp.sh` 均生效，无需手工生成 ETS 文件。Release 构建会清空该资源中的本地密钥；应用内仍可通过模型设置配置服务商。
 
 ## 构建与测试
 
@@ -124,7 +126,9 @@ open iosApp.xcworkspace
 ./ohosApp/runOhosApp.sh
 ```
 
-脚本会安装依赖、构建 HAP，并尝试安装到已连接的模拟器或设备；首次使用仍需在 DevEco Studio 中完成签名配置。
+脚本会安装依赖、构建 HAP，并尝试安装到已连接的模拟器或设备；首次使用仍需在 DevEco Studio 中完成签名配置。若直接在 DevEco Studio 构建，请将
+`ohosApp/local.properties.example` 复制为 `ohosApp/local.properties`，其中
+`kuikly.assetsPath` 用于把共享层的图标和图片复制到鸿蒙 HAP 的 `resfile` 目录。
 
 ## 数据与降级策略
 

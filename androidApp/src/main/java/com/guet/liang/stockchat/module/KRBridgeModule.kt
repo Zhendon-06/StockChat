@@ -23,7 +23,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.BufferedReader
-import java.io.InputStreamReader
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -51,14 +50,6 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
 
     override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? {
         return when (method) {
-            "ssoRequest" -> {
-                ssoRequest(params, callback)
-            }
-
-            "showAlert" -> {
-                showAlert(params, callback)
-            }
-
             "closePage" -> {
                 closePage(params)
             }
@@ -77,26 +68,6 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
 
             "log" -> {
                 log(params)
-            }
-
-            "reportDT" -> {
-                reportDT(params)
-            }
-
-            "reportRealtime" -> {
-                reportRealtime(params)
-            }
-
-            "qqLiveSSORequest" -> {
-                qqLiveSSORequest(params, callback)
-            }
-
-            "localServeTime" -> {
-                localServeTime(params, callback)
-            }
-
-            "currentTimestamp" -> {
-                currentTimestamp(params)
             }
 
             "dateFormatter" -> {
@@ -874,12 +845,6 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
         }
     }
 
-    private fun reportRealtime(params: String?) {
-    }
-
-    private fun reportDT(params: String?) {
-    }
-
     private fun log(params: String?) {
         if (params == null) {
             return
@@ -923,34 +888,6 @@ class KRBridgeModule : KuiklyRenderBaseModule() {
 
     private fun closePage(params: String?) {
         activity?.finish()
-    }
-
-    private fun showAlert(params: String?, callback: KuiklyRenderCallback?) {
-        if (params == null) {
-            return
-        }
-        val paramJSON = JSONObject(params)
-        val titleText = paramJSON.optString("title")
-        val message = paramJSON.optString("message")
-        val buttons = paramJSON.optJSONArray("buttons") ?: JSONArray()
-    }
-
-    private fun ssoRequest(params: String?, callback: KuiklyRenderCallback?) {}
-
-    private fun qqLiveSSORequest(params: String?, callback: KuiklyRenderCallback?) {
-    }
-
-    private fun localServeTime(params: String?, callback: KuiklyRenderCallback?) {
-        val time = (System.currentTimeMillis() / 1000.0)
-        callback?.invoke(
-            mapOf(
-                "time" to time
-            )
-        )
-    }
-
-    private fun currentTimestamp(params: String?): String {
-        return (System.currentTimeMillis()).toString()
     }
 
     private fun dateFormatter(params: String?): String {

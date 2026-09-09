@@ -1,6 +1,7 @@
 package com.guet.liang.stockchat.ui
 
 import com.guet.liang.stockchat.base.BasePager
+import com.guet.liang.stockchat.base.closePage
 import com.guet.liang.stockchat.data.ChatHistoryDatabase
 import com.guet.liang.stockchat.data.MermaidMindMapNode
 import com.guet.liang.stockchat.data.MermaidMindMapParser
@@ -13,7 +14,6 @@ import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.core.base.ViewBuilder
 import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.directives.vif
-import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.reactive.handler.observable
 import com.tencent.kuikly.core.views.Scroller
 import com.tencent.kuikly.core.views.Text
@@ -566,10 +566,6 @@ internal class ConversationMindMapArtifactPage : BasePager() {
         } catch (_: Throwable) {
             MindMapArtifactDetailUiState.Error("本地思维导图暂时无法读取，请稍后重试。")
         }
-    }
-
-    private fun closePage() {
-        acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
     }
 
 }

@@ -2,6 +2,7 @@ package com.guet.liang.stockchat.ui.settings
 
 import com.guet.liang.stockchat.base.BasePager
 import com.guet.liang.stockchat.base.bridgeModule
+import com.guet.liang.stockchat.base.closePage
 import com.guet.liang.stockchat.data.StockChatSettingsStore
 import com.guet.liang.stockchat.model.BackgroundPreset
 import com.guet.liang.stockchat.model.ChatBackgroundSettings
@@ -19,7 +20,6 @@ import com.tencent.kuikly.core.base.Size
 import com.tencent.kuikly.core.base.ViewBuilder
 import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.directives.vif
-import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.reactive.handler.observable
 import com.tencent.kuikly.core.views.Image
 import com.tencent.kuikly.core.views.Scroller
@@ -668,18 +668,7 @@ internal class BackgroundSettingsPage : BasePager() {
     private fun isPresetSelected(preset: BackgroundPreset): Boolean =
         settings.customImageUri.isNullOrBlank() && settings.preset == preset
 
-    private fun closePage() {
-        acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
-    }
-
-    private fun palette(): SettingsPalette {
-        val isDark = when (themeMode) {
-            ThemeMode.SYSTEM -> isNightMode()
-            ThemeMode.LIGHT -> false
-            ThemeMode.DARK -> true
-        }
-        return if (isDark) SettingsPalettes.Dark else SettingsPalettes.Light
-    }
+    private fun palette(): SettingsPalette = settingsPalette(themeMode)
 
     private fun applyPreviewGradient(attr: com.tencent.kuikly.core.base.ContainerAttr) {
         applyPresetGradient(attr, settings.preset)

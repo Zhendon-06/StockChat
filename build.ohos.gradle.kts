@@ -5,5 +5,6 @@ plugins {
     kotlin("android").version("2.0.21-KBA-010").apply(false)
     kotlin("multiplatform").version("2.0.21-KBA-010").apply(false)
     id("com.google.devtools.ksp").version("2.0.21-1.0.27").apply(false)
+    id("app.cash.sqldelight").version("2.1.0").apply(false)
 
 }

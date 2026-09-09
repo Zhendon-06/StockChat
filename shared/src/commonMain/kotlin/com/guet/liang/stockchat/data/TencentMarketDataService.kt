@@ -2,7 +2,6 @@ package com.guet.liang.stockchat.data
 
 import com.guet.liang.stockchat.model.StockQuote
 import com.tencent.kuikly.core.module.NetworkModule
-import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 
 private const val MIN_HISTORICAL_POINT_COUNT = 1

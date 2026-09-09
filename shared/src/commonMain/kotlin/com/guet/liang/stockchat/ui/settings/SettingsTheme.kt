@@ -1,6 +1,8 @@
 package com.guet.liang.stockchat.ui.settings
 
+import com.guet.liang.stockchat.model.ThemeMode
 import com.tencent.kuikly.core.base.Color
+import com.tencent.kuikly.core.pager.Pager
 
 internal data class SettingsPalette(
     val background: Color,
@@ -63,4 +65,12 @@ internal fun settingsContentWidth(
     horizontalMargin: Float,
 ): Float = (pageWidth - horizontalMargin.settingsDp() * 2f).coerceAtLeast(1f)
 
-internal fun settingsInset(baseInset: Float): Float = baseInset.settingsDp()
+/** 按主题模式解析设置页配色；SYSTEM 跟随宿主夜间模式。各设置页共用，不再各自复制。 */
+internal fun Pager.settingsPalette(themeMode: ThemeMode): SettingsPalette {
+    val isDark = when (themeMode) {
+        ThemeMode.SYSTEM -> isNightMode()
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+    }
+    return if (isDark) SettingsPalettes.Dark else SettingsPalettes.Light
+}

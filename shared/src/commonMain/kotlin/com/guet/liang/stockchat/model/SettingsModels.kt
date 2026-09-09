@@ -152,10 +152,7 @@ internal data class ModelProviderConfig(
     val models: List<ModelOption>,
     val selectedModelId: String,
     val isEnabled: Boolean = true,
-) {
-    val hasApiKey: Boolean
-        get() = apiKey.isNotBlank()
-}
+)
 
 internal data class ModelConfiguration(
     val activeProviderId: String,

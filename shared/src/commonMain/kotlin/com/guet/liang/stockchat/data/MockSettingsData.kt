@@ -56,7 +56,7 @@ internal object MockSettingsData {
             provider(
                 id = DEFAULT_PROVIDER_ID,
                 kind = ModelProviderKind.DEFAULT,
-                baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                baseUrl = DEFAULT_CHAT_BASE_URL,
                 models = listOf(
                     model(
                         "qwen3-vl-flash",
@@ -82,7 +82,7 @@ internal object MockSettingsData {
             provider(
                 id = ALIYUN_PROVIDER_ID,
                 kind = ModelProviderKind.ALIYUN,
-                baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                baseUrl = DEFAULT_CHAT_BASE_URL,
             ),
             provider(
                 id = DEEPSEEK_PROVIDER_ID,

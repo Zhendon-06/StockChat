@@ -6,6 +6,7 @@ import com.guet.liang.stockchat.model.ChatMessage
 import com.guet.liang.stockchat.model.ChatRole
 import com.guet.liang.stockchat.model.MessageState
 import com.guet.liang.stockchat.model.StockQuote
+import com.tencent.kuikly.core.datetime.DateTime
 
 internal data class ChatSessionSummary(
     val id: String,
@@ -18,9 +19,14 @@ internal class ChatHistoryRepository(
     private val database: StockChatDatabase,
 ) {
     private val queries = database.chatHistoryQueries
+    // OHOS currently uses a no-op SQLDelight driver. Keep a process-local
+    // fallback so switching pages or recreating the Kuikly pager does not
+    // discard the active conversation.
+    private val fallbackMessages = linkedMapOf<String, List<ChatMessage>>()
+    private val fallbackSessions = linkedMapOf<String, ChatSessionSummary>()
 
     fun loadSessions(): List<ChatSessionSummary> {
-        return queries.selectSessions().executeAsList().map {
+        val stored = queries.selectSessions().executeAsList().map {
             ChatSessionSummary(
                 id = it.id,
                 title = it.title,
@@ -28,10 +34,11 @@ internal class ChatHistoryRepository(
                 isArchived = it.is_archived != 0L,
             )
         }
+        return stored.ifEmpty { fallbackSessions.values.filterNot { it.isArchived } }
     }
 
     fun loadArchivedSessions(): List<ChatSessionSummary> {
-        return queries.selectArchivedSessions().executeAsList().map {
+        val stored = queries.selectArchivedSessions().executeAsList().map {
             ChatSessionSummary(
                 id = it.id,
                 title = it.title,
@@ -39,10 +46,11 @@ internal class ChatHistoryRepository(
                 isArchived = it.is_archived != 0L,
             )
         }
+        return stored.ifEmpty { fallbackSessions.values.filter { it.isArchived } }
     }
 
     fun loadMessages(sessionId: String): List<ChatMessage> {
-        return queries.selectMessages(sessionId).executeAsList().mapNotNull { storedMessage ->
+        val stored = queries.selectMessages(sessionId).executeAsList().mapNotNull { storedMessage ->
             val role = enumValueOrNull<ChatRole>(storedMessage.role) ?: return@mapNotNull null
             val state = enumValueOrNull<MessageState>(storedMessage.state) ?: MessageState.DELIVERED
             ChatMessage(
@@ -55,9 +63,16 @@ internal class ChatHistoryRepository(
                 errorMessage = storedMessage.error_message,
             )
         }
+        return stored.ifEmpty { fallbackMessages[sessionId].orEmpty() }
     }
 
     fun replaceMessages(sessionId: String, messages: List<ChatMessage>) {
+        fallbackMessages[sessionId] = messages.toList()
+        fallbackSessions[sessionId] = ChatSessionSummary(
+            id = sessionId,
+            title = sessionTitle(messages),
+            updatedAt = DateTime.currentTimestamp(),
+        )
         database.transaction {
             queries.insertSession(sessionId, sessionTitle(messages))
             queries.touchSession(sessionId)
@@ -81,6 +96,8 @@ internal class ChatHistoryRepository(
     }
 
     fun clearSession(sessionId: String) {
+        fallbackMessages.remove(sessionId)
+        fallbackSessions.remove(sessionId)
         database.transaction {
             deleteSessionContent(sessionId)
             queries.deleteSession(sessionId)
@@ -88,6 +105,7 @@ internal class ChatHistoryRepository(
     }
 
     fun renameSession(sessionId: String, title: String) {
+        fallbackSessions[sessionId]?.let { fallbackSessions[sessionId] = it.copy(title = title) }
         queries.renameSession(title, sessionId)
     }
 
@@ -95,14 +113,22 @@ internal class ChatHistoryRepository(
         if (sessionId.isBlank()) {
             return false
         }
-        return queries.archiveSession(sessionId).value > 0L
+        val changed = queries.archiveSession(sessionId).value > 0L
+        if (!changed && fallbackSessions.containsKey(sessionId)) {
+            fallbackSessions[sessionId] = fallbackSessions.getValue(sessionId).copy(isArchived = true)
+        }
+        return changed || fallbackSessions[sessionId]?.isArchived == true
     }
 
     fun restoreSession(sessionId: String): Boolean {
         if (sessionId.isBlank()) {
             return false
         }
-        return queries.restoreSession(sessionId).value > 0L
+        val changed = queries.restoreSession(sessionId).value > 0L
+        if (!changed && fallbackSessions.containsKey(sessionId)) {
+            fallbackSessions[sessionId] = fallbackSessions.getValue(sessionId).copy(isArchived = false)
+        }
+        return changed || fallbackSessions[sessionId]?.isArchived == false
     }
 
     private fun loadBlocks(messageId: String): List<AnswerBlock> {
@@ -232,6 +258,13 @@ internal object ChatHistoryDatabase {
     private var artifactRepository: ConversationTableArtifactRepository? = null
     private var mindMapArtifactRepository: ConversationMindMapArtifactRepository? = null
 
+    private fun ensureInitialized() {
+        if (repository == null) {
+            val database = StockChatDatabase(NoOpChatDatabaseDriver())
+            initialize(database)
+        }
+    }
+
     fun initialize(database: StockChatDatabase) {
         repository = ChatHistoryRepository(database)
         artifactRepository = ConversationTableArtifactRepository(database)
@@ -239,14 +272,17 @@ internal object ChatHistoryDatabase {
     }
 
     fun repository(): ChatHistoryRepository {
+        ensureInitialized()
         return checkNotNull(repository) { "SQLDelight database has not been initialized." }
     }
 
     fun artifactRepository(): ConversationTableArtifactRepository {
+        ensureInitialized()
         return checkNotNull(artifactRepository) { "SQLDelight database has not been initialized." }
     }
 
     fun mindMapArtifactRepository(): ConversationMindMapArtifactRepository {
+        ensureInitialized()
         return checkNotNull(mindMapArtifactRepository) { "SQLDelight database has not been initialized." }
     }
 }

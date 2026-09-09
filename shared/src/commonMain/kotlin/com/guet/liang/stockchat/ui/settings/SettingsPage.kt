@@ -1,6 +1,7 @@
 package com.guet.liang.stockchat.ui.settings
 
 import com.guet.liang.stockchat.base.BasePager
+import com.guet.liang.stockchat.base.closePage
 import com.guet.liang.stockchat.data.ChatHistoryDatabase
 import com.guet.liang.stockchat.data.StockChatSettingsStore
 import com.guet.liang.stockchat.model.FontSizeSettings
@@ -171,14 +172,7 @@ internal class SettingsPage : BasePager() {
         archivedSessionCount = ChatHistoryDatabase.repository().loadArchivedSessions().size
     }
 
-    private fun palette(): SettingsPalette {
-        val isDark = when (settingsSnapshot.appearance.themeMode) {
-            ThemeMode.SYSTEM -> isNightMode()
-            ThemeMode.LIGHT -> false
-            ThemeMode.DARK -> true
-        }
-        return if (isDark) SettingsPalettes.Dark else SettingsPalettes.Light
-    }
+    private fun palette(): SettingsPalette = settingsPalette(settingsSnapshot.appearance.themeMode)
 
     private fun fontSizeLabel(): String {
         val fontSize = settingsSnapshot.appearance.fontSize
@@ -208,10 +202,6 @@ internal class SettingsPage : BasePager() {
             pageName,
             JSONObject(),
         )
-    }
-
-    private fun closePage() {
-        acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
     }
 
     private companion object {

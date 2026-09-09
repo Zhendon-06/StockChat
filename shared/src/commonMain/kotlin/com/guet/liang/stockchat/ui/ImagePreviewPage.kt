@@ -11,8 +11,6 @@ import com.tencent.kuikly.core.views.Image
 import com.tencent.kuikly.core.views.Text
 import com.tencent.kuikly.core.views.View
 
-private const val IMAGE_PREVIEW_PAGE_NAME = "stock_image_preview"
-
 @Page(IMAGE_PREVIEW_PAGE_NAME, supportInLocal = true)
 internal class ImagePreviewPage : BasePager() {
     private var imageUri = ""

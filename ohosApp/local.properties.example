@@ -1,0 +1,4 @@
+kuikly.projectPath=../
+kuikly.moduleName=shared
+kuikly.ohosGradleSettings=settings.ohos.gradle.kts
+kuikly.assetsPath=../shared/src/commonMain/assets
