@@ -29,6 +29,7 @@ struct Index {
     if (incomingMimoApiKey == null || incomingMimoApiKey.length === 0) {
       resolvedPageData['mimoVoiceApiKey'] = localConfig['mimoVoiceApiKey'] ?? '';
     }
+    resolvedPageData['aliyunNativeStreaming'] = 1;
     this.pageData = resolvedPageData as KRRecord;
   }
 

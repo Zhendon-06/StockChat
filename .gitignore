@@ -41,4 +41,8 @@ Kotlin-js-store
 
 # OpenHarmony build output and generated local resources
 ohosApp/**/oh-package-lock.json5
-ohosApp/entry/src/main/ets/kuikly/StockChatLocalConfig.ets
+
+# AI 助手与本地工作区文件
+.workbuddy/
+.claude/
+.whistle.js

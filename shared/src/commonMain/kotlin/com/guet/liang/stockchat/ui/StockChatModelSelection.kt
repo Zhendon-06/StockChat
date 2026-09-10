@@ -1,6 +1,7 @@
 package com.guet.liang.stockchat.ui
 
 import com.guet.liang.stockchat.base.openRoute
+import com.guet.liang.stockchat.model.AnswerMode
 import com.guet.liang.stockchat.model.ChatModelOption
 import com.guet.liang.stockchat.model.DEFAULT_CHAT_MODEL_ICON_ASSET
 import com.guet.liang.stockchat.ui.settings.MODEL_CONFIGURATION_PAGE_NAME
@@ -11,6 +12,12 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 internal fun StockChatPage.selectModel(modelId: String) {
     modelSelectionController.selectModel(modelId)
     closeModelMenu()
+}
+
+internal fun StockChatPage.selectAnswerMode(mode: AnswerMode) {
+    if (mode != answerMode) {
+        modelSelectionController.selectAnswerMode(mode)
+    }
 }
 
 internal fun StockChatPage.selectedModel(): ChatModelOption {

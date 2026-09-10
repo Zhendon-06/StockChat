@@ -2,12 +2,14 @@ package com.guet.liang.stockchat.ui
 
 import com.guet.liang.kuiklychart.finance.FinancialChartView
 import com.guet.liang.stockchat.base.BasePager
+import com.guet.liang.stockchat.base.STOCK_DETAIL_PREVIEW_QUOTE_PARAM
 import com.guet.liang.stockchat.base.bridgeModule
 import com.guet.liang.stockchat.base.openRoute
 import com.guet.liang.stockchat.controller.StockDetailController
 import com.guet.liang.stockchat.controller.StockDetailControllerState
 import com.guet.liang.stockchat.controller.StockDetailPredictionControllerState
 import com.guet.liang.stockchat.controller.stockDetailController
+import com.guet.liang.stockchat.data.toStockQuoteOrNull
 import com.guet.liang.stockchat.model.ChartEvidenceReference
 import com.guet.liang.stockchat.model.ShareResult
 import com.guet.liang.stockchat.model.StockPredictionHistoryPoint
@@ -19,6 +21,7 @@ import com.tencent.kuikly.core.directives.vif
 import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.reactive.handler.observable
+import com.tencent.kuikly.core.timer.Timer
 import com.tencent.kuikly.core.views.ScrollerView
 import com.tencent.kuikly.core.views.View
 
@@ -40,15 +43,39 @@ internal class StockDetailPage : BasePager() {
     private var favoriteCardsRevision by observable(0)
     internal var insightFocus by observable(DetailInsightFocus.TREND)
     internal var symbol = ""
+    // 入口页带来的行情快照：请求返回前先按它绘制名称、价格与走势，其余部分显示骨架
+    internal var previewQuote: StockQuote? = null
+    // 骨架呼吸相位，定时器驱动；只在 Loading 期间运行
+    internal var skeletonPhase by observable(0)
+    private var skeletonTimer: Timer? = null
     internal lateinit var controller: StockDetailController
 
     override fun created() {
         super.created()
         applySavedAppearance()
         symbol = pageData.params.optString("symbol").trim().uppercase()
+        previewQuote = pageData.params.optJSONObject(STOCK_DETAIL_PREVIEW_QUOTE_PARAM)?.toStockQuoteOrNull()
         controller =
-            stockDetailController(onMarketStateChanged = { detailState = it }, onPredictionStateChanged = { updatePredictionState(it) })
+            stockDetailController(
+                onMarketStateChanged = {
+                    detailState = it
+                    updateSkeletonTimer()
+                },
+                onPredictionStateChanged = { updatePredictionState(it) },
+            )
         loadDetail()
+    }
+
+    private fun updateSkeletonTimer() {
+        val loading = detailState is StockDetailControllerState.Loading
+        if (loading && skeletonTimer == null) {
+            skeletonPhase = 0
+            // 首个 tick 延后一个周期：骨架节点刚创建的批次里不能命中动画键，否则首帧会从 (0,0) 飞入
+            skeletonTimer = Timer().also { timer -> timer.schedule(SKELETON_PULSE_INTERVAL_MS, SKELETON_PULSE_INTERVAL_MS) { skeletonPhase += 1 } }
+        } else if (!loading && skeletonTimer != null) {
+            skeletonTimer?.cancel()
+            skeletonTimer = null
+        }
     }
 
     override fun pageDidAppear() {
@@ -62,6 +89,8 @@ internal class StockDetailPage : BasePager() {
     }
 
     override fun pageWillDestroy() {
+        skeletonTimer?.cancel()
+        skeletonTimer = null
         controller.invalidate()
         super.pageWillDestroy()
     }
@@ -73,7 +102,7 @@ internal class StockDetailPage : BasePager() {
             ctx.DetailHeader(this)
             View {
                 attr { absolutePosition(top = pagerData.statusBarHeight + 68f, left = 0f, right = 0f, bottom = 0f) }
-                vif({ ctx.detailState is StockDetailControllerState.Loading }) { ctx.LoadingState(this) }
+                vif({ ctx.detailState is StockDetailControllerState.Loading }) { ctx.DetailSkeleton(this, ctx.previewQuote) }
                 vif({ ctx.detailState is StockDetailControllerState.Empty }) { ctx.EmptyState(this) }
                 vif({ ctx.detailState is StockDetailControllerState.Error }) { ctx.ErrorState(this) }
                 vif({ ctx.detailState is StockDetailControllerState.Content }) {
@@ -144,6 +173,7 @@ internal class StockDetailPage : BasePager() {
         predictionHistoryCache = emptyList()
         predictionChartView = null
         detailState = StockDetailControllerState.Loading
+        updateSkeletonTimer()
         selectedDetailTab = DetailTab.MARKET
         updatePredictionState(StockDetailPredictionControllerState.NotRequested)
         chartShowingPrediction = false
@@ -174,3 +204,5 @@ internal class StockDetailPage : BasePager() {
         }
     }
 }
+
+private const val SKELETON_PULSE_INTERVAL_MS = 700

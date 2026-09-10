@@ -7,7 +7,7 @@ import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.views.Text
 import com.tencent.kuikly.core.views.View
 
-// 详情页头部与加载 / 空数据 / 错误状态。
+// 详情页头部与空数据 / 错误状态；加载中的骨架屏见 StockDetailSkeleton.kt。
 
 internal fun StockDetailPage.DetailHeader(container: ViewContainer<*, *>) {
     val ctx = this
@@ -60,41 +60,6 @@ internal fun StockDetailPage.DetailHeader(container: ViewContainer<*, *>) {
                         fontWeightMedium()
                         color(StockChatTheme.textPrimary)
                     }
-                }
-            }
-        }
-    }
-}
-
-internal fun StockDetailPage.LoadingState(container: ViewContainer<*, *>) {
-    with(container) {
-        View {
-            attr {
-                absolutePositionAllZero()
-                allCenter()
-            }
-            View {
-                attr {
-                    size(42f, 42f)
-                    borderRadius(21f)
-                    backgroundColor(StockChatTheme.accentSoft)
-                    allCenter()
-                }
-                Text {
-                    attr {
-                        text("…")
-                        fontSize(22f)
-                        color(StockChatTheme.accent)
-                        marginBottom(8f)
-                    }
-                }
-            }
-            Text {
-                attr {
-                    text("正在加载行情")
-                    fontSize(scaledFontSize(14f))
-                    color(StockChatTheme.textSecondary)
-                    marginTop(14f)
                 }
             }
         }

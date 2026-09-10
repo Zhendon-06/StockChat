@@ -1,5 +1,6 @@
 package com.guet.liang.stockchat.data
 
+import com.guet.liang.stockchat.model.AnswerMode
 import com.guet.liang.stockchat.model.AppearanceSettings
 import com.guet.liang.stockchat.model.ChatBackgroundSettings
 import com.guet.liang.stockchat.model.FontSizeSettings
@@ -19,6 +20,7 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 internal fun ModelConfiguration.toJson(): JSONObject {
     return JSONObject().apply {
         put("activeProviderId", activeProviderId)
+        put("answerMode", answerMode.name)
         put("providers", providers.toJsonArray { provider -> provider.toJson() })
     }
 }
@@ -60,6 +62,7 @@ internal fun JSONObject.toModelConfiguration(): ModelConfiguration? {
     return ModelConfiguration(
         activeProviderId = optString("activeProviderId").trim(),
         providers = providers,
+        answerMode = enumValueOrDefault(optString("answerMode"), AnswerMode.FAST),
     )
 }
 

@@ -1,5 +1,6 @@
 package com.guet.liang.stockchat.ui
 
+import com.guet.liang.stockchat.model.AnswerMode
 import com.guet.liang.stockchat.model.ChatModelOption
 import com.tencent.kuikly.core.base.Animation
 import com.tencent.kuikly.core.base.Color
@@ -93,6 +94,7 @@ internal fun StockChatPage.ModelMenuContent(container: ViewContainer<*, *>) {
     val ctx = this
     val metrics = ctx.layoutMetrics
     with(container) {
+        ctx.AnswerModeSection(this)
         vif({ ctx.drawerModelsLoading }) { ctx.DrawerModelNotice(this, message = "正在从 Provider 拉取可用模型…") }
         vif({ !ctx.drawerModelsLoading && ctx.drawerModelsError.isNotBlank() }) {
             ctx.DrawerModelNotice(this, message = ctx.drawerModelsError, actionText = "重试", onAction = { ctx.retryDrawerModels() })
@@ -109,6 +111,90 @@ internal fun StockChatPage.ModelMenuContent(container: ViewContainer<*, *>) {
                 textAlignCenter()
                 marginTop(metrics.dp(8f))
                 marginBottom(metrics.dp(8f))
+            }
+        }
+    }
+}
+
+// 回答模式：并行（更快）与串行联网（正文可引用实时行情）二选一，随模型选择一起持久化
+internal fun StockChatPage.AnswerModeSection(container: ViewContainer<*, *>) {
+    val ctx = this
+    val metrics = ctx.layoutMetrics
+    with(container) {
+        Text {
+            attr {
+                text("回答模式")
+                fontSize(metrics.dp(13f))
+                fontWeightBold()
+                color(StockChatTheme.textSecondary)
+                marginTop(metrics.dp(4f))
+                marginBottom(metrics.dp(6f))
+                marginLeft(metrics.dp(4f))
+            }
+        }
+        AnswerMode.values().forEach { mode -> ctx.AnswerModeItem(this, mode) }
+        View {
+            attr {
+                height(1f)
+                alignSelfStretch()
+                backgroundColor(StockChatTheme.borderStrong)
+                marginTop(metrics.dp(10f))
+                marginBottom(metrics.dp(10f))
+            }
+        }
+    }
+}
+
+internal fun StockChatPage.AnswerModeItem(container: ViewContainer<*, *>, mode: AnswerMode) {
+    val ctx = this
+    val metrics = ctx.layoutMetrics
+    with(container) {
+        View {
+            attr {
+                borderRadius(metrics.dp(16f))
+                flexDirectionRow()
+                alignItemsCenter()
+                padding(top = metrics.dp(10f), bottom = metrics.dp(10f), left = metrics.dp(12f), right = metrics.dp(12f))
+                marginBottom(metrics.dp(6f))
+                backgroundColor(if (mode == ctx.answerMode) StockChatTheme.accentSoft else StockChatTheme.surfaceSoft)
+            }
+            event { click { ctx.selectAnswerMode(mode) } }
+            Text {
+                attr {
+                    text(if (mode == AnswerMode.FAST) "⚡" else "🌐")
+                    fontSize(metrics.dp(20f))
+                    marginRight(metrics.dp(10f))
+                }
+            }
+            View {
+                attr { flex(1f) }
+                Text {
+                    attr {
+                        text(mode.displayName)
+                        fontSize(metrics.dp(15f))
+                        fontWeightBold()
+                        color(StockChatTheme.textPrimary)
+                    }
+                }
+                Text {
+                    attr {
+                        text(mode.description)
+                        fontSize(metrics.dp(11f))
+                        lineHeight(metrics.dp(16f))
+                        color(StockChatTheme.textSecondary)
+                        marginTop(metrics.dp(3f))
+                    }
+                }
+            }
+            Text {
+                attr {
+                    text("✓")
+                    fontSize(metrics.dp(20f))
+                    fontWeightBold()
+                    color(StockChatTheme.accent)
+                    marginLeft(metrics.dp(8f))
+                    opacity(if (mode == ctx.answerMode) 1f else 0f)
+                }
             }
         }
     }

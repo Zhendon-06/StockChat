@@ -1,5 +1,6 @@
 package com.guet.liang.stockchat.data
 
+import com.guet.liang.stockchat.model.AnswerMode
 import com.guet.liang.stockchat.model.AppearanceSettings
 import com.guet.liang.stockchat.model.ChatBackgroundSettings
 import com.guet.liang.stockchat.model.FontSizeSettings
@@ -54,9 +55,12 @@ internal interface SettingsRepository : SharedChatSettingsRepository {
     fun deleteModelProvider(providerId: String): Boolean
 
     fun selectModel(providerId: String, modelId: String): Boolean
+
+    fun setAnswerMode(mode: AnswerMode)
 }
 
 /** Shared cross-platform type; this declaration defines a stable contract for callers. */
+@Suppress("TooManyFunctions")
 internal class InMemorySettingsRepository(
     initialAppearance: AppearanceSettings = MockSettingsData.appearance,
     initialSharedChats: List<SharedChatRecord> = MockSettingsData.sharedChats,
@@ -211,12 +215,20 @@ internal class InMemorySettingsRepository(
                 provider
             }
         }
-        modelConfiguration = ModelConfiguration(
+        modelConfiguration = modelConfiguration.copy(
             activeProviderId = providerId,
             providers = updatedProviders,
         )
         publishAndPersist()
         return true
+    }
+
+    override fun setAnswerMode(mode: AnswerMode) {
+        if (modelConfiguration.answerMode == mode) {
+            return
+        }
+        modelConfiguration = modelConfiguration.copy(answerMode = mode)
+        publishAndPersist()
     }
 
     private fun restoreFromPersistence() {

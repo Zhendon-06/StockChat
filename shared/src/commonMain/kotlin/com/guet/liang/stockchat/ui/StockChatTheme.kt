@@ -265,6 +265,11 @@ internal object StockChatTheme {
         get() = palette().marketNegativeSoft
 
     fun applyAppearance(appearance: AppearanceSettings, systemDark: Boolean) {
+        // renderRevision 翻转会让聊天页整棵内容树重建（vif/velse 切换），滚动位置随之丢失。
+        // 页面每次回到前台都会调用这里，所以只有外观真正变化时才触发重建。
+        if (appearanceState == appearance && systemDarkState == systemDark) {
+            return
+        }
         appearanceState = appearance
         systemDarkState = systemDark
         renderRevision += 1

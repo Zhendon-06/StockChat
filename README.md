@@ -1,116 +1,118 @@
 # StockChat
 
-StockChat 是一个基于 Kotlin Multiplatform 与 Kuikly 构建的 AI 股票问答 Demo。它把自然语言问答、行情数据和证券详情串成一条跨端体验，用于验证“聊天入口 → 富内容回答 → 行情详情承接”的完整链路。
+StockChat 是一个基于 Kotlin Multiplatform 与 Kuikly 的 AI 股票问答应用。用户用自然语言提问，AI 回答里直接嵌入实时行情卡片，点进卡片进入个股详情页，看走势、看 AI 预测，再把选中的点位带回聊天继续追问。一套共享代码同时运行在 Android、iOS 和 OpenHarmony 上。
 
 > 行情与 AI 结论均为演示信息，仅供参考，不构成投资建议。
 
-## 功能概览
+## 核心体验
 
-- **AI 股票聊天**：支持欢迎/空状态、文本提问、历史会话、流式生成、失败重试和重复提交保护。
-- **富内容回答**：回答由可扩展的 `AnswerBlock` 组成，当前支持 KuiklyMarkdown、结构化行情卡片和图片内容；行情卡片展示名称、代码、现价、涨跌、更新时间和 AI 观察摘要，并可点击进入详情页。
-- **行情与大盘**：可识别股票、指数、六位代码及交易所代码；行情请求使用腾讯证券接口，并提供今日市场概览、板块观察和降级提示。
-- **股票详情页**：展示核心行情、历史走势和 AI 联动解读；点击走势节点可同步切换点位说明、预测依据和风险提醒，并可把当前标的与选中节点带回聊天继续追问。走势支持缩放与横向浏览，AI 预测仅在真实模型请求成功并通过校验后绘制。
-- **语音与图片**：支持图片提问、MiMo 语音输入和回答朗读；平台能力不可用时保留明确的降级提示。
-- **会话工具**：支持会话表格对比、Mermaid mindmap 脑图产物、会话归档/分享，以及模型、字体、背景和表格样式设置。
+**问 AI，得到带行情的回答。** 输入"腾讯和宁德时代最近怎么样"，回答由 Markdown 文本、行情卡片和图片等内容块组成，卡片可点击。模型菜单里可选两种回答模式：「更快回答速度」让聊天模型携带会话上下文流式作答，同时另一条只看这一句话的标的识别请求返回结构化企业列表、经腾讯证券搜索确认后拉取实时行情，卡片一到就插到正文下方；「联网精准实时数据回答」则先联网识别标的并拉取行情，再把实时数据注入上下文让模型作答，正文可以引用真实价格。
+
+**详情页与 AI 联动。** 详情页展示分时、五日、日 K、周 K、月 K，叠加 MA5/10/20，支持缩放、平移和点选。请求 AI 预测后，预测曲线接在真实走势之后绘制，点击任一节点会同步切换点位说明、预测依据和风险提醒，可一键把当前标的和节点带回聊天。预测只在模型请求成功并通过结构校验后才绘制，不会用本地伪造曲线代替。
+
+**今日市场。** 聊天主页内置市场 Tab，展示主要指数、样本股与涨跌分布，点击任意标的进入详情页。
+
+**会话产物。** 一次会话里提到的所有标的可以生成横向对比表格，也可以生成 Mermaid mindmap 脑图，两者都保存在本地可反复查看。
+
+**语音与图片。** 支持图片提问、语音输入和回答朗读。平台能力不可用时给出明确降级提示。
+
+**设置。** 多模型服务商配置、字体大小、聊天背景、表格样式、会话归档与分享记录。
 
 ## 页面与路由
 
-页面统一在共享层使用 Kuikly `@Page` 注册，并通过 `RouterModule` 跳转：
+页面统一在共享层用 Kuikly `@Page` 注册，跳转走 `RouterModule`。
 
-| 页面 | 路由 | 用途 |
+| 页面 | 路由名 | 说明 |
 | --- | --- | --- |
-| 聊天主页 | `router` | AI 对话、行情卡片和会话管理 |
-| 股票详情 | `stock_detail` | 行情、走势图、摘要和 AI 预测 |
-| 今日市场 | 聊天主页内的市场 Tab | 指数、样本股和板块概览 |
-| 会话表格 | `conversation_table_artifacts` / `conversation_table_artifact` | 汇总当前会话中识别到的证券并横向比较 |
-| 会话脑图 | `conversation_mind_map_artifacts` / `conversation_mind_map_artifact` | 输出 Mermaid `mindmap` 语法并查看渲染后的会话脑图 |
-| 设置 | `stock_settings*` | 模型、字体、背景、表格样式和会话管理 |
+| 聊天主页 | `router` | 对话、今日市场 Tab、会话抽屉 |
+| 个股详情 | `stock_detail` | 行情、K 线 / 分时、盘口、AI 预测 |
+| 收藏卡片 | `favorite_cards` | 收藏的行情卡片列表 |
+| 会话对比表 | `conversation_table_artifacts` / `conversation_table_artifact` | 会话标的横向对比 |
+| 会话脑图 | `conversation_mind_map_artifacts` / `conversation_mind_map_artifact` | Mermaid mindmap 渲染 |
+| 图片预览 | `stock_image_preview` | 全屏查看消息图片 |
+| 设置 | `stock_settings` 及 `stock_settings_*` 子页 | 模型、字体、背景、表格样式、分享、归档 |
 
-## 技术结构
-
-```text
-shared/src/commonMain
-├── model/   跨端消息、行情、预测和设置模型
-├── data/    AI、行情、语音、会话持久化及产物数据源
-├── controller/ 页面状态与数据源编排，供 Kuikly 页面注入
-├── base/     路由、日志与跨端基础适配
-└── ui/      Kuikly 聊天、详情、市场、表格、脑图和设置页面
-
-androidApp/  Android 启动容器、原生桥接、录音/图片选择和路由适配
-iosApp/      iOS Kuikly 容器与原生桥接
-ohosApp/     OpenHarmony 容器与原生桥接
-kuikly-chart/ 跨端金融图表组件库
-table-core/  跨端表格组件库
-static_server/  Web 静态资源本地服务
-```
-
-核心请求链路如下：
+## 架构
 
 ```text
-用户问题/图片
-      │
-      ▼
-StockChatPage ──► LLM 联网研究企业 ──► 腾讯名称搜索 ──► LLM 确认候选
-      │                    │
-      │                    ├─ 行情问题 ─► TencentMarketDataService
-      │                    └─ 普通/分析问题 ─► 当前 Provider AI
-      ▼
-AnswerBlock（Markdown / MarketQuote / ImageGallery）
-      │
-      └─ 行情卡片点击 ─► RouterModule ─► StockDetailPage
+shared/src/commonMain/kotlin/com/guet/liang/stockchat
+├── ui/          Kuikly 页面与组件，只负责布局、渲染状态、转发用户动作
+├── controller/  页面编排层：注入数据源，处理加载 / 重试 / 错误映射 / 请求代次
+├── data/        AI 服务、行情接口、语音服务、本地持久化、产物生成器
+├── model/       跨端纯数据结构
+└── base/        路由、日志、错误映射与 Kuikly 兼容工具
+
+kuikly-chart/    跨端金融图表组件库：K 线、分时、双轴、均线、十字光标、手势
+table-core/      跨端表格组件库：DSL 建表、编辑缓冲、Excel 适配
+androidApp/      Android 容器与原生桥接（录音、图片选择、路由）
+iosApp/          iOS 容器与原生桥接
+ohosApp/         OpenHarmony 容器与原生桥接
 ```
 
-共享业务遵循 `ui → controller → data → model` 的单向依赖，页面只负责 Kuikly 布局和事件转发；
-`kuikly-chart` 与 `table-core` 作为独立组件库复用，平台工程仅提供容器和原生桥接。
+依赖方向固定为 `ui → controller → data → model`，data 与 model 不依赖 UI，页面不直接创建数据源。每个 controller 都通过接口接收依赖，可以在 `commonTest` 用假实现单独测试。
+
+聊天请求链路：
+
+```text
+用户问题 / 图片
+      │
+      ▼
+ChatSendController ─► AliyunStockChatDataSource（按 AnswerMode 编排）
+      ├─ 聊天分支：携带上下文（问 A + 答 B + 问 D），走响应缓存，流式输出 ─► 当前 Provider
+      └─ 标的分支：只发送当前这条问 D，无上下文
+            ├─ 结构化标的识别（百炼 qwen-plus；精准模式强制联网，快速模式不联网）
+            ├─ 并发调用腾讯 smartbox 名称搜索；识别请求给出且腾讯候选包含的代码直接采用
+            ├─ 其余候选交当前模型确认具体证券
+            └─ TencentMarketDataService 并发拉取行情
+      │
+      │  更快回答速度：两条分支并行，卡片就绪即随流式片段展示
+      │  联网精准实时数据回答：标的分支先跑，行情注入聊天提示词后再作答
+      ▼
+ParallelAnswerJoin 合并两条分支
+      ▼
+AnswerBlock 列表（Markdown / MarketQuote / ImageGallery）
+      │
+      └─ 卡片点击 ─► StockDetailController ─► 详情页
+```
+
+## 数据来源与降级
+
+- **行情**：腾讯证券公开接口，覆盖沪深北、港股快照、日线、分时与盘口。名称搜索使用腾讯 `smartbox`。
+- **AI**：默认阿里云百炼 DashScope，兼容 OpenAI 协议；应用内可添加 DeepSeek、Moonshot、智谱等服务商。标的识别在百炼下固定走 `qwen-plus`，仅「联网精准实时数据回答」模式强制联网；其他服务商用当前模型按已有知识识别，不声称联网，也不做本地名称词典推断。
+- **语音**：Xiaomi MiMo 识别与合成。
+- **降级原则**：网络行情不可用时，今日市场只对缺失项使用带明确标记的本地演示数据；AI 预测失败、Key 缺失或返回结构非法时只展示错误状态；所有行情与 AI 结论保留时间戳与风险提示。
 
 ## 环境要求
 
-- JDK 17（Android Gradle Plugin `8.6.1`）
-- Gradle Wrapper `8.7`（优先使用仓库内的 `./gradlew`）
-- Kotlin `2.1.21`
-- Kuikly `2.26.0-2.1.21`
-- Android Studio 与 Android SDK 34；Android 最低版本为 API 23
-- iOS 开发需要 Xcode、CocoaPods，部署目标为 iOS 14.1+
-- OpenHarmony 开发需要 DevEco Studio；可使用 `ohosApp/runOhosApp.sh`
+| 组件 | 版本 |
+| --- | --- |
+| JDK | 17 |
+| Gradle | 8.7（使用仓库内 `./gradlew`） |
+| Kotlin | 2.1.21 |
+| Kuikly | 2.26.0-2.1.21 |
+| KuiklyMarkdown | 1.0.6-2.1.21 |
+| Android Gradle Plugin | 8.6.1 |
+| Android SDK | compileSdk 34，minSdk 23 |
+| iOS | Xcode + CocoaPods，部署目标 iOS 14.1 |
+| OpenHarmony | DevEco Studio |
 
 ## API Key 配置
 
-本地 Android 和鸿蒙调试可在项目根目录的未提交文件 `local.properties` 中配置以下键：
+在仓库根目录创建未提交的 `local.properties`：
 
 ```properties
 QWEN_API_KEY=你的百炼_API_Key
 MIMO_VOICE_API_KEY=你的_MiMo_API_Key
 ```
 
-也可以使用同名环境变量覆盖本地配置：
+也可用同名环境变量覆盖。`QWEN_API_KEY` 用于文本 / 视觉问答、标的识别与 AI 预测，`MIMO_VOICE_API_KEY` 仅用于语音。三端 Debug 构建都会读取这份配置并生成到构建产物内，Release 构建清空本地密钥。Key 会进入 Debug 产物，因此这种方式只适合本地调试，正式环境应使用服务端代理或短期凭证。应用内的模型配置页可以在运行时另行添加服务商与 Key。
+
+## 构建与运行
+
+### Android
 
 ```bash
-export QWEN_API_KEY="你的百炼_API_Key"
-export MIMO_VOICE_API_KEY="你的_MiMo_API_Key"
-```
-
-`QWEN_API_KEY` 用于 DashScope 文本/视觉问答、意图识别和 AI 预测；`MIMO_VOICE_API_KEY` 仅用于 MiMo 语音识别与合成。聊天中的企业识别使用同一百炼 Key 下支持联网搜索的 `qwen-plus`，再通过腾讯证券名称搜索与当前模型确认候选；未配置模型 Key 时提示配置，不再通过本地名称匹配生成卡片。详情页与今日行情等固定入口仍可独立访问腾讯行情服务。API Key 会进入当前调试构建产物，因此该方式只适合本地 Demo，正式环境应改为服务端代理或短期凭证。
-
-鸿蒙的 Hvigor 构建任务会在每次 Debug 构建时读取上述配置并生成 HAP 内的本地资源，DevEco Run 和 `ohosApp/runOhosApp.sh` 均生效，无需手工生成 ETS 文件。Release 构建会清空该资源中的本地密钥；应用内仍可通过模型设置配置服务商。
-
-## 构建与测试
-
-在项目根目录执行：
-
-```bash
-# 编译共享层 Android 目标
-./gradlew :shared:compileDebugKotlinAndroid
-
-# 运行共享层单元测试
-./gradlew :shared:testDebugUnitTest
-
-# 构建 Android Debug APK
 ./gradlew :androidApp:assembleDebug
-```
-
-生成的 APK 位于 `androidApp/build/outputs/apk/debug/androidApp-debug.apk`。连接设备后可使用：
-
-```bash
 adb install -r androidApp/build/outputs/apk/debug/androidApp-debug.apk
 ```
 
@@ -122,31 +124,48 @@ pod install
 open iosApp.xcworkspace
 ```
 
-然后在 Xcode 中选择 `iosApp` scheme 和模拟器或真机运行。
+在 Xcode 中选择 `iosApp` scheme 运行。iOS 宿主的桥接回归脚本见 `iosApp/tests/README.md`。
 
 ### OpenHarmony
-
-在已安装并配置 DevEco Studio 的环境中执行：
 
 ```bash
 ./ohosApp/runOhosApp.sh
 ```
 
-脚本会安装依赖、构建 HAP，并尝试安装到已连接的模拟器或设备；首次使用仍需在 DevEco Studio 中完成签名配置。若直接在 DevEco Studio 构建，请将
-`ohosApp/local.properties.example` 复制为 `ohosApp/local.properties`，其中
-`kuikly.assetsPath` 用于把共享层的图标和图片复制到鸿蒙 HAP 的 `resfile` 目录。
+脚本会安装依赖、构建 HAP 并尝试安装到已连接设备；首次使用需在 DevEco Studio 完成签名配置。若直接用 DevEco Studio 构建，把 `ohosApp/local.properties.example` 复制为 `ohosApp/local.properties`。
 
-## 数据与降级策略
+## 测试与代码质量
 
-- 聊天请求由 LLM 联网研究企业和查询意图，再逐个调用腾讯证券名称搜索，经 LLM 确认候选后读取腾讯行情；不使用本地名称匹配或直接取搜索首条结果。未上市和待确认企业单独说明，识别失败可重新生成。
-- 分析类问题会把带时间戳的行情快照注入 AI 上下文，避免模型脱离当前行情回答。联网研究当前接入百炼 `qwen-plus`；未接入联网搜索的 Provider 会提示切换，不以离线推断回退。
-- 网络行情不可用时，今日市场页面可对缺失项使用明确标记的本地演示数据；不会把 Mock 价格伪装成实时行情。
-- AI 预测失败、Key 缺失、历史数据不足或返回结构非法时，只展示错误/不可用状态，不绘制本地伪造预测曲线。
-- 聊天使用腾讯 `smartbox` 名称搜索；Web 端受 CORS 限制，正式部署应配置同域代理。当前仓库未提供独立的 `h5App`/`miniApp` 工程目录。
+```bash
+# 三个共享模块的单元测试
+./gradlew :shared:testDebugUnitTest :kuikly-chart:testDebugUnitTest :table-core:testDebugUnitTest
 
-## 开发约束
+# 静态检查，配置位于 config/detekt/detekt.yml
+./gradlew detekt
 
-- 核心页面和共享业务逻辑放在 `shared/src/commonMain/kotlin`，使用 Kuikly 组件实现；平台工程只负责容器和必要桥接。
-- Markdown 优先使用 KuiklyMarkdown；走势图当前使用 Kuikly Canvas，以保持 OpenHarmony 目标的跨端兼容。
-- 行情、AI 结论和预测必须保留演示标识与风险提示，不得在源码中提交 API Key、Token 或其他凭据。
-- 更详细的组件、接口和降级说明见 [`docs/StockChatComponents.md`](docs/StockChatComponents.md)。
+# 结构指标：函数长度、文件长度、KDoc 覆盖、分层依赖
+bash tools/quality_metrics.sh
+```
+
+当前状态：
+
+| 项目 | 结果 |
+| --- | --- |
+| 单元测试 | shared 176、kuikly-chart 61、table-core 31，全部通过 |
+| detekt | 三模块 0 告警 |
+| KDoc | 共享层与图表库顶层类型 100% 覆盖 |
+| UI 对 data 层的直接依赖 | 仅两处装配入口 |
+
+controller 层测试使用 `commonTest` 下的假 repository，不依赖 Kuikly 运行时。
+
+## 组件库
+
+`kuikly-chart` 和 `table-core` 是从本项目孵化的独立组件库，都只依赖 Kuikly `core`，可直接复制到其他 Kuikly 工程使用。
+
+- **kuikly-chart**：DSL 声明式建图，支持折线 / 柱状 / 饼图，以及面向金融场景的 K 线、分时、成交量副图、双轴对照、均线叠加、十字光标与缩放平移手势。渲染基于 Kuikly Canvas，保证 OpenHarmony 兼容。
+- **table-core**：DSL 建表、单元格编辑缓冲、列宽测量，并提供 Excel 文件适配。
+
+## 更多文档
+
+- [`docs/StockChatComponents.md`](docs/StockChatComponents.md)：AI 服务配置、行情链路、Markdown 选择、会话产物、走势绘制的实现细节。
+- [`docs/StockMarketDetail.md`](docs/StockMarketDetail.md)：个股详情页的展示规则与数据边界。

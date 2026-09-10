@@ -1,6 +1,7 @@
 @file:Suppress("MagicNumber", "LongParameterList", "MaxLineLength")
 package com.guet.liang.stockchat.data
 
+import com.guet.liang.stockchat.model.AnswerMode
 import com.guet.liang.stockchat.model.ChatBackgroundSettings
 import com.guet.liang.stockchat.model.FontSizeSettings
 import com.guet.liang.stockchat.model.ModelCapability
@@ -12,6 +13,7 @@ import com.guet.liang.stockchat.model.SharedChatRecord
 import com.guet.liang.stockchat.model.ThemeMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -258,6 +260,20 @@ class SettingsRepositoryTest {
 
         assertEquals(ThemeMode.DARK, restoredSnapshot.appearance.themeMode)
         assertEquals(listOf(sharedRecord), restoredSnapshot.sharedChats)
+    }
+
+    @Test
+    fun answerModeSurvivesPersistenceAndDefaultsToFastForOlderSnapshots() {
+        val persistence = FakeSettingsPersistence()
+        InMemorySettingsRepository(initialPersistence = persistence).setAnswerMode(AnswerMode.PRECISE)
+        assertEquals(
+            AnswerMode.PRECISE,
+            InMemorySettingsRepository(initialPersistence = persistence).loadSnapshot().modelConfiguration.answerMode,
+        )
+        val legacy = SettingsSnapshotJsonCodec.decode(
+            SettingsSnapshotJsonCodec.encode(InMemorySettingsRepository().loadSnapshot()).replace("\"answerMode\":\"FAST\",", ""),
+        )
+        assertEquals(AnswerMode.FAST, assertNotNull(legacy).modelConfiguration.answerMode)
     }
 
     @Test

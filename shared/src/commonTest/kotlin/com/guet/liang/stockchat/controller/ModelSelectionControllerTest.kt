@@ -2,6 +2,7 @@ package com.guet.liang.stockchat.controller
 
 import com.guet.liang.stockchat.data.InMemorySettingsRepository
 import com.guet.liang.stockchat.data.StockChatDataSource
+import com.guet.liang.stockchat.model.AnswerMode
 import com.guet.liang.stockchat.model.ChatAnswer
 import com.guet.liang.stockchat.model.ChatHistoryItem
 import com.guet.liang.stockchat.model.ModelCatalogResult
@@ -51,10 +52,25 @@ class ModelSelectionControllerTest {
         assertEquals("second", fixture.lastConfiguredModel)
     }
 
+    @Test
+    fun answerModeIsPersistedAndRebuildsTheSourceWithIt() {
+        val fixture = Fixture()
+        fixture.controller.configureChatProvider()
+        assertEquals(AnswerMode.FAST, fixture.controller.state.answerMode)
+        assertEquals(AnswerMode.FAST, fixture.lastConfiguredAnswerMode)
+        fixture.controller.selectAnswerMode(AnswerMode.PRECISE)
+        assertEquals(AnswerMode.PRECISE, fixture.controller.state.answerMode)
+        assertEquals(AnswerMode.PRECISE, fixture.lastConfiguredAnswerMode)
+        assertEquals(AnswerMode.PRECISE, fixture.settings.loadSnapshot().modelConfiguration.answerMode)
+        fixture.settings.selectModel(provider.id, model.id)
+        assertEquals(AnswerMode.PRECISE, fixture.settings.loadSnapshot().modelConfiguration.answerMode)
+    }
+
     private class Fixture {
         val settings = InMemorySettingsRepository(initialModelConfiguration = ModelConfiguration(provider.id, listOf(provider)))
         var requests = 0
         var lastConfiguredModel = ""
+        var lastConfiguredAnswerMode: AnswerMode? = null
         lateinit var callback: (ModelCatalogResult) -> Unit
         lateinit var timeout: () -> Unit
         val controller =
@@ -66,6 +82,7 @@ class ModelSelectionControllerTest {
                 },
                 { config ->
                     lastConfiguredModel = config.chatModel
+                    lastConfiguredAnswerMode = config.answerMode
                     Source
                 },
                 { _, cb -> timeout = cb },

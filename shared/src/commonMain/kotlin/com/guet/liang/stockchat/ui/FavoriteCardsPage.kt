@@ -4,6 +4,7 @@ import com.guet.liang.stockchat.controller.ArtifactController
 import com.guet.liang.stockchat.controller.artifactController
 
 import com.guet.liang.stockchat.base.openRoute
+import com.guet.liang.stockchat.base.stockDetailRouteParams
 import com.guet.liang.stockchat.base.BasePager
 import com.guet.liang.stockchat.base.closePage
 import com.guet.liang.stockchat.model.StockQuote
@@ -13,7 +14,6 @@ import com.tencent.kuikly.core.base.BorderStyle
 import com.tencent.kuikly.core.base.ViewBuilder
 import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.directives.vif
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.reactive.handler.observable
 import com.tencent.kuikly.core.views.Scroller
 import com.tencent.kuikly.core.views.Text
@@ -172,14 +172,9 @@ internal class FavoriteCardsPage : BasePager() {
     }
 
     private fun openStockDetail(quote: StockQuote) {
-        val params = JSONObject()
-        params.put("symbol", artifactController.providerSymbol(quote))
-        pageData.params.optString("qwenApiKey").trim()
-            .takeIf(String::isNotBlank)
-            ?.let { params.put("qwenApiKey", it) }
         openRoute(
             STOCK_DETAIL_PAGE_NAME,
-            params,
+            stockDetailRouteParams(artifactController.providerSymbol(quote), pageData.params.optString("qwenApiKey"), preview = quote),
         )
     }
 

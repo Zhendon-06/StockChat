@@ -64,7 +64,6 @@ internal class TencentTodayMarketDataSource(
             targets = targets,
             needsTrend = true,
             needsIntraday = false,
-            needsAi = false,
         )
         var done = false
         fun deliver(quotes: Map<String, StockQuote>) {

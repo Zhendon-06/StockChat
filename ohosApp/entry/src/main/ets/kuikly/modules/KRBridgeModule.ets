@@ -8,6 +8,7 @@ import util from '@ohos.util';
 import fs from '@ohos.file.fs';
 import { fileUri } from '@kit.CoreFileKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
+import { StockChatStreamRequest } from './StockChatStreamRequest';
 
 export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly MODULE_NAME = "HRBridgeModule";
@@ -31,6 +32,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly STREAM_CHAT_COMPLETION = "streamChatCompletion";
   static readonly PICK_IMAGES = "pickImages";
   private imagePickerPending: boolean = false;
+  private chatStreams: Set<StockChatStreamRequest> = new Set();
 
   syncMode(): boolean {
     return false;
@@ -105,7 +107,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         break;
       }
       case KRBridgeModule.STREAM_CHAT_COMPLETION: {
-        this.streamChatCompletion(callback);
+        this.streamChatCompletion(params, callback);
         break;
       }
       case KRBridgeModule.PICK_IMAGES: {
@@ -218,12 +220,21 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     callback?.({ "success": 1 });
   }
 
-  private streamChatCompletion(callback: KuiklyRenderCallback | null) {
-    callback?.({
-      "success": 0,
-      "errorCode": "STREAM_UNAVAILABLE",
-      "errorMessage": "当前平台暂不支持原生流式请求，将使用兼容网络请求。"
+  onDestroy(): void {
+    this.chatStreams.forEach((request: StockChatStreamRequest) => request.cancel());
+    this.chatStreams.clear();
+    super.onDestroy();
+  }
+
+  private streamChatCompletion(params: KRAny, callback: KuiklyRenderCallback | null) {
+    if (callback == null) {
+      return;
+    }
+    const request = new StockChatStreamRequest(callback, (finished: StockChatStreamRequest) => {
+      this.chatStreams.delete(finished);
     });
+    this.chatStreams.add(request);
+    request.start(params);
   }
 
   private pickImages(params: KRAny, callback: KuiklyRenderCallback | null) {

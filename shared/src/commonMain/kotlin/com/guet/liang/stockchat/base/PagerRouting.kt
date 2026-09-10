@@ -1,5 +1,7 @@
 package com.guet.liang.stockchat.base
 
+import com.guet.liang.stockchat.data.toJson
+import com.guet.liang.stockchat.model.StockQuote
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
@@ -14,10 +16,14 @@ internal fun Pager.openRoute(routeName: String, params: JSONObject = JSONObject(
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(routeName, params)
 }
 
-internal fun stockDetailRouteParams(symbol: String, qwenApiKey: String? = null): JSONObject =
+/** Route parameter carrying the quote the caller already has, so the detail page paints it before any request. */
+internal const val STOCK_DETAIL_PREVIEW_QUOTE_PARAM = "previewQuote"
+
+internal fun stockDetailRouteParams(symbol: String, qwenApiKey: String? = null, preview: StockQuote? = null): JSONObject =
     JSONObject().apply {
         put("symbol", symbol)
         qwenApiKey?.trim()?.takeIf(String::isNotBlank)?.let { put("qwenApiKey", it) }
+        preview?.let { put(STOCK_DETAIL_PREVIEW_QUOTE_PARAM, it.toJson()) }
     }
 
 internal fun artifactRouteParams(id: Long, qwenApiKey: String? = null): JSONObject =

@@ -19,6 +19,7 @@ import com.tencent.kuikly.core.views.Span
 import com.tencent.kuikly.core.views.Text
 import com.tencent.kuikly.core.views.View
 import com.tencent.kuiklybase.KuiklyMarkdown
+import com.tencent.kuiklybase.components.markdownComponents
 import com.tencent.kuiklybase.config.FontWeight
 import com.tencent.kuiklybase.config.MarkdownColors
 import com.tencent.kuiklybase.config.MarkdownConfig
@@ -32,6 +33,8 @@ internal class SelectableMarkdownView(
     private val scale: Float,
     private val selectionEnabled: Boolean,
     private val onCopySelection: (String) -> Unit,
+    /** Width the markdown body can occupy; tables wider than this scroll horizontally. */
+    private val availableWidth: Float = 0f,
 ) : ComposeView<ComposeAttr, ComposeEvent>() {
 
     private var copyMenuVisible by observable(false)
@@ -185,10 +188,15 @@ internal class SelectableMarkdownView(
         val textColor = StockChatTheme.chatTextColorArgb
         val markdownSource = source
         val config = markdownConfig(textSize, textColor)
+        val availableWidth = availableWidth
+        val scale = scale
         with(container) {
             KuiklyMarkdown(
                 content = markdownSource,
                 config = config,
+                components = markdownComponents(
+                    table = { model, tableContainer -> tableContainer.MarkdownScrollableTable(model, availableWidth, scale) },
+                ),
             )
         }
     }
@@ -251,6 +259,7 @@ internal fun ViewContainer<*, *>.SelectableMarkdownContent(
     scale: Float,
     selectionEnabled: Boolean,
     onCopySelection: (String) -> Unit,
+    availableWidth: Float = 0f,
 ) {
     addChild(
         SelectableMarkdownView(
@@ -259,6 +268,7 @@ internal fun ViewContainer<*, *>.SelectableMarkdownContent(
             scale = scale,
             selectionEnabled = selectionEnabled,
             onCopySelection = onCopySelection,
+            availableWidth = availableWidth,
         ),
     ) {}
 }

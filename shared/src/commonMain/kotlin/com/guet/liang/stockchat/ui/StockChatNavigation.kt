@@ -22,7 +22,8 @@ internal fun StockChatPage.openStockDetail(quote: StockQuote, sourceTab: Int) {
     }
     openRoute(
         STOCK_DETAIL_PAGE_NAME,
-        stockDetailRouteParams(artifactController.providerSymbol(quote), pageData.params.optString("qwenApiKey")),
+        // 把卡片上已有的行情一起带过去：详情页首帧就能显示名称与价格，网络请求期间只有细节是骨架
+        stockDetailRouteParams(artifactController.providerSymbol(quote), pageData.params.optString("qwenApiKey"), preview = quote),
     )
 }
 
@@ -46,7 +47,7 @@ internal fun StockChatPage.openSettings() {
 
 internal fun StockChatPage.createConversationStockComparison() {
     closeConversationMenu()
-    when (val result = artifactController.createTable(activeSessionId, conversationTitle(), messages)) {
+    when (val result = artifactController.createTable(activeSessionId, conversationTitle(), sessionController.messages)) {
         is ArtifactResult.Success -> {
             refreshRecentSessions()
             openTableArtifact(result.value)
@@ -57,7 +58,7 @@ internal fun StockChatPage.createConversationStockComparison() {
 
 internal fun StockChatPage.createConversationMindMapArtifact() {
     closeConversationMenu()
-    when (val result = artifactController.createMindMap(activeSessionId, conversationTitle(), messages)) {
+    when (val result = artifactController.createMindMap(activeSessionId, conversationTitle(), sessionController.messages)) {
         is ArtifactResult.Success -> {
             refreshRecentSessions()
             openMindMapArtifact(result.value)

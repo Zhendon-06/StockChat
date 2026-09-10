@@ -11,6 +11,7 @@ import com.tencent.kuikly.core.base.BorderStyle
 import com.tencent.kuikly.core.base.Translate
 import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.base.attr.ImageUri
+import com.tencent.kuikly.core.directives.vbind
 import com.tencent.kuikly.core.views.Image
 import com.tencent.kuikly.core.views.RichText
 import com.tencent.kuikly.core.views.Span
@@ -41,10 +42,15 @@ internal fun ViewContainer<*, *>.ChatMessageItem(
     onReadAloud: (ChatMessage) -> Unit = {},
     onMore: (ChatMessage) -> Unit = {},
     onImageClick: (String) -> Unit = {},
+    /** Page width the row is laid out in; 0 means unknown and disables width-aware table layout. */
+    pageWidth: Float = 0f,
+    /** Live markdown of an in-flight answer; null renders the snapshot text captured at row creation. */
+    liveMarkdown: (() -> String)? = null,
 ) {
+    val contentWidth = (pageWidth - MESSAGE_HORIZONTAL_PADDING * scale * 2).coerceAtLeast(0f)
     View {
         attr {
-            padding(left = 18f * scale, right = 18f * scale)
+            padding(left = MESSAGE_HORIZONTAL_PADDING * scale, right = MESSAGE_HORIZONTAL_PADDING * scale)
             if (isFirst) marginTop(12f * scale)
             marginBottom(18f * scale)
         }
@@ -60,11 +66,11 @@ internal fun ViewContainer<*, *>.ChatMessageItem(
                     MessageState.GENERATING -> if (message.blocks.isEmpty()) {
                         TypingIndicator(scale, typingPhase)
                     } else {
-                        AssistantBlocks(message, scale, onQuoteClick, onImageClick, onCopySelection)
+                        AssistantBlocks(message, scale, contentWidth, onQuoteClick, onImageClick, onCopySelection, liveMarkdown)
                     }
                     MessageState.FAILED -> FailedMessage(message.errorMessage, scale) { onRetry(message) }
                     MessageState.DELIVERED -> {
-                        AssistantBlocks(message, scale, onQuoteClick, onImageClick, onCopySelection)
+                        AssistantBlocks(message, scale, contentWidth, onQuoteClick, onImageClick, onCopySelection)
                         Text {
                             attr {
                                 text("StockChat Demo · 内容仅供参考，投资相关内容不构成投资建议")
@@ -91,18 +97,38 @@ internal fun ViewContainer<*, *>.ChatMessageItem(
 private fun ViewContainer<*, *>.AssistantBlocks(
     message: ChatMessage,
     scale: Float,
+    contentWidth: Float,
     onQuoteClick: (StockQuote) -> Unit,
     onImageClick: (String) -> Unit,
     onCopySelection: (String) -> Unit,
+    liveMarkdown: (() -> String)? = null,
 ) {
+    var liveBound = false
     message.blocks.forEach { block ->
         when (block) {
-            is AnswerBlock.Markdown -> MarkdownContent(
-                block = block,
-                scale = scale,
-                selectionEnabled = message.state == MessageState.DELIVERED,
-                onCopySelection = onCopySelection,
-            )
+            is AnswerBlock.Markdown -> if (liveMarkdown != null && !liveBound) {
+                liveBound = true
+                // 流式正文单独 vbind：每个片段只重建正文子树，同行的行情卡片保持挂载，
+                // 用户按下的卡片节点在抬起前不会被销毁
+                vbind({ liveMarkdown() }) {
+                    val text = liveMarkdown()
+                    MarkdownContent(
+                        block = AnswerBlock.Markdown(text, text),
+                        scale = scale,
+                        selectionEnabled = false,
+                        onCopySelection = onCopySelection,
+                        availableWidth = contentWidth,
+                    )
+                }
+            } else {
+                MarkdownContent(
+                    block = block,
+                    scale = scale,
+                    selectionEnabled = message.state == MessageState.DELIVERED,
+                    onCopySelection = onCopySelection,
+                    availableWidth = contentWidth,
+                )
+            }
             is AnswerBlock.MarketQuote -> MarketQuoteCard(block.quote, scale) {
                 onQuoteClick(block.quote)
             }
@@ -116,6 +142,7 @@ private fun ViewContainer<*, *>.MarkdownContent(
     scale: Float,
     selectionEnabled: Boolean,
     onCopySelection: (String) -> Unit,
+    availableWidth: Float,
 ) {
     SelectableMarkdownContent(
         source = block.source,
@@ -123,8 +150,11 @@ private fun ViewContainer<*, *>.MarkdownContent(
         scale = scale,
         selectionEnabled = selectionEnabled,
         onCopySelection = onCopySelection,
+        availableWidth = availableWidth,
     )
 }
+
+private const val MESSAGE_HORIZONTAL_PADDING = 18f
 
 private fun ViewContainer<*, *>.MessageActionRow(
     scale: Float,

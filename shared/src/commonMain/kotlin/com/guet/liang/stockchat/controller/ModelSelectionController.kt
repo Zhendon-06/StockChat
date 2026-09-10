@@ -4,8 +4,10 @@ import com.guet.liang.stockchat.base.StockChatLog
 import com.guet.liang.stockchat.base.toUserMessage
 import com.guet.liang.stockchat.data.AliyunApiConfig
 import com.guet.liang.stockchat.data.DEFAULT_CHAT_BASE_URL
+import com.guet.liang.stockchat.data.ContextWindowManager
 import com.guet.liang.stockchat.data.SettingsRepository
 import com.guet.liang.stockchat.data.StockChatDataSource
+import com.guet.liang.stockchat.model.AnswerMode
 import com.guet.liang.stockchat.model.ChatModelOption
 import com.guet.liang.stockchat.model.DEFAULT_CHAT_MODEL_ICON_ASSET
 import com.guet.liang.stockchat.model.ModelCapability
@@ -24,6 +26,7 @@ internal data class ModelSelectionState(
     val icon: String = DEFAULT_CHAT_MODEL_ICON_ASSET,
     val loading: Boolean = false,
     val error: String = "",
+    val answerMode: AnswerMode = AnswerMode.FAST,
 )
 
 /** Rebuilds the chat source and invalidates catalog results when provider credentials change. */
@@ -51,12 +54,15 @@ internal class ModelSelectionController(
         val options = provider?.toChatModelOptions(state.modelId).orEmpty()
         val selected = provider?.selectedModelId?.takeIf { id -> options.any { it.id == id } } ?: options.firstOrNull()?.id.orEmpty()
         val capabilities = options.firstOrNull { it.id == selected }?.capabilities.orEmpty()
-        dataSource = sourceFactory(providerConfig(provider, selected, capabilities))
+        val contextWindowTokens = ContextWindowManager.parseContextWindow(options.firstOrNull { it.id == selected }?.multiplier.orEmpty())
+        val answerMode = settings.loadSnapshot().modelConfiguration.answerMode
+        dataSource = sourceFactory(providerConfig(provider, selected, capabilities, contextWindowTokens, answerMode))
         publish(
             state.copy(
                 providerId = provider?.id.orEmpty(),
                 modelId = selected,
                 options = options,
+                answerMode = answerMode,
                 label =
                     when (provider?.kind) {
                         ModelProviderKind.CUSTOM -> provider.displayName
@@ -75,6 +81,12 @@ internal class ModelSelectionController(
             settings.selectModel(state.providerId, modelId)
             configureChatProvider()
         }
+    }
+
+    /** Persists the answering strategy and rebuilds the source so the next turn uses it. */
+    fun selectAnswerMode(mode: AnswerMode) {
+        settings.setAnswerMode(mode)
+        configureChatProvider()
     }
 
     fun fetchDrawerModels(force: Boolean = false) {
@@ -151,7 +163,13 @@ internal class ModelSelectionController(
     private fun fingerprint(provider: ModelProviderConfig): String =
         "${provider.id}|${provider.baseUrl.trim().trimEnd('/')}|${requestKey(provider)}"
 
-    private fun providerConfig(provider: ModelProviderConfig?, selected: String, capabilities: Set<ModelCapability>): AliyunApiConfig {
+    private fun providerConfig(
+        provider: ModelProviderConfig?,
+        selected: String,
+        capabilities: Set<ModelCapability>,
+        contextWindowTokens: Int,
+        answerMode: AnswerMode,
+    ): AliyunApiConfig {
         val dashScope = provider == null || provider.kind in setOf(ModelProviderKind.DEFAULT, ModelProviderKind.ALIYUN)
         val key =
             when {
@@ -170,6 +188,8 @@ internal class ModelSelectionController(
             useAliyunExtensions = dashScope,
             supportsVision = ModelCapability.VISION in capabilities,
             supportsStreaming = ModelCapability.STREAMING in capabilities,
+            contextWindowTokens = contextWindowTokens,
+            answerMode = answerMode,
         )
     }
 

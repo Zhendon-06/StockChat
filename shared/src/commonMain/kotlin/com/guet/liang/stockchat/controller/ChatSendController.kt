@@ -136,7 +136,10 @@ internal class ChatSendController(
         val next =
             when (answer) {
                 is ChatAnswer.Streaming ->
-                    previous.copy(blocks = listOf(AnswerBlock.Markdown(answer.markdown, answer.markdown)), state = MessageState.GENERATING)
+                    previous.copy(
+                        blocks = listOf(AnswerBlock.Markdown(answer.markdown, answer.markdown)) + answer.blocks,
+                        state = MessageState.GENERATING,
+                    )
                 is ChatAnswer.Success ->
                     ChatMessage(id = messageId, role = ChatRole.ASSISTANT, blocks = answer.blocks, retryQuestion = question)
                 is ChatAnswer.Failure ->

@@ -168,10 +168,20 @@ internal data class ModelProviderConfig(
     val isEnabled: Boolean = true,
 )
 
+/** How a chat turn is answered: parallel branches for speed, or research-first for live numbers in the text. */
+internal enum class AnswerMode(
+    val displayName: String,
+    val description: String,
+) {
+    FAST("更快回答速度", "正文与行情标的识别并行请求，文字先出、卡片随后附上；正文不引用实时价格"),
+    PRECISE("联网精准实时数据回答", "先联网识别标的并拉取实时行情，再交给模型作答；开头多等几秒，正文可引用实时数据"),
+}
+
 /** Shared cross-platform type; this declaration defines a stable contract for callers. */
 internal data class ModelConfiguration(
     val activeProviderId: String,
     val providers: List<ModelProviderConfig>,
+    val answerMode: AnswerMode = AnswerMode.FAST,
 )
 
 /** Shared cross-platform type; this declaration defines a stable contract for callers. */

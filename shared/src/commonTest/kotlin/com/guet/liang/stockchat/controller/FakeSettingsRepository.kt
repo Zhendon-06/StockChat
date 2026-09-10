@@ -1,6 +1,7 @@
 package com.guet.liang.stockchat.controller
 
 import com.guet.liang.stockchat.data.SettingsRepository
+import com.guet.liang.stockchat.model.AnswerMode
 import com.guet.liang.stockchat.model.AppearanceSettings
 import com.guet.liang.stockchat.model.ChatBackgroundSettings
 import com.guet.liang.stockchat.model.FontSizeSettings
@@ -107,5 +108,10 @@ internal class FakeSettingsRepository : SettingsRepository {
     override fun selectModel(providerId: String, modelId: String): Boolean {
         selectedModel = providerId to modelId
         return true
+    }
+
+    override fun setAnswerMode(mode: AnswerMode) {
+        snapshot.value =
+            snapshot.value.copy(modelConfiguration = snapshot.value.modelConfiguration.copy(answerMode = mode))
     }
 }

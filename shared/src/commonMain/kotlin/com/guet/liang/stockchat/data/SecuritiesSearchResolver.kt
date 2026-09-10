@@ -44,13 +44,18 @@ internal sealed class SecuritiesResolutionResult {
     data class Failure(val message: String) : SecuritiesResolutionResult()
 }
 
-/** Searches every LLM-discovered company; the LLM, not local name scoring, chooses from Tencent results. */
+/**
+ * Searches every LLM-discovered company concurrently. A company whose extractor code hint is among
+ * Tencent's own results is accepted without another model call; the rest go to the LLM selector.
+ * Local name scoring is never used: every accepted code came from Tencent and was chosen by a model.
+ */
 internal class SecuritiesSearchResolver(
     private val search: (String, (SecuritySearchResult) -> Unit) -> Unit,
     private val select: (
         String, List<ChatHistoryItem>, String, List<SecuritySearchCandidates>,
         (SecuritiesResolutionResult) -> Unit,
     ) -> Unit,
+    private val maxConcurrentSearches: Int = DEFAULT_MAX_CONCURRENT_SEARCHES,
 ) {
     fun resolve(
         question: String,
@@ -59,44 +64,90 @@ internal class SecuritiesSearchResolver(
         entities: List<IntentEntity>,
         callback: (SecuritiesResolutionResult) -> Unit,
     ) {
-        val candidates = mutableListOf<SecuritySearchCandidates>()
-        val notices = mutableListOf<String>()
-        var successfulSearches = 0
-        fun searchAt(index: Int) {
-            if (index == entities.size) {
-                if (candidates.isEmpty()) {
-                    callback(
-                        if (entities.isNotEmpty() && successfulSearches == 0) {
-                            SecuritiesResolutionResult.Failure(notices.joinToString("\n"))
-                        } else SecuritiesResolutionResult.Success(emptyList(), notices)
-                    )
+        if (entities.isEmpty()) {
+            callback(SecuritiesResolutionResult.Success(emptyList(), emptyList()))
+            return
+        }
+        val results = arrayOfNulls<SecuritySearchResult>(entities.size)
+        var completed = 0
+        var nextIndex = 0
+        fun startNext() {
+            val index = nextIndex
+            if (index >= entities.size) return
+            nextIndex++
+            search(entities[index].value) { result ->
+                results[index] = result
+                completed++
+                if (completed == entities.size) {
+                    finishSearches(question, history, model, entities, results.map { it!! }, callback)
                 } else {
-                    select(question, history, model, candidates) { result ->
-                        callback(when (result) {
-                            is SecuritiesResolutionResult.Success -> result.copy(notices = notices + result.notices)
-                            is SecuritiesResolutionResult.Failure -> result
-                        })
-                    }
+                    startNext()
                 }
-                return
-            }
-            val entity = entities[index]
-            search(entity.value) { result ->
-                when (result) {
-                    is SecuritySearchResult.Success -> {
-                        successfulSearches++
-                        if (result.matches.isEmpty()) {
-                            notices += "${entity.value}：腾讯证券搜索暂无可用标的。${entity.note}"
-                        } else {
-                            candidates += SecuritySearchCandidates(entity, result.matches)
-                        }
-                    }
-                    is SecuritySearchResult.Failure -> notices += "${entity.value}：${result.message}"
-                }
-                searchAt(index + 1)
             }
         }
-        searchAt(0)
+        repeat(minOf(maxConcurrentSearches, entities.size)) { startNext() }
+    }
+
+    private fun finishSearches(
+        question: String,
+        history: List<ChatHistoryItem>,
+        model: String,
+        entities: List<IntentEntity>,
+        results: List<SecuritySearchResult>,
+        callback: (SecuritiesResolutionResult) -> Unit,
+    ) {
+        val resolved = arrayOfNulls<SecurityTarget>(entities.size)
+        val pending = mutableListOf<Pair<Int, SecuritySearchCandidates>>()
+        val notices = mutableListOf<String>()
+        var successfulSearches = 0
+        entities.forEachIndexed { index, entity ->
+            when (val result = results[index]) {
+                is SecuritySearchResult.Failure -> notices += "${entity.value}：${result.message}"
+                is SecuritySearchResult.Success -> {
+                    successfulSearches++
+                    val hinted = entity.symbolHint.takeIf(String::isNotBlank)?.let { hint ->
+                        result.matches.firstOrNull { it.providerSymbol == hint }
+                    }
+                    when {
+                        result.matches.isEmpty() -> notices += "${entity.value}：腾讯证券搜索暂无可用标的。${entity.note}"
+                        // Membership validation only: the code came from the model and exists in Tencent's list.
+                        hinted != null -> resolved[index] = SecurityTarget(hinted.providerSymbol, hinted.name)
+                        else -> pending += index to SecuritySearchCandidates(entity, result.matches)
+                    }
+                }
+            }
+        }
+        fun deliver(extraNotices: List<String>) {
+            val targets = resolved.filterNotNull().distinctBy(SecurityTarget::providerSymbol)
+            callback(SecuritiesResolutionResult.Success(targets, notices + extraNotices))
+        }
+        if (pending.isEmpty()) {
+            if (resolved.all { it == null } && successfulSearches == 0) {
+                callback(SecuritiesResolutionResult.Failure(notices.joinToString("\n")))
+            } else {
+                deliver(emptyList())
+            }
+            return
+        }
+        select(question, history, model, pending.map { it.second }) { result ->
+            when (result) {
+                is SecuritiesResolutionResult.Failure -> callback(result)
+                is SecuritiesResolutionResult.Success -> {
+                    // The selector reports targets in candidate order; place them back at their entity slots.
+                    val bySymbol = result.targets.associateBy(SecurityTarget::providerSymbol)
+                    pending.forEach { (index, candidate) ->
+                        candidate.matches.firstOrNull { bySymbol.containsKey(it.providerSymbol) }?.let { match ->
+                            resolved[index] = bySymbol.getValue(match.providerSymbol)
+                        }
+                    }
+                    deliver(result.notices)
+                }
+            }
+        }
+    }
+
+    companion object {
+        private const val DEFAULT_MAX_CONCURRENT_SEARCHES = 6
     }
 }
 

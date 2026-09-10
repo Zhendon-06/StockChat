@@ -15,25 +15,22 @@ internal data class SecuritiesQueryPlan(
     val targets: List<SecurityTarget>,
     val needsTrend: Boolean,
     val needsIntraday: Boolean,
-    val needsAi: Boolean,
     val notices: List<String> = emptyList(),
     val searchEntities: List<IntentEntity> = emptyList(),
 )
 
 /** Maps an already parsed LLM response to tool arguments; never matches the user's text. */
 internal object SecuritiesQueryRouter {
-    fun route(classification: IntentClassification): SecuritiesQueryPlan? {
-        if (classification.kind != IntentKind.MARKET_DATA) return null
+    /** Returns null when the model found no security to look up, so no market request is made. */
+    fun route(extraction: StockMentionExtraction): SecuritiesQueryPlan? {
+        val entities = extraction.entities.distinctBy(IntentEntity::value)
+        if (entities.isEmpty()) return null
         return SecuritiesQueryPlan(
-            intent = classification.queryIntent,
+            intent = extraction.queryIntent,
             targets = emptyList(),
-            searchEntities = classification.entities.distinctBy(IntentEntity::value),
-            needsTrend = classification.needsTrend,
-            needsIntraday = classification.needsIntraday,
-            needsAi = classification.needsAi,
-            notices = if (classification.entities.isEmpty()) {
-                listOf("AI 联网搜索尚未确定具体标的，请补充查询条件。")
-            } else emptyList(),
+            searchEntities = entities,
+            needsTrend = extraction.needsTrend,
+            needsIntraday = extraction.needsIntraday,
         )
     }
 }

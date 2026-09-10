@@ -6,6 +6,7 @@ import com.guet.liang.stockchat.model.ChatAnswer
 import com.guet.liang.stockchat.model.ChatHistoryItem
 import com.guet.liang.stockchat.model.ChatModelOption
 import com.guet.liang.stockchat.model.MessageState
+import com.guet.liang.stockchat.model.StockQuote
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -18,6 +19,10 @@ class ChatSendControllerTest {
         fixture.send.sendMessage(ChatSubmission("行情"))
         fixture.source.callback(ChatAnswer.Streaming("正在分析"))
         assertTrue(fixture.send.isSending)
+        assertEquals(MessageState.GENERATING, fixture.sessions.messages.last().state)
+        val card = AnswerBlock.MarketQuote(StockQuote("贵州茅台", "600519", "沪市", "1", "0", "0%", "now", true, emptyList(), "", ""))
+        fixture.source.callback(ChatAnswer.Streaming("正在分析茅台", listOf(card)))
+        assertEquals(listOf(AnswerBlock.Markdown("正在分析茅台", "正在分析茅台"), card), fixture.sessions.messages.last().blocks)
         assertEquals(MessageState.GENERATING, fixture.sessions.messages.last().state)
         fixture.source.callback(ChatAnswer.Failure("offline"))
         assertFalse(fixture.send.isSending)

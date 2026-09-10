@@ -3,6 +3,7 @@ package com.guet.liang.stockchat.controller
 import com.guet.liang.stockchat.base.StockChatLog
 import com.guet.liang.stockchat.base.toUserMessage
 import com.guet.liang.stockchat.data.SettingsRepository
+import com.guet.liang.stockchat.model.AnswerMode
 import com.guet.liang.stockchat.model.ChatBackgroundSettings
 import com.guet.liang.stockchat.model.ChatSessionSummary
 import com.guet.liang.stockchat.model.FontSizeSettings
@@ -47,6 +48,8 @@ internal class SettingsController(
     fun setChatBackground(value: ChatBackgroundSettings) = settings.setChatBackground(value)
 
     fun saveProvider(value: ModelProviderConfig) = settings.saveModelProvider(value)
+
+    fun setAnswerMode(value: AnswerMode) = settings.setAnswerMode(value)
 
     fun deleteProvider(id: String): Boolean = settings.deleteModelProvider(id)
 

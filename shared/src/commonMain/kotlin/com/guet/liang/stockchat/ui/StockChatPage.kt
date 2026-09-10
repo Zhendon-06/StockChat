@@ -20,6 +20,7 @@ import com.guet.liang.stockchat.data.MimoSpeechSynthesisService
 import com.guet.liang.stockchat.data.MimoVoiceApiConfig
 import com.guet.liang.stockchat.data.ModelCatalogService
 import com.guet.liang.stockchat.data.StockChatSettingsStore
+import com.guet.liang.stockchat.model.AnswerMode
 import com.guet.liang.stockchat.data.TencentTodayMarketDataSource
 import com.guet.liang.stockchat.data.TodayMarketDataSource
 import com.guet.liang.stockchat.model.ChatMessage
@@ -107,6 +108,7 @@ internal class StockChatPage : BasePager() {
     internal var conversationMenuOpen by observable(false)
     internal var modelMenuOpen by observable(false)
     internal var selectedModelId by observable("")
+    internal var answerMode by observable(AnswerMode.FAST)
     internal var activeModelProviderId by observable("")
     internal var chatModelOptions by observable<List<ChatModelOption>>(emptyList())
     internal var composerModelLabel by observable("选择模型")
@@ -118,6 +120,10 @@ internal class StockChatPage : BasePager() {
     internal var imagePickerOpen by observable(false)
     internal var selectedImageCount by observable(0)
     internal var messages by observableList<ChatMessage>()
+    // 正在流式输出的回答 id 与其正文：流式行按结构复用，正文由这两个 observable 实时驱动，
+    // 避免每个片段整行重建导致行内卡片点不动（见 ChatMessageRows）
+    internal var streamingAnswerId by observable("")
+    internal var streamingAnswerMarkdown by observable("")
     internal var recentSessions by observableList<ChatSessionSummary>()
     internal var managingSessions by observable(false)
     internal var renameSessionId by observable("")
@@ -182,7 +188,9 @@ internal class StockChatPage : BasePager() {
         networkModule = acquireModule(NetworkModule.MODULE_NAME)
         val modelCatalogService = ModelCatalogService(networkModule)
         settingsController = settingsController()
-        val nativeStreamingEnabled = pageData.params.optInt("aliyunNativeStreaming", pageData.params.optInt("mimoNativeStreaming")) == 1
+        // All OpenAI-compatible providers use the same bridge. Streaming is enabled by
+        // default and still falls back to a normal request when a platform bridge is absent.
+        val nativeStreamingEnabled = pageData.params.optInt("aliyunNativeStreaming", pageData.params.optInt("mimoNativeStreaming", 1)) == 1
         modelSelectionController =
             ModelSelectionController(
                 settings = StockChatSettingsStore.repository,
@@ -195,6 +203,7 @@ internal class StockChatPage : BasePager() {
                 onChanged = { state ->
                     activeModelProviderId = state.providerId
                     selectedModelId = state.modelId
+                    answerMode = state.answerMode
                     chatModelOptions = state.options
                     composerModelLabel = state.label
                     composerModelIcon = state.icon
@@ -217,10 +226,8 @@ internal class StockChatPage : BasePager() {
         sessionController =
             ChatSessionController(chatHistoryRepository) { state ->
                 activeSessionId = state.activeSessionId
-                recentSessions.clear()
-                state.recentSessions.forEach { recentSessions.add(it) }
-                messages.clear()
-                state.messages.forEach { messages.add(it) }
+                recentSessions.diffUpdate(state.recentSessions)
+                syncMessageRows(state.messages)
                 updateTypingIndicatorTimer()
             }
         sendController =

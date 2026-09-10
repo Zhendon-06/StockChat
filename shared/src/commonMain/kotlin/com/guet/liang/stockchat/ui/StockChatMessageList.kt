@@ -111,6 +111,19 @@ internal fun StockChatPage.scrollMessageListToBottom(animated: Boolean) {
     messageScrollerRef.view?.setContentOffset(0f, targetOffset, animated)
 }
 
+/**
+ * 按行身份同步消息列表：未变化的行保持挂载，流式回答只更新正文 observable。
+ * 之前是 clear 后逐条 add，每个流式片段和每次 refresh（含回到前台）都会重建全部行，
+ * 卡片点击落在被销毁的节点上、Scroller 内容清空后偏移也被重置。
+ */
+internal fun StockChatPage.syncMessageRows(next: List<ChatMessage>) {
+    val live = ChatMessageRows.liveAnswer(next)
+    // 先更新正文再同步行结构：新建的流式行首帧就能读到最新文本
+    streamingAnswerMarkdown = live?.let(ChatMessageRows::markdownSource).orEmpty()
+    streamingAnswerId = live?.id.orEmpty()
+    messages.diffUpdate(next, ChatMessageRows::sameRow)
+}
+
 internal fun StockChatPage.resetMessageListScrollState() {
     messageListNearBottom = true
     stickMessageListToBottom = true
@@ -135,8 +148,17 @@ private fun StockChatPage.MessageRow(container: ViewContainer<*, *>, message: Ch
         ChatMessageItem(
             message = message,
             scale = ctx.layoutMetrics.scale,
+            pageWidth = ctx.pagerData.pageViewWidth,
             isFirst = message.id == ctx.messages.firstOrNull()?.id,
             typingPhase = { ctx.typingDotPhase },
+            liveMarkdown =
+                if (ChatMessageRows.isLiveRow(message)) {
+                    {
+                        if (ctx.streamingAnswerId == message.id) ctx.streamingAnswerMarkdown else ChatMessageRows.markdownSource(message)
+                    }
+                } else {
+                    null
+                },
             onQuoteClick = {
                 if (ctx.selectedHomeTab == HOME_TAB_CHAT) {
                     ctx.openStockDetail(it, HOME_TAB_CHAT)

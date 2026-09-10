@@ -74,9 +74,15 @@ internal data class StockQuote(
 internal sealed class ChatAnswer {
     data class Streaming(
         val markdown: String,
+        /** Blocks already final while text is still streaming, e.g. quote cards that arrived first. */
+        val blocks: List<AnswerBlock> = emptyList(),
     ) : ChatAnswer()
 
-    data class Success(val blocks: List<AnswerBlock>) : ChatAnswer()
+    data class Success(
+        val blocks: List<AnswerBlock>,
+        /** True when the answer was served by the local provider-aware response cache. */
+        val fromCache: Boolean = false,
+    ) : ChatAnswer()
     data class Failure(val message: String) : ChatAnswer()
 }
 

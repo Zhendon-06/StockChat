@@ -1,5 +1,7 @@
 package com.guet.liang.stockchat.data
 
+import com.guet.liang.stockchat.model.AnswerMode
+
 // 远端服务配置：阿里云兼容接口与 MiMo 语音接口。
 
 /** 阿里云百炼 OpenAI 兼容接口地址，同时是默认服务商与预测请求的兜底 baseUrl。 */
@@ -16,6 +18,9 @@ internal data class AliyunApiConfig(
     val useAliyunExtensions: Boolean = true,
     val supportsVision: Boolean = true,
     val supportsStreaming: Boolean = true,
+    val contextWindowTokens: Int = ContextWindowManager.DEFAULT_CONTEXT_TOKENS,
+    /** Parallel (fast) or research-first (precise) answering; see [AnswerMode]. */
+    val answerMode: AnswerMode = AnswerMode.FAST,
 )
 
 /** Shared cross-platform type; this declaration defines a stable contract for callers. */

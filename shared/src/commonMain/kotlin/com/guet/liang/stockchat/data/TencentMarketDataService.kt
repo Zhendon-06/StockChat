@@ -80,43 +80,50 @@ internal class TencentMarketDataService(
         }
     }
 
+    /** Loads up to [MAX_CONCURRENT_SNAPSHOTS] targets at a time and reports them in request order. */
     private fun loadSnapshots(
         targets: List<SecurityTarget>,
         needsIntraday: Boolean,
         callback: (MarketDataResult) -> Unit,
     ) {
-        val snapshots = mutableListOf<TencentMarketSnapshot>()
-        val notices = mutableListOf<String>()
-        fun loadAt(index: Int) {
-            if (index >= targets.size) {
-                callback(
-                    if (snapshots.isEmpty()) {
-                        if (notices.isEmpty()) MarketDataResult.Empty
-                        else MarketDataResult.Failure(notices.joinToString("\n"))
-                    } else {
-                        MarketDataResult.Success(snapshots, notices)
-                    }
-                )
-                return
-            }
-            loadSnapshot(targets[index], needsIntraday) { result ->
-                when (result) {
-                    is SnapshotResult.Success -> {
-                        snapshots += result.snapshot
-                        loadAt(index + 1)
-                    }
-                    SnapshotResult.Empty -> {
-                        notices += "${targets[index].displayName.ifBlank { targets[index].providerSymbol }}：行情暂无数据。"
-                        loadAt(index + 1)
-                    }
-                    is SnapshotResult.Failure -> {
-                        notices += "${targets[index].displayName.ifBlank { targets[index].providerSymbol }}：${result.message}"
-                        loadAt(index + 1)
-                    }
+        if (targets.isEmpty()) {
+            callback(MarketDataResult.Empty)
+            return
+        }
+        val results = arrayOfNulls<SnapshotResult>(targets.size)
+        var completed = 0
+        var nextIndex = 0
+        fun finish() {
+            val snapshots = mutableListOf<TencentMarketSnapshot>()
+            val notices = mutableListOf<String>()
+            targets.forEachIndexed { index, target ->
+                val label = target.displayName.ifBlank { target.providerSymbol }
+                when (val result = results[index]) {
+                    is SnapshotResult.Success -> snapshots += result.snapshot
+                    SnapshotResult.Empty -> notices += "$label：行情暂无数据。"
+                    is SnapshotResult.Failure -> notices += "$label：${result.message}"
+                    null -> notices += "$label：行情暂无数据。"
                 }
             }
+            callback(
+                if (snapshots.isEmpty()) {
+                    if (notices.isEmpty()) MarketDataResult.Empty else MarketDataResult.Failure(notices.joinToString("\n"))
+                } else {
+                    MarketDataResult.Success(snapshots, notices)
+                }
+            )
         }
-        loadAt(0)
+        fun startNext() {
+            val index = nextIndex
+            if (index >= targets.size) return
+            nextIndex++
+            loadSnapshot(targets[index], needsIntraday) { result ->
+                results[index] = result
+                completed++
+                if (completed == targets.size) finish() else startNext()
+            }
+        }
+        repeat(minOf(MAX_CONCURRENT_SNAPSHOTS, targets.size)) { startNext() }
     }
 
     private fun loadSnapshot(
@@ -185,4 +192,7 @@ internal class TencentMarketDataService(
         data class Failure(val message: String) : SnapshotResult()
     }
 
+    private companion object {
+        const val MAX_CONCURRENT_SNAPSHOTS = 6
+    }
 }
