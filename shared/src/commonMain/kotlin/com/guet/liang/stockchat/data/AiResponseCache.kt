@@ -7,9 +7,16 @@ import com.tencent.kuikly.core.datetime.DateTime
 internal object AiResponseCache {
     private data class Entry(val blocks: List<AnswerBlock>, val expiresAt: Long)
 
-    private val entries = LinkedHashMap<String, Entry>(CACHE_CAPACITY, 0.75f, true)
+    // LinkedHashMap 的 accessOrder 三参构造仅 JVM 可用，Kotlin/Native 上
+    // 通过重新插入实现访问顺序（access-order）。
+    private val entries = LinkedHashMap<String, Entry>(CACHE_CAPACITY, 0.75f)
     private var hitCount = 0L
     private var missCount = 0L
+
+    private fun refreshRecency(key: String, entry: Entry) {
+        entries.remove(key)
+        entries[key] = entry
+    }
 
     fun get(key: String, nowMillis: Long = currentTimeMillis()): List<AnswerBlock>? {
         val entry = entries[key]
@@ -22,6 +29,7 @@ internal object AiResponseCache {
             missCount++
             return null
         }
+        refreshRecency(key, entry)
         hitCount++
         return entry.blocks
     }
@@ -78,9 +86,11 @@ internal fun aiResponseCacheKey(
         images.forEach { append(it).append('\u0001') }
     }
     var hash = FNV_OFFSET
-    material.encodeToByteArray().forEach { byte -> hash = (hash xor (byte.toLong() and 0xff)) * FNV_PRIME }
-    return hash.toULong().toString(16)
+    material.encodeToByteArray().forEach { byte -> hash = (hash xor (byte.toLong() and BYTE_MASK)) * FNV_PRIME }
+    return hash.toULong().toString(HASH_RADIX)
 }
 
 private const val FNV_OFFSET = -3750763034362895579L
 private const val FNV_PRIME = 1099511628211L
+private const val BYTE_MASK = 0xffL
+private const val HASH_RADIX = 16

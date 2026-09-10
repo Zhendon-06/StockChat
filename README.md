@@ -82,6 +82,18 @@ AnswerBlock 列表（Markdown / MarketQuote / ImageGallery）
 - **语音**：Xiaomi MiMo 识别与合成。
 - **降级原则**：网络行情不可用时，今日市场只对缺失项使用带明确标记的本地演示数据；AI 预测失败、Key 缺失或返回结构非法时只展示错误状态；所有行情与 AI 结论保留时间戳与风险提示。
 
+## 响应缓存与命中
+
+聊天回答有一层进程内响应缓存（`AiResponseCache`），命中时不发任何网络请求，直接回放上次的正文流式片段和行情卡片，`ChatAnswer.Success.fromCache` 为 `true`。
+
+- **缓存键**：Provider 地址、模型、经 `ContextWindowManager` 裁剪后的会话历史、当前问题、图片列表，做 FNV-1a 哈希。凭证不进键。
+- **容量与时效**：LRU 64 条，5 分钟过期，仅存于内存，App 重启即清空。
+- **更快回答速度**：键里只有问题和历史，同一会话 5 分钟内重复同样的提问会命中，正文和卡片一起回放。
+- **联网精准实时数据回答**：问题里已经拼进了实时行情数字，价格一变键就变，实际上只有不涉及任何标的的普通问题才会命中。
+- **命中粒度**：只缓存整条合并后的回答。正文没命中时，标的识别、腾讯搜索和行情拉取都会重新执行，标的分支没有单独缓存。
+- **服务端缓存**：请求没有携带任何 Provider 的 prompt cache 参数，每次都是全量计费。
+- **重新生成**：问题和历史与上一轮完全相同，5 分钟内会直接命中缓存返回同样的回答；如需强制重跑，可在数据源里按 `attempt > 0` 跳过读取。
+
 ## 环境要求
 
 | 组件 | 版本 |
@@ -109,30 +121,89 @@ MIMO_VOICE_API_KEY=你的_MiMo_API_Key
 
 ## 构建与运行
 
-### Android
+以下按“官方文档式”步骤排列，尽量只改本地临时文件，避免把机密信息写死到仓库。
+
+### 先决条件
+
+- JDK 17、Gradle 已可执行。
+- 本机已安装并授权：
+  - Android Studio（项目同步 Kotlin Multiplatform）
+  - Xcode（iOS）
+  - CocoaPods（iOS）
+  - DevEco Studio（鸿蒙）
+- 根目录 `local.properties` 配置 API Key（调试态）：
+
+```properties
+QWEN_API_KEY=你的百炼_API_Key
+MIMO_VOICE_API_KEY=你的_MiMo_API_Key
+```
+
+### Android（用于联调）
 
 ```bash
 ./gradlew :androidApp:assembleDebug
 adb install -r androidApp/build/outputs/apk/debug/androidApp-debug.apk
 ```
 
-### iOS
+### iOS（按 Apple 官方流程）
+
+1. 安装 CocoaPods 依赖并确认 Workspace 依赖一致：
 
 ```bash
 cd iosApp
+pod repo update
 pod install
 open iosApp.xcworkspace
 ```
 
-在 Xcode 中选择 `iosApp` scheme 运行。iOS 宿主的桥接回归脚本见 `iosApp/tests/README.md`。
+2. Xcode 配置
+  - 目标：`iosApp`
+  - 配置：`Debug`
+  - 运行设备：`iPhone` 模拟器（首次可用模拟器免签名）或真机（需要 Apple Team 证书签名）
+  - `File > Settings > Location` 使用当前 Ruby 环境（如通过 Homebrew）可避免 CocoaPods 编译器环境差异
 
-### OpenHarmony
+3. 点击 Run（⌘R）
+
+说明：项目 Xcode 工程在构建时会在 `shared` Pod 的 `script_phases` 中同步 KMP Framework；若出现 `shared` 未找到，先执行：
 
 ```bash
+cd /Users/lzd/AndroidStudioProjects/StockChat
+./gradlew :shared:generateDummyFramework
+cd iosApp && pod install
+```
+
+4. 回归验证：见 [iosApp/tests/README.md](/Users/lzd/AndroidStudioProjects/StockChat/iosApp/tests/README.md)
+
+### OpenHarmony（按 Huawei 官方流程）
+
+1. 先完成 DevEco/Harmony 开发环境与签名配置（首选官方文档中的“创建/OpenHarmony 签名文件与 Profile”流程）。
+2. 生成鸿蒙本地配置：
+
+```bash
+cd /Users/lzd/AndroidStudioProjects/StockChat
+cp ohosApp/local.properties.example ohosApp/local.properties
+```
+
+3. 运行一键脚本（自动构建 so、同步依赖、打包并安装）：
+
+```bash
+cd /Users/lzd/AndroidStudioProjects/StockChat
 ./ohosApp/runOhosApp.sh
 ```
 
-脚本会安装依赖、构建 HAP 并尝试安装到已连接设备；首次使用需在 DevEco Studio 完成签名配置。若直接用 DevEco Studio 构建，把 `ohosApp/local.properties.example` 复制为 `ohosApp/local.properties`。
+4. 如脚本报路径错误，先确认以下变量和工具链可用（按实际安装路径设置）：
+
+```bash
+export DEVECO_SDK_HOME=/你的/DevEco/Sdk/路径
+export DEV_STUDIO_HOME=/Applications/DevEco-Studio.app/Contents
+```
+
+5. 若要在 DevEco Studio IDE 里手工运行：
+  - 用项目根目录打开 `ohosApp`
+  - 打开 `entry` 模块 Run/Debug
+  - 选择 `entry@default`、设备后启动
+
+说明：`ohosApp/build-profile.json5` 中签名配置是本地签名材料引用。换机器后请用自己的签名证书与 profile 重建，避免使用他人路径。
 
 ## 测试与代码质量
 

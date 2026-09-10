@@ -33,13 +33,15 @@ internal object ContextWindowManager {
     fun parseContextWindow(label: String, fallback: Int = DEFAULT_CONTEXT_TOKENS): Int {
         val value = Regex("(\\d+(?:\\.\\d+)?)\\s*([km]?)", RegexOption.IGNORE_CASE).find(label.trim()) ?: return fallback
         val amount = value.groupValues[1].toDoubleOrNull() ?: return fallback
-        val multiplier = if (value.groupValues[2].equals("m", true)) 1_000_000 else 1_000
+        val multiplier = if (value.groupValues[2].equals("m", true)) TOKENS_PER_M else TOKENS_PER_K
         return (amount * multiplier).toInt().coerceAtLeast(MIN_HISTORY_TOKENS)
     }
 
     private fun estimateTokens(text: String): Int = ((text.length + CHARS_PER_TOKEN - 1) / CHARS_PER_TOKEN).coerceAtLeast(1)
 
     private const val CHARS_PER_TOKEN = 4
+    private const val TOKENS_PER_K = 1_000
+    private const val TOKENS_PER_M = 1_000_000
     private const val MIN_ITEM_CHARS = 64
     private const val MIN_HISTORY_TOKENS = 512
     const val DEFAULT_CONTEXT_TOKENS = 8_192

@@ -48,8 +48,9 @@ class ChatMessageRowsTest {
         assertEquals(live, ChatMessageRows.liveAnswer(listOf(user, live)))
     }
 
-    private fun streaming(markdown: String, vararg extra: AnswerBlock) =
-        ChatMessage("a1", ChatRole.ASSISTANT, listOf(AnswerBlock.Markdown(markdown, markdown)) + extra, MessageState.GENERATING, retryQuestion = "行情")
+    private fun streaming(markdown: String, vararg extra: AnswerBlock) = ChatMessage(
+        "a1", ChatRole.ASSISTANT, listOf(AnswerBlock.Markdown(markdown, markdown)) + extra, MessageState.GENERATING, retryQuestion = "行情",
+    )
 
     private val card = AnswerBlock.MarketQuote(StockQuote("贵州茅台", "600519", "沪市", "1", "0", "0%", "now", true, emptyList(), "", ""))
 }

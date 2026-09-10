@@ -71,7 +71,9 @@ internal class StockDetailPage : BasePager() {
         if (loading && skeletonTimer == null) {
             skeletonPhase = 0
             // 首个 tick 延后一个周期：骨架节点刚创建的批次里不能命中动画键，否则首帧会从 (0,0) 飞入
-            skeletonTimer = Timer().also { timer -> timer.schedule(SKELETON_PULSE_INTERVAL_MS, SKELETON_PULSE_INTERVAL_MS) { skeletonPhase += 1 } }
+            skeletonTimer = Timer().also { timer ->
+                timer.schedule(SKELETON_PULSE_INTERVAL_MS, SKELETON_PULSE_INTERVAL_MS) { skeletonPhase += 1 }
+            }
         } else if (!loading && skeletonTimer != null) {
             skeletonTimer?.cancel()
             skeletonTimer = null

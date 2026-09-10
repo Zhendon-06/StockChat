@@ -66,7 +66,10 @@ internal class StockChatPage : BasePager() {
     internal var welcomeMotionPhase by observable(1f)
     internal var welcomeHeroMotionStage by observable(2)
     internal var welcomeTextMotionStage by observable(2)
+    internal var welcomeSuggestionPage by observable(0)
     internal var welcomeMotionGeneration = 0
+    private var welcomeSuggestionRotationTimer: Timer? = null
+    private var welcomePageVisible = false
     internal val selectedHomeTab: Int
         get() =
             when (homeState.destination) {
@@ -254,11 +257,13 @@ internal class StockChatPage : BasePager() {
 
     override fun pageDidAppear() {
         super.pageDidAppear()
+        welcomePageVisible = true
         applySavedAppearance()
         observeBackRequests()
         configureChatProvider()
         refreshRecentSessions()
         applyPrefillQuestionIfNeeded()
+        updateWelcomeSuggestionRotation()
     }
 
     private fun applyPrefillQuestionIfNeeded() {
@@ -301,9 +306,13 @@ internal class StockChatPage : BasePager() {
         if (enteredWelcome || leftWelcome) {
             stageWelcomeMotion(nextState)
         }
+        if (enteredWelcome) {
+            welcomeSuggestionPage = 0
+        }
         if (nextState != homeState) {
             homeState = nextState
         }
+        updateWelcomeSuggestionRotation()
         effects.forEach(::handleHomeEffect)
     }
 
@@ -333,12 +342,16 @@ internal class StockChatPage : BasePager() {
     }
 
     override fun pageDidDisappear() {
+        welcomePageVisible = false
+        stopWelcomeSuggestionRotation()
         cancelVoiceInput()
         stopSpeechPlayback()
         super.pageDidDisappear()
     }
 
     override fun pageWillDestroy() {
+        welcomePageVisible = false
+        stopWelcomeSuggestionRotation()
         cancelVoiceInput()
         stopSpeechPlayback()
         typingDotTimer?.cancel()
@@ -353,6 +366,39 @@ internal class StockChatPage : BasePager() {
         welcomeMotionGeneration += 1
         dispatchHome(StockChatHomeEvent.Stopped)
         super.pageWillDestroy()
+    }
+
+    private fun updateWelcomeSuggestionRotation() {
+        if (!isWelcomeSuggestionRotationActive()) {
+            stopWelcomeSuggestionRotation()
+            return
+        }
+        if (welcomeSuggestionRotationTimer == null) {
+            welcomeSuggestionRotationTimer =
+                Timer().also { timer ->
+                    timer.schedule(
+                        WELCOME_SUGGESTION_ROTATION_INTERVAL_MS,
+                        WELCOME_SUGGESTION_ROTATION_INTERVAL_MS,
+                    ) {
+                        if (isWelcomeSuggestionRotationActive()) {
+                            welcomeSuggestionPage = (welcomeSuggestionPage + 1) % WELCOME_SUGGESTION_PAGE_COUNT
+                        } else {
+                            stopWelcomeSuggestionRotation()
+                        }
+                    }
+                }
+        }
+    }
+
+    private fun isWelcomeSuggestionRotationActive(): Boolean =
+        welcomePageVisible &&
+            homeState.destination == StockChatHomeDestination.AI_CHAT &&
+            homeState.chatStage == StockChatHomeChatStage.WELCOME &&
+            !homeState.welcomeObscured
+
+    private fun stopWelcomeSuggestionRotation() {
+        welcomeSuggestionRotationTimer?.cancel()
+        welcomeSuggestionRotationTimer = null
     }
 
     override fun body(): ViewBuilder {

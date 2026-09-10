@@ -70,7 +70,7 @@ internal fun StockChatPage.DrawerLayer(container: ViewContainer<*, *>) {
             ctx.HomeTabSwitcher(this, marginTopDp = 20f, enabled = { ctx.drawerOpen })
             ctx.DrawerMenuItem(this, "ranking_icon.png", "思维导图", metrics.scale) { ctx.openMindMapArtifactLibrary() }
             ctx.DrawerMenuItem(this, "table_icon.png", "表格", metrics.scale) { ctx.openStockComparisonLibrary() }
-            ctx.DrawerMenuItem(this, "ranking_icon.png", "收藏卡片", metrics.scale) { ctx.openFavoriteCards() }
+            ctx.DrawerMenuItem(this, "level_icon.png", "收藏卡片", metrics.scale) { ctx.openFavoriteCards() }
             View {
                 attr {
                     height(1f)

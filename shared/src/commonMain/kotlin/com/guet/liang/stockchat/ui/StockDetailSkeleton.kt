@@ -82,88 +82,102 @@ private fun StockDetailPage.SkeletonQuoteCard(container: ViewContainer<*, *>, pr
                 ctx.SkeletonBar(this, width = 96f, height = 10f, marginTop = 8f)
                 ctx.SkeletonBar(this, width = 150f, height = 38f, marginTop = 10f)
             } else {
-                View {
+                ctx.SkeletonQuotePreview(this, preview)
+            }
+            ctx.SkeletonMetricRows(this)
+        }
+    }
+}
+
+// 已有卡片数据时直接显示名称、代码与价格，只有指标区用骨架占位
+private fun StockDetailPage.SkeletonQuotePreview(container: ViewContainer<*, *>, preview: StockQuote) {
+    with(container) {
+        View {
+            attr {
+                flexDirectionRow()
+                alignItemsCenter()
+            }
+            Text {
+                attr {
+                    text(preview.name)
+                    fontSize(21f)
+                    fontWeightBold()
+                    color(StockChatTheme.textPrimary)
+                    flex(1f)
+                }
+            }
+            Text {
+                attr {
+                    text(preview.symbol.uppercase())
+                    fontSize(12f)
+                    color(StockChatTheme.textSecondary)
+                }
+            }
+        }
+        Text {
+            attr {
+                text(preview.marketLabel.replace(" · 腾讯行情", "") + " · 行情快照")
+                fontSize(10f)
+                color(StockChatTheme.textTertiary)
+                marginTop(4f)
+            }
+        }
+        val tone = if (preview.isPositive) StockChatTheme.positive else StockChatTheme.negative
+        View {
+            attr {
+                flexDirectionRow()
+                alignItemsFlexEnd()
+                marginTop(9f)
+            }
+            Text {
+                attr {
+                    text(preview.price)
+                    fontSize(38f)
+                    fontWeightBold()
+                    color(tone)
+                }
+            }
+            View {
+                attr {
+                    marginLeft(14f)
+                    marginBottom(5f)
+                }
+                Text {
                     attr {
-                        flexDirectionRow()
-                        alignItemsCenter()
-                    }
-                    Text {
-                        attr {
-                            text(preview.name)
-                            fontSize(21f)
-                            fontWeightBold()
-                            color(StockChatTheme.textPrimary)
-                            flex(1f)
-                        }
-                    }
-                    Text {
-                        attr {
-                            text(preview.symbol.uppercase())
-                            fontSize(12f)
-                            color(StockChatTheme.textSecondary)
-                        }
+                        text(preview.change)
+                        fontSize(15f)
+                        fontWeightMedium()
+                        color(tone)
                     }
                 }
                 Text {
                     attr {
-                        text(preview.marketLabel.replace(" · 腾讯行情", "") + " · 行情快照")
-                        fontSize(10f)
-                        color(StockChatTheme.textTertiary)
-                        marginTop(4f)
-                    }
-                }
-                val tone = if (preview.isPositive) StockChatTheme.positive else StockChatTheme.negative
-                View {
-                    attr {
-                        flexDirectionRow()
-                        alignItemsFlexEnd()
-                        marginTop(9f)
-                    }
-                    Text {
-                        attr {
-                            text(preview.price)
-                            fontSize(38f)
-                            fontWeightBold()
-                            color(tone)
-                        }
-                    }
-                    View {
-                        attr {
-                            marginLeft(14f)
-                            marginBottom(5f)
-                        }
-                        Text {
-                            attr {
-                                text(preview.change)
-                                fontSize(15f)
-                                fontWeightMedium()
-                                color(tone)
-                            }
-                        }
-                        Text {
-                            attr {
-                                text(preview.changePercent)
-                                fontSize(15f)
-                                fontWeightMedium()
-                                color(tone)
-                            }
-                        }
+                        text(preview.changePercent)
+                        fontSize(15f)
+                        fontWeightMedium()
+                        color(tone)
                     }
                 }
             }
-            // 今开 / 最高 / 最低 … 六个指标的占位：两行三列，与 QuoteHeader.metricRows 版式一致
-            repeat(2) {
-                View {
-                    attr {
-                        flexDirectionRow()
-                        marginTop(11f)
-                    }
-                    repeat(3) {
-                        View {
-                            attr { flex(1f) }
-                            ctx.SkeletonBar(this, width = 34f, height = 10f)
-                            ctx.SkeletonBar(this, width = 58f, height = 12f, marginTop = 5f)
-                        }
+        }
+    }
+}
+
+// 今开 / 最高 / 最低 … 六个指标的占位：两行三列，与 QuoteHeader.metricRows 版式一致
+private fun StockDetailPage.SkeletonMetricRows(container: ViewContainer<*, *>) {
+    val ctx = this
+    with(container) {
+        repeat(2) {
+            View {
+                attr {
+                    flexDirectionRow()
+                    marginTop(11f)
+                }
+                repeat(3) {
+                    View {
+                        attr { flex(1f) }
+                        ctx.SkeletonBar(this, width = 34f, height = 10f)
+                        ctx.SkeletonBar(this, width = 58f, height = 12f, marginTop = 5f)
                     }
                 }
             }

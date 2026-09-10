@@ -147,7 +147,7 @@ internal data class ModelOption(
 internal enum class ModelProviderKind(
     val displayName: String,
 ) {
-    DEFAULT("StockChat Free"),
+    DEFAULT("StockChat"),
     ALIYUN("阿里云百炼"),
     DEEPSEEK("DeepSeek"),
     GLM("智谱 GLM"),

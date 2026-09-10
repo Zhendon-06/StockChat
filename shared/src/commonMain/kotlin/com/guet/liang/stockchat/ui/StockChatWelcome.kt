@@ -2,6 +2,7 @@ package com.guet.liang.stockchat.ui
 
 import com.guet.liang.stockchat.base.setTimeout
 import com.tencent.kuikly.core.base.Animation
+import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.core.base.Scale
 import com.tencent.kuikly.core.base.Translate
 import com.tencent.kuikly.core.base.ViewContainer
@@ -41,20 +42,57 @@ private const val WELCOME_TEXT_MOTION_OFFSET_DP = 5f
 
 private const val WELCOME_SUGGESTION_DELAY = 0.06f
 
+internal const val WELCOME_SUGGESTIONS_PER_PAGE = 7
+
+internal const val WELCOME_SUGGESTION_PAGE_COUNT = 4
+
+internal const val WELCOME_SUGGESTION_ROTATION_INTERVAL_MS = 5200
+
 /** Shared cross-platform type; this declaration defines a stable contract for callers. */
-private data class StockChatSuggestion(val iconAsset: String, val text: String, val question: String = text)
+private data class StockChatSuggestion(val text: String, val question: String = text)
+
+private val WELCOME_SUGGESTION_DOT_COLORS =
+    listOf(
+        Color(0xFFE34B4B),
+        Color(0xFFF28B2E),
+        Color(0xFFF2C94C),
+        Color(0xFF36B96B),
+        Color(0xFF2FB7B0),
+        Color(0xFF4C8FE8),
+        Color(0xFF9A6BCE),
+    )
 
 // 欢迎页输入框上方的快捷问题，点击直接发送
 private val WELCOME_SUGGESTIONS =
     listOf(
-        StockChatSuggestion("ranking_icon.png", "今日大盘怎么样"),
-        StockChatSuggestion("level_icon.png", "分析一下贵州茅台"),
-        StockChatSuggestion("table_icon.png", "看看沪深 300 指数"),
-        StockChatSuggestion("ai_generate.png", "现在市场风险大吗"),
-        StockChatSuggestion("ai_generate.png", "AI 选股思路", "如何建立自己的选股思路？"),
-        StockChatSuggestion("data_icon.png", "新手怎么开始炒股？"),
-        StockChatSuggestion("file_icon.png", "什么是市盈率？"),
-        StockChatSuggestion("ranking_icon.png", "怎么分散投资风险？"),
+        StockChatSuggestion("今日大盘怎么样"),
+        StockChatSuggestion("分析一下贵州茅台"),
+        StockChatSuggestion("看看沪深 300 指数"),
+        StockChatSuggestion("现在市场风险大吗"),
+        StockChatSuggestion("AI 选股思路", "如何建立自己的选股思路？"),
+        StockChatSuggestion("新手怎么开始炒股？"),
+        StockChatSuggestion("什么是市盈率？"),
+        StockChatSuggestion("怎么分散投资风险？"),
+        StockChatSuggestion("比较一下腾讯和阿里巴巴"),
+        StockChatSuggestion("宁德时代近期走势如何？"),
+        StockChatSuggestion("适合长期关注哪些行业？"),
+        StockChatSuggestion("如何看成交量变化？"),
+        StockChatSuggestion("什么是市净率？"),
+        StockChatSuggestion("解释一下北向资金"),
+        StockChatSuggestion("港股和 A 股有什么区别？"),
+        StockChatSuggestion("如何判断一只股票是否高估？"),
+        StockChatSuggestion("复盘今天的市场热点"),
+        StockChatSuggestion("哪些指标适合看趋势？"),
+        StockChatSuggestion("分析一下比亚迪"),
+        StockChatSuggestion("低风险投资应该关注什么？"),
+        StockChatSuggestion("什么是现金流折现？"),
+        StockChatSuggestion("怎么看财报中的毛利率？"),
+        StockChatSuggestion("近期新能源板块怎么样？"),
+        StockChatSuggestion("如何设置自己的止损线？"),
+        StockChatSuggestion("比较沪深 300 和中证 500"),
+        StockChatSuggestion("股票分红会影响价格吗？"),
+        StockChatSuggestion("看看美股科技板块"),
+        StockChatSuggestion("怎样理解换手率？"),
     )
 
 internal fun StockChatPage.WelcomeContent(container: ViewContainer<*, *>) {
@@ -99,6 +137,13 @@ internal fun StockChatPage.WelcomeContent(container: ViewContainer<*, *>) {
     }
 }
 
+private fun StockChatPage.visibleWelcomeSuggestions(): List<StockChatSuggestion> {
+    val pageStart = (welcomeSuggestionPage % WELCOME_SUGGESTION_PAGE_COUNT) * WELCOME_SUGGESTIONS_PER_PAGE
+    return List(WELCOME_SUGGESTIONS_PER_PAGE) { index ->
+        WELCOME_SUGGESTIONS[(pageStart + index) % WELCOME_SUGGESTIONS.size]
+    }
+}
+
 internal fun StockChatPage.SuggestionCardRow(container: ViewContainer<*, *>) {
     val ctx = this
     val metrics = ctx.layoutMetrics
@@ -129,7 +174,7 @@ internal fun StockChatPage.SuggestionCardRow(container: ViewContainer<*, *>) {
                     capture(CaptureRule.pan(CaptureRuleDirection.HORIZONTAL))
                     padding(left = metrics.dp(18f), right = metrics.dp(8f))
                 }
-                WELCOME_SUGGESTIONS.forEach { suggestion ->
+                ctx.visibleWelcomeSuggestions().forEachIndexed { index, suggestion ->
                     View {
                         attr {
                             height(metrics.dp(40f))
@@ -148,12 +193,12 @@ internal fun StockChatPage.SuggestionCardRow(container: ViewContainer<*, *>) {
                                 }
                             }
                         }
-                        Image {
+                        View {
                             attr {
-                                size(metrics.dp(18f), metrics.dp(18f))
-                                resizeContain()
-                                src(ImageUri.commonAssets(suggestion.iconAsset))
-                                marginRight(metrics.dp(7f))
+                                size(metrics.dp(8f), metrics.dp(8f))
+                                borderRadius(metrics.dp(4f))
+                                backgroundColor(WELCOME_SUGGESTION_DOT_COLORS[index])
+                                marginRight(metrics.dp(8f))
                             }
                         }
                         Text {
