@@ -65,6 +65,7 @@ internal object AiResponseCache {
     private const val TTL_MILLIS = 5 * 60 * 1000L
 }
 
+/** Snapshot of cache hit/miss counters exposed for diagnostics and UI status. */
 internal data class AiCacheStats(val hits: Long, val misses: Long, val entries: Int) {
     val totalRequests: Long get() = hits + misses
     val hitRate: Double get() = if (totalRequests == 0L) 0.0 else hits.toDouble() / totalRequests

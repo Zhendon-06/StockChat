@@ -16,6 +16,7 @@ internal data class MarkdownTableLayout(
 /** Thumb geometry of the horizontal scroll indicator drawn under a scrollable table. */
 internal data class ScrollIndicatorThumb(val left: Float, val width: Float)
 
+/** Computes column sizing and scroll-indicator geometry for Markdown tables. */
 internal object MarkdownTableLayoutCalculator {
     /** Maps content offset to a thumb on a track of [trackWidth]; the thumb never shrinks below [minThumb]. */
     fun scrollIndicator(

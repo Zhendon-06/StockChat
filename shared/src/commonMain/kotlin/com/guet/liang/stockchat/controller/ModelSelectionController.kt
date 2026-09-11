@@ -50,6 +50,7 @@ internal class ModelSelectionController(
     private val sourceFactory: (AliyunApiConfig) -> StockChatDataSource,
     private val scheduleTimeout: (Int, () -> Unit) -> Unit,
     private val routeApiKey: String = "",
+    private val routeBaseUrl: String = "",
     private val onChanged: (ModelSelectionState) -> Unit = {},
 ) {
     var state = ModelSelectionState()
@@ -195,7 +196,9 @@ internal class ModelSelectionController(
             }
         return AliyunApiConfig(
             apiKey = key,
-            baseUrl = provider?.baseUrl?.takeIf(String::isNotBlank) ?: DEFAULT_CHAT_BASE_URL,
+            baseUrl = routeBaseUrl.trim().takeIf { dashScope && it.isNotBlank() }
+                ?: provider?.baseUrl?.takeIf(String::isNotBlank)
+                ?: DEFAULT_CHAT_BASE_URL,
             chatModel = selected,
             visionModel = selected,
             providerDisplayName = provider?.displayName ?: "选择模型",

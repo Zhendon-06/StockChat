@@ -1,7 +1,5 @@
-@file:Suppress("LongMethod", "CyclomaticComplexMethod", "LongParameterList", "TooManyFunctions", "UnusedParameter", "MagicNumber")
 package com.guet.liang.stockchat.data
 
-import com.guet.liang.stockchat.base.streamChatCompletion
 import com.guet.liang.stockchat.base.BridgeModule
 import com.guet.liang.stockchat.model.AnswerBlock
 import com.guet.liang.stockchat.model.ChatAnswer
@@ -10,8 +8,6 @@ import com.guet.liang.stockchat.model.ChatRole
 import com.guet.liang.stockchat.model.AnswerMode
 import com.guet.liang.stockchat.model.MarketDataResult
 import com.tencent.kuikly.core.module.NetworkModule
-import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 
 // OpenAI 兼容聊天数据源，两条请求分支：
 //  1. 聊天分支：携带会话上下文（问 A + 答 B + 问 D），支持流式与响应缓存，负责回答正文。
@@ -26,10 +22,11 @@ internal class AliyunStockChatDataSource(
     private val bridgeModule: BridgeModule? = null,
     private val useNativeStreaming: Boolean = true,
 ) : StockChatDataSource {
+    private val completionClient = StockChatCompletionClient(networkModule, config, bridgeModule, useNativeStreaming, SYSTEM_PROMPT)
     private val marketDataService = TencentMarketDataService(networkModule)
-    private val stockMentionExtractor = LlmStockMentionExtractor(config, ::request)
+    private val stockMentionExtractor = LlmStockMentionExtractor(config, completionClient::request)
     private val securitySearch = TencentSecuritySearchService(networkModule)
-    private val securitySelector = LlmSecurityCandidateSelector(config, ::request)
+    private val securitySelector = LlmSecurityCandidateSelector(config, completionClient::request)
     private val securitiesResolver = SecuritiesSearchResolver(securitySearch::search, securitySelector::select)
 
     override fun answer(
@@ -81,7 +78,7 @@ internal class AliyunStockChatDataSource(
         val cacheKey = aiResponseCacheKey(config, turn.selectedModel, turn.question, contextHistory, turn.images)
         if (readCachedAnswer(cacheKey, attempt, callback)) return
         val join = ParallelAnswerJoin(callback) { blocks -> AiResponseCache.put(cacheKey, blocks) }
-        answerWithAi(turn.question, contextHistory, turn.images, turn.selectedModel, join::onChat)
+        completionClient.answer(turn.question, contextHistory, turn.images, turn.selectedModel, join::onChat)
         startMarketBranch(turn.question, turn.model, forcedWebSearch = false, join::onMarket)
     }
 
@@ -108,7 +105,7 @@ internal class AliyunStockChatDataSource(
         val join = ParallelAnswerJoin(callback) { blocks -> AiResponseCache.put(cacheKey, blocks) }
         // Cards are already known, so they ride along with the very first streamed delta.
         join.onMarket(outcome)
-        answerWithAi(questionWithMarketContext, contextHistory, turn.images, turn.selectedModel, join::onChat)
+        completionClient.answer(questionWithMarketContext, contextHistory, turn.images, turn.selectedModel, join::onChat)
     }
 
     /**
@@ -178,170 +175,12 @@ internal class AliyunStockChatDataSource(
         }
     }
 
-    /** Chat branch: the only request that carries conversation history. */
-    private fun answerWithAi(
-        question: String,
-        contextHistory: List<ChatHistoryItem>,
-        images: List<String>,
-        selectedModel: String,
-        callback: (ChatAnswer) -> Unit,
-    ) {
-        val messages = JSONArray().apply {
-            put(
-                JSONObject().apply {
-                    put("role", "system")
-                    put("content", SYSTEM_PROMPT)
-                }
-            )
-            contextHistory.forEach { item ->
-                put(
-                    JSONObject().apply {
-                        put("role", if (item.role == ChatRole.USER) "user" else "assistant")
-                        put("content", item.content)
-                    }
-                )
-            }
-            put(
-                JSONObject().apply {
-                    put("role", "user")
-                    put(
-                        "content",
-                        if (images.isEmpty()) {
-                            question
-                        } else {
-                            JSONArray().apply {
-                                images.forEach { imageUrl ->
-                                    put(
-                                        JSONObject().apply {
-                                            put("type", "image_url")
-                                            put(
-                                                "image_url",
-                                                JSONObject().apply { put("url", imageUrl) },
-                                            )
-                                        }
-                                    )
-                                }
-                                put(
-                                    JSONObject().apply {
-                                        put("type", "text")
-                                        put("text", question)
-                                    }
-                                )
-                            }
-                        }
-                    )
-                }
-            )
-        }
-        val streaming = useNativeStreaming && config.supportsStreaming && bridgeModule != null
-        val requestBody = JSONObject().apply {
-            put("model", selectedModel)
-            put("messages", messages)
-            if (config.useAliyunExtensions) {
-                put("thinking", JSONObject().apply { put("type", "disabled") })
-                put("max_completion_tokens", 1024)
-            } else {
-                put("max_tokens", 1024)
-            }
-            put("stream", streaming)
-        }
-        if (streaming) {
-            streamWithNativeBridge(requestBody, callback)
-        } else {
-            request(requestBody) { response, error -> handleCompletedResponse(response, error, callback) }
-        }
-    }
-
-    private fun handleCompletedResponse(
-        response: JSONObject?,
-        error: String?,
-        callback: (ChatAnswer) -> Unit,
-    ) {
-        if (error != null) {
-            callback(ChatAnswer.Failure(error))
-            return
-        }
-        val directContent = response?.assistantContent().orEmpty()
-        if (directContent.isNotEmpty()) {
-            callback(ChatAnswer.Success(chatAnswerBlocks(directContent)))
-            return
-        }
-        // 降级网络请求已收完 SSE，合并后只更新一次；逐片回放会在
-        // 鸿蒙 UI 线程上重复解析、布局整段 Markdown，导致长回答卡死。
-        val content = response?.streamDeltas().orEmpty().joinToString("").trim()
-        if (content.isEmpty()) {
-            callback(ChatAnswer.Failure(emptyAnswerMessage()))
-        } else {
-            callback(ChatAnswer.Success(chatAnswerBlocks(content)))
-        }
-    }
-
-    private fun streamWithNativeBridge(
-        requestBody: JSONObject,
-        callback: (ChatAnswer) -> Unit,
-    ) {
-        var streamedContent = ""
-        var networkFallbackStarted = false
-        var terminalEventReceived = false
-        val streamUrl = "${config.baseUrl.trimEnd('/')}/chat/completions"
-        val headers = JSONObject().apply {
-            put("Content-Type", "application/json")
-            put("Authorization", "Bearer ${config.apiKey}")
-        }
-        bridgeModule?.streamChatCompletion(
-            apiKey = config.apiKey,
-            url = streamUrl,
-            requestBody = requestBody,
-            headers = headers,
-            providerDisplayName = config.providerDisplayName,
-            responseCallbackFn = { payload ->
-                if (terminalEventReceived) {
-                    return@streamChatCompletion
-                }
-                val success = payload?.optInt("success", 0) == 1
-                if (!success) {
-                    if (payload?.optString("errorCode") == "STREAM_UNAVAILABLE") {
-                        if (!networkFallbackStarted) {
-                            networkFallbackStarted = true
-                            terminalEventReceived = true
-                            request(requestBody) { response, error ->
-                                handleCompletedResponse(response, error, callback)
-                            }
-                        }
-                        return@streamChatCompletion
-                    }
-                    terminalEventReceived = true
-                    val fallbackMessage = "${config.providerDisplayName} 请求失败，请稍后重试。"
-                    callback(ChatAnswer.Failure(payload?.optString("errorMessage")?.ifBlank { fallbackMessage } ?: fallbackMessage))
-                    return@streamChatCompletion
-                }
-                when (payload?.optString("event")) {
-                    "delta" -> {
-                        val delta = payload.optString("content")
-                        if (delta.isNotEmpty() && !terminalEventReceived) {
-                            streamedContent += delta
-                            callback(ChatAnswer.Streaming(streamedContent))
-                        }
-                    }
-                    "end" -> {
-                        terminalEventReceived = true
-                        val content = streamedContent.trim()
-                        if (content.isEmpty()) {
-                            callback(ChatAnswer.Failure(emptyAnswerMessage()))
-                        } else {
-                            callback(ChatAnswer.Success(chatAnswerBlocks(content)))
-                        }
-                    }
-                }
-            },
-        )
-    }
-
+    /** Replays cached blocks for a plain send (attempt == 0). */
     private fun replayCachedAnswer(blocks: List<AnswerBlock>, callback: (ChatAnswer) -> Unit) {
         val markdown = blocks.filterIsInstance<AnswerBlock.Markdown>().firstOrNull()?.source.orEmpty()
         val cards = blocks.filterIsInstance<AnswerBlock.MarketQuote>()
         if (config.supportsStreaming && markdown.isNotBlank()) {
-            val step = 48
+            val step = CACHE_REPLAY_STEP_CHARS
             var end = step
             while (end < markdown.length) {
                 callback(ChatAnswer.Streaming(markdown.substring(0, end), cards))
@@ -350,44 +189,6 @@ internal class AliyunStockChatDataSource(
         }
         callback(ChatAnswer.Success(blocks, fromCache = true))
     }
-
-    private fun request(
-        body: JSONObject,
-        callback: (JSONObject?, String?) -> Unit,
-    ) {
-        val headers = JSONObject().apply {
-            put("Content-Type", "application/json")
-            put("Authorization", "Bearer ${config.apiKey}")
-        }
-        networkModule.httpRequest(
-            url = "${config.baseUrl.trimEnd('/')}/chat/completions",
-            isPost = true,
-            param = body,
-            headers = headers,
-            timeout = 60,
-        ) { data, success, errorMessage, response ->
-            val statusCode = response.statusCode
-            if (!success || (statusCode != null && statusCode !in 200..299)) {
-                callback(
-                    null,
-                    data.apiErrorMessage()
-                        ?: errorMessage.apiErrorMessage()
-                        ?: errorMessage.ifBlank {
-                            "${config.providerDisplayName} 请求失败，请稍后重试。"
-                        },
-                )
-            } else {
-                callback(data, null)
-            }
-        }
-    }
-
-    private fun chatAnswerBlocks(content: String): List<AnswerBlock> {
-        val text = content.trim()
-        return listOf(AnswerBlock.Markdown(source = text, fallbackText = text))
-    }
-
-    private fun emptyAnswerMessage(): String = "${config.providerDisplayName} 没有返回可展示的回答，请稍后重试。"
 
     private fun visionUnsupportedMessage(model: String): String {
         val modelName = model.ifBlank { config.chatModel }
@@ -398,6 +199,8 @@ internal class AliyunStockChatDataSource(
     companion object {
         const val MISSING_API_KEY_MESSAGE =
             "尚未配置模型服务 API Key，请在模型配置页面填写。"
+
+        private const val CACHE_REPLAY_STEP_CHARS = 48
 
         private const val SYSTEM_PROMPT =
             "你是 StockMate，一名面向股票资讯、市场研究和投资决策辅助的中文 AI 助手。" +

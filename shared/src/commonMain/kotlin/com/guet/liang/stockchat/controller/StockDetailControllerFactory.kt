@@ -20,7 +20,13 @@ internal fun Pager.stockDetailController(
     return StockDetailController(
         marketRepository = market,
         predictionRepository =
-            StockPredictionRepositoryAdapter(StockChatSettingsStore.repository, network, market, pageData.params.optString("qwenApiKey")),
+            StockPredictionRepositoryAdapter(
+                StockChatSettingsStore.repository,
+                network,
+                market,
+                pageData.params.optString("aiProxyToken").trim().ifBlank { pageData.params.optString("qwenApiKey") },
+                pageData.params.optString("aiProxyBaseUrl"),
+            ),
         favoriteRepository = FavoriteCardsRepositoryAdapter(),
         shareRepository =
             StockDetailShareRepositoryAdapter(StockChatSettingsStore.repository, acquireModule<ShareModule>(ShareModule.MODULE_NAME)),

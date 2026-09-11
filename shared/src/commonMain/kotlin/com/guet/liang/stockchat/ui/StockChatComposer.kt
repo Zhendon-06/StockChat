@@ -81,6 +81,7 @@ internal fun StockChatPage.beginComposerDockSettle() {
     setTimeout(((keyboardAnimDuration + 0.03f) * 1000).toInt()) {
         if (generation == dockSettleGeneration) {
             keyboardDropSettling = false
+            finishPendingVoiceModeTransition()
             // 回落期间挂起的空白交互收缩，此刻键盘动画已结束，可安全播放
             if (collapseComposerAfterSettle) {
                 collapseComposerAfterSettle = false

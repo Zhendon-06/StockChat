@@ -23,7 +23,12 @@ internal fun StockChatPage.openStockDetail(quote: StockQuote, sourceTab: Int) {
     openRoute(
         STOCK_DETAIL_PAGE_NAME,
         // 把卡片上已有的行情一起带过去：详情页首帧就能显示名称与价格，网络请求期间只有细节是骨架
-        stockDetailRouteParams(artifactController.providerSymbol(quote), pageData.params.optString("qwenApiKey"), preview = quote),
+        stockDetailRouteParams(
+            artifactController.providerSymbol(quote),
+            pageData.params.optString("qwenApiKey"),
+            preview = quote,
+            aiProxyBaseUrl = pageData.params.optString("aiProxyBaseUrl"),
+        ),
     )
 }
 
@@ -72,6 +77,7 @@ internal fun StockChatPage.openStockComparisonLibrary() {
     closeConversationMenu()
     val params = JSONObject()
     pageData.params.optString("qwenApiKey").trim().takeIf(String::isNotBlank)?.let { params.put("qwenApiKey", it) }
+    pageData.params.optString("aiProxyBaseUrl").trim().takeIf(String::isNotBlank)?.let { params.put("aiProxyBaseUrl", it) }
     openRoute(CONVERSATION_TABLE_ARTIFACTS_PAGE_NAME, params)
 }
 
@@ -86,6 +92,7 @@ internal fun StockChatPage.openFavoriteCards() {
     closeConversationMenu()
     val params = JSONObject()
     pageData.params.optString("qwenApiKey").trim().takeIf(String::isNotBlank)?.let { params.put("qwenApiKey", it) }
+    pageData.params.optString("aiProxyBaseUrl").trim().takeIf(String::isNotBlank)?.let { params.put("aiProxyBaseUrl", it) }
     openRoute(FAVORITE_CARDS_PAGE_NAME, params)
 }
 
@@ -93,6 +100,7 @@ internal fun StockChatPage.openTableArtifact(artifactId: Long) {
     val params = JSONObject()
     params.put(CONVERSATION_TABLE_ARTIFACT_ID_PARAM, artifactId.toString())
     pageData.params.optString("qwenApiKey").trim().takeIf(String::isNotBlank)?.let { params.put("qwenApiKey", it) }
+    pageData.params.optString("aiProxyBaseUrl").trim().takeIf(String::isNotBlank)?.let { params.put("aiProxyBaseUrl", it) }
     openRoute(CONVERSATION_TABLE_ARTIFACT_PAGE_NAME, params)
 }
 

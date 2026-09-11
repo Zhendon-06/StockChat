@@ -188,4 +188,53 @@ class SecuritiesSearchResolverTest {
         resolver.resolve("腾讯", emptyList(), "model", listOf(tencent)) { result = it }
         assertIs<SecuritiesResolutionResult.Failure>(result)
     }
+
+    @Test
+    fun duplicateSearchCallbackIsIgnoredUntilEveryEntityCompletes() {
+        val callbacks = mutableMapOf<String, (SecuritySearchResult) -> Unit>()
+        var result: SecuritiesResolutionResult? = null
+        val resolver = SecuritiesSearchResolver(
+            search = { name, callback ->
+                callbacks[name] = callback
+                if (name == tencent.value) {
+                    val success = SecuritySearchResult.Success(matches)
+                    callback(success)
+                    callback(SecuritySearchResult.Failure("late timeout"))
+                }
+            },
+            select = { _, _, _, _, _ -> error("hints resolve every company") },
+            maxConcurrentSearches = 2,
+        )
+        val moutai = IntentEntity("贵州茅台", ListingStatus.LISTED, "", symbolHint = "sh600519")
+        resolver.resolve("腾讯和茅台", emptyList(), "model", listOf(tencent.copy(symbolHint = "hk00700"), moutai)) {
+            result = it
+        }
+
+        assertNull(result)
+        callbacks.getValue(moutai.value)(
+            SecuritySearchResult.Success(listOf(TencentSearchMatch("sh600519", "600519", "贵州茅台", "GP")))
+        )
+        assertEquals(
+            listOf("hk00700", "sh600519"),
+            assertIs<SecuritiesResolutionResult.Success>(result).targets.map { it.providerSymbol },
+        )
+    }
+
+    @Test
+    fun selectorCallbackIsDeliveredOnlyOnce() {
+        var callbackCount = 0
+        val resolver = SecuritiesSearchResolver(
+            search = { _, callback -> callback(SecuritySearchResult.Success(matches)) },
+            select = { _, _, _, candidates, callback ->
+                val selected = LlmSecurityCandidateSelector.parseSelection(
+                    """{"selections":[{"entityIndex":0,"providerSymbol":"hk00700","note":""}]}""",
+                    candidates,
+                )
+                callback(selected)
+                callback(selected)
+            },
+        )
+        resolver.resolve("腾讯", emptyList(), "model", listOf(tencent)) { callbackCount++ }
+        assertEquals(1, callbackCount)
+    }
 }

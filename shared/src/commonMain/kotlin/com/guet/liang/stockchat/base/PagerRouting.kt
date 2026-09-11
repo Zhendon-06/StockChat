@@ -1,6 +1,7 @@
 package com.guet.liang.stockchat.base
 
 import com.guet.liang.stockchat.data.toJson
+import com.guet.liang.stockchat.data.toStockQuoteOrNull
 import com.guet.liang.stockchat.model.StockQuote
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
@@ -19,10 +20,20 @@ internal fun Pager.openRoute(routeName: String, params: JSONObject = JSONObject(
 /** Route parameter carrying the quote the caller already has, so the detail page paints it before any request. */
 internal const val STOCK_DETAIL_PREVIEW_QUOTE_PARAM = "previewQuote"
 
-internal fun stockDetailRouteParams(symbol: String, qwenApiKey: String? = null, preview: StockQuote? = null): JSONObject =
+/** Decodes the optional route snapshot through the same codec used when opening the detail page. */
+internal fun stockDetailPreviewQuote(params: JSONObject): StockQuote? =
+    params.optJSONObject(STOCK_DETAIL_PREVIEW_QUOTE_PARAM)?.toStockQuoteOrNull()
+
+internal fun stockDetailRouteParams(
+    symbol: String,
+    qwenApiKey: String? = null,
+    preview: StockQuote? = null,
+    aiProxyBaseUrl: String? = null,
+): JSONObject =
     JSONObject().apply {
         put("symbol", symbol)
         qwenApiKey?.trim()?.takeIf(String::isNotBlank)?.let { put("qwenApiKey", it) }
+        aiProxyBaseUrl?.trim()?.takeIf(String::isNotBlank)?.let { put("aiProxyBaseUrl", it) }
         preview?.let { put(STOCK_DETAIL_PREVIEW_QUOTE_PARAM, it.toJson()) }
     }
 

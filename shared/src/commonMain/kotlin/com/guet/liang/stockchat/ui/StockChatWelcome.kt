@@ -2,7 +2,6 @@ package com.guet.liang.stockchat.ui
 
 import com.guet.liang.stockchat.base.setTimeout
 import com.tencent.kuikly.core.base.Animation
-import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.core.base.Scale
 import com.tencent.kuikly.core.base.Translate
 import com.tencent.kuikly.core.base.ViewContainer
@@ -50,17 +49,6 @@ internal const val WELCOME_SUGGESTION_ROTATION_INTERVAL_MS = 5200
 
 /** Shared cross-platform type; this declaration defines a stable contract for callers. */
 private data class StockChatSuggestion(val text: String, val question: String = text)
-
-private val WELCOME_SUGGESTION_DOT_COLORS =
-    listOf(
-        Color(0xFFE34B4B),
-        Color(0xFFF28B2E),
-        Color(0xFFF2C94C),
-        Color(0xFF36B96B),
-        Color(0xFF2FB7B0),
-        Color(0xFF4C8FE8),
-        Color(0xFF9A6BCE),
-    )
 
 // 欢迎页输入框上方的快捷问题，点击直接发送
 private val WELCOME_SUGGESTIONS =
@@ -197,7 +185,7 @@ internal fun StockChatPage.SuggestionCardRow(container: ViewContainer<*, *>) {
                             attr {
                                 size(metrics.dp(8f), metrics.dp(8f))
                                 borderRadius(metrics.dp(4f))
-                                backgroundColor(WELCOME_SUGGESTION_DOT_COLORS[index])
+                                backgroundColor(StockChatTheme.welcomeSuggestionDotColors[index])
                                 marginRight(metrics.dp(8f))
                             }
                         }

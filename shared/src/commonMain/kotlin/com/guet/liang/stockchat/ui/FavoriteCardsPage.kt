@@ -174,7 +174,12 @@ internal class FavoriteCardsPage : BasePager() {
     private fun openStockDetail(quote: StockQuote) {
         openRoute(
             STOCK_DETAIL_PAGE_NAME,
-            stockDetailRouteParams(artifactController.providerSymbol(quote), pageData.params.optString("qwenApiKey"), preview = quote),
+            stockDetailRouteParams(
+                artifactController.providerSymbol(quote),
+                pageData.params.optString("qwenApiKey"),
+                preview = quote,
+                aiProxyBaseUrl = pageData.params.optString("aiProxyBaseUrl"),
+            ),
         )
     }
 

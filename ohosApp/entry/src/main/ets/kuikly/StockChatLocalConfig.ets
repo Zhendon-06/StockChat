@@ -10,6 +10,8 @@ export function loadStockChatLocalConfig(context: common.UIAbilityContext): Reco
     const localConfig: Record<string, string> = {};
     localConfig['qwenApiKey'] = typeof config['qwenApiKey'] === 'string' ? config['qwenApiKey'] : '';
     localConfig['mimoVoiceApiKey'] = typeof config['mimoVoiceApiKey'] === 'string' ? config['mimoVoiceApiKey'] : '';
+    localConfig['aiProxyBaseUrl'] = typeof config['aiProxyBaseUrl'] === 'string' ? config['aiProxyBaseUrl'] : '';
+    localConfig['aiProxyToken'] = typeof config['aiProxyToken'] === 'string' ? config['aiProxyToken'] : '';
     return localConfig;
   } catch {
     return {};

@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 
-KEYS = ("QWEN_API_KEY", "MIMO_VOICE_API_KEY")
+KEYS = ("QWEN_API_KEY", "MIMO_VOICE_API_KEY", "AI_PROXY_BASE_URL", "AI_PROXY_TOKEN")
 
 
 def read_properties(path):
@@ -22,7 +22,7 @@ def read_properties(path):
         pending = ""
         if not line or line.startswith(("#", "!")):
             continue
-        match = re.match(r"(QWEN_API_KEY|MIMO_VOICE_API_KEY)(?:\s*[=:]\s*|\s+)(.*)$", line)
+        match = re.match(r"(QWEN_API_KEY|MIMO_VOICE_API_KEY|AI_PROXY_BASE_URL|AI_PROXY_TOKEN)(?:\s*[=:]\s*|\s+)(.*)$", line)
         if match:
             value = re.sub(
                 r"\\u([0-9a-fA-F]{4})|\\(.)",

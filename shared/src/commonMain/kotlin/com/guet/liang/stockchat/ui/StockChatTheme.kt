@@ -90,6 +90,18 @@ internal object StockChatTheme {
     internal const val COLOR_FFFFE0BE = 0xFFFFE0BE
     internal const val COLOR_FFFFFF00 = 0xFFFFFF00
     internal const val COLOR_FFFFFFFF = 0xFFFFFFFF
+
+    /** Accent colors used by the rotating quick-question indicators on the welcome page. */
+    internal val welcomeSuggestionDotColors =
+        listOf(
+            Color(0xFFE34B4B),
+            Color(0xFFF28B2E),
+            Color(0xFFF2C94C),
+            Color(0xFF36B96B),
+            Color(0xFF2FB7B0),
+            Color(0xFF4C8FE8),
+            Color(0xFF9A6BCE),
+        )
     // 主题是跨页面共享的进程级单例，需要让「当前正在收集依赖的 Pager」都能观察到这几项状态；
     // 替代 API PagerScope.observable 会把状态绑定到单个 Pager，不适用于这里，故保留全局 observable。
     @Suppress("DEPRECATION") private var appearanceState by observable(AppearanceSettings())

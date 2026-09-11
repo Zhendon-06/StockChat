@@ -4,14 +4,13 @@ import com.guet.liang.stockchat.base.bridgeModule
 import com.guet.liang.stockchat.base.setTimeout
 import com.guet.liang.stockchat.data.AliyunStockChatDataSource
 import com.guet.liang.stockchat.data.ChatHistoryDatabase
-import com.guet.liang.stockchat.data.ChatHistoryRepository
 import com.guet.liang.stockchat.data.MimoSpeechRecognitionService
 import com.guet.liang.stockchat.data.MimoSpeechSynthesisService
 import com.guet.liang.stockchat.data.MimoVoiceApiConfig
 import com.guet.liang.stockchat.data.ModelCatalogService
 import com.guet.liang.stockchat.data.StockChatSettingsStore
 import com.guet.liang.stockchat.data.TencentTodayMarketDataSource
-import com.guet.liang.stockchat.data.TodayMarketDataSource
+import com.guet.liang.stockchat.model.SettingsSnapshot
 import com.tencent.kuikly.core.module.NetworkModule
 import com.tencent.kuikly.core.pager.Pager
 
@@ -20,17 +19,18 @@ import com.tencent.kuikly.core.pager.Pager
  * The page receives ready-to-use controllers and platform services through this boundary.
  */
 internal data class StockChatPageDependencies(
-    val networkModule: NetworkModule,
-    val speechRecognitionService: MimoSpeechRecognitionService,
-    val speechSynthesisService: MimoSpeechSynthesisService,
-    val chatHistoryRepository: ChatHistoryRepository,
+    val speechRecognitionService: SpeechRecognitionService,
+    val speechSynthesisService: SpeechSynthesisService,
     val sessionController: ChatSessionController,
     val sendController: ChatSendController,
     val artifactController: ArtifactController,
-    val todayMarketDataSource: TodayMarketDataSource,
+    val todayMarketDataSource: TodayMarketLoader,
     val modelSelectionController: ModelSelectionController,
     val settingsController: SettingsController,
 )
+
+/** Reads saved appearance without acquiring a page, network module, or history database. */
+internal fun savedAppearanceSnapshot(): SettingsSnapshot = SettingsController(StockChatSettingsStore.repository).snapshot()
 
 /** Creates the complete chat-page object graph at the application composition boundary. */
 internal fun Pager.stockChatPageDependencies(
@@ -51,14 +51,15 @@ internal fun Pager.stockChatPageDependencies(
                 AliyunStockChatDataSource(network, config, bridgeModule, nativeStreamingEnabled && config.supportsStreaming)
             },
             scheduleTimeout = { delay, callback -> setTimeout(delay, callback) },
-            routeApiKey = pageData.params.optString("qwenApiKey"),
+            routeApiKey = pageData.params.optString("aiProxyToken").trim()
+                .ifBlank { pageData.params.optString("qwenApiKey") },
+            routeBaseUrl = pageData.params.optString("aiProxyBaseUrl"),
             onChanged = onModelChanged,
         )
     val history = ChatHistoryDatabase.repository()
     val session = ChatSessionController(history, onSessionChanged)
     val send = ChatSendController({ modelSelection.dataSource }, session, { modelSelection.state.selectedModel }, onSendingChanged)
     return StockChatPageDependencies(
-        networkModule = network,
         speechRecognitionService = MimoSpeechRecognitionService(network, voiceConfig),
         speechSynthesisService =
             MimoSpeechSynthesisService(
@@ -67,7 +68,6 @@ internal fun Pager.stockChatPageDependencies(
                 bridgeModule = bridgeModule,
                 useNativeStreaming = pageData.params.optInt("mimoNativeStreaming") == 1,
             ),
-        chatHistoryRepository = history,
         sessionController = session,
         sendController = send,
         artifactController = artifactController(),

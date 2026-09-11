@@ -33,6 +33,17 @@ struct Index {
     if (incomingMimoApiKey == null || incomingMimoApiKey.length === 0) {
       resolvedPageData['mimoVoiceApiKey'] = localConfig['mimoVoiceApiKey'] ?? '';
     }
+    if ((resolvedPageData['aiProxyBaseUrl'] as string ?? '').length === 0) {
+      resolvedPageData['aiProxyBaseUrl'] = localConfig['aiProxyBaseUrl'] ?? '';
+    }
+    if ((resolvedPageData['aiProxyToken'] as string ?? '').length === 0) {
+      resolvedPageData['aiProxyToken'] = localConfig['aiProxyToken'] ?? '';
+    }
+    if ((resolvedPageData['aiProxyBaseUrl'] as string ?? '').length > 0) {
+      resolvedPageData['qwenApiKey'] = (resolvedPageData['aiProxyToken'] as string ?? '').length > 0
+        ? resolvedPageData['aiProxyToken']
+        : 'proxy';
+    }
     resolvedPageData['aliyunNativeStreaming'] = 1;
     this.pageData = resolvedPageData as KRRecord;
     stockChatDatabaseStore.open(hostContext).then(() => {

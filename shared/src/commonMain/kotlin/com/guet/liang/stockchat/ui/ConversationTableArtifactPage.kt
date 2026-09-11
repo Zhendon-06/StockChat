@@ -116,6 +116,9 @@ internal class ConversationTableArtifactPage : BasePager() {
         pageData.params.optString("qwenApiKey").trim()
             .takeIf(String::isNotBlank)
             ?.let { params.put("qwenApiKey", it) }
+        pageData.params.optString("aiProxyBaseUrl").trim()
+            .takeIf(String::isNotBlank)
+            ?.let { params.put("aiProxyBaseUrl", it) }
         openRoute(
             STOCK_DETAIL_PAGE_NAME,
             params,

@@ -2,6 +2,8 @@
 package com.guet.liang.stockchat.data
 
 import com.guet.liang.stockchat.base.streamSpeechSynthesis
+import com.guet.liang.stockchat.controller.SpeechRecognitionService
+import com.guet.liang.stockchat.controller.SpeechSynthesisService
 import com.guet.liang.stockchat.model.SpeechRecognitionResult
 import com.guet.liang.stockchat.model.SpeechSynthesisResult
 import com.guet.liang.stockchat.base.BridgeModule
@@ -15,11 +17,11 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 internal class MimoSpeechRecognitionService(
     private val networkModule: NetworkModule,
     private val config: MimoVoiceApiConfig,
-) {
-    val isConfigured: Boolean
+) : SpeechRecognitionService {
+    override val isConfigured: Boolean
         get() = config.apiKey.isNotBlank()
 
-    fun transcribe(
+    override fun transcribe(
         audioBase64: String,
         mimeType: String,
         callback: (SpeechRecognitionResult) -> Unit,
@@ -96,11 +98,11 @@ internal class MimoSpeechSynthesisService(
     private val config: MimoVoiceApiConfig,
     private val bridgeModule: BridgeModule? = null,
     private val useNativeStreaming: Boolean = false,
-) {
-    val isConfigured: Boolean
+) : SpeechSynthesisService {
+    override val isConfigured: Boolean
         get() = config.apiKey.isNotBlank()
 
-    fun synthesize(
+    override fun synthesize(
         text: String,
         callback: (SpeechSynthesisResult) -> Unit,
     ) {

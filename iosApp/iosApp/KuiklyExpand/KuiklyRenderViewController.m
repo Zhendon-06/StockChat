@@ -107,7 +107,12 @@
     NSURL *configURL = [[NSBundle mainBundle] URLForResource:@"StockChatLocalConfig" withExtension:@"plist"];
     NSDictionary *config = configURL ? [NSDictionary dictionaryWithContentsOfURL:configURL] : nil;
     NSDictionary *environment = NSProcessInfo.processInfo.environment;
-    NSDictionary *keys = @{@"QWEN_API_KEY": @"qwenApiKey", @"MIMO_VOICE_API_KEY": @"mimoVoiceApiKey"};
+    NSDictionary *keys = @{
+        @"QWEN_API_KEY": @"qwenApiKey",
+        @"MIMO_VOICE_API_KEY": @"mimoVoiceApiKey",
+        @"AI_PROXY_BASE_URL": @"aiProxyBaseUrl",
+        @"AI_PROXY_TOKEN": @"aiProxyToken",
+    };
     for (NSString *key in keys) {
         NSString *value = [environment[key] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
         if (!value.length) {
@@ -117,6 +122,9 @@
         if ([value isKindOfClass:NSString.class] && value.length && ![_pageData[keys[key]] length]) {
             params[keys[key]] = value;
         }
+    }
+    if ([params[@"aiProxyBaseUrl"] length]) {
+        params[@"qwenApiKey"] = [params[@"aiProxyToken"] length] ? params[@"aiProxyToken"] : @"proxy";
     }
 #endif
     return params;

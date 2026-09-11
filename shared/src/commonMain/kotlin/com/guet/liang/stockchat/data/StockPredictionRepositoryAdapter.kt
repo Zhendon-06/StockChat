@@ -17,16 +17,24 @@ internal class StockPredictionRepositoryAdapter(
     private val marketRepository: StockDetailMarketRepository,
     private val predictInput: (StockPredictionConfig, StockPredictionInput, (StockPredictionResult) -> Unit) -> Unit,
     private val routeApiKey: String = "",
+    private val routeBaseUrl: String = "",
 ) : StockDetailPredictionRepository {
     constructor(
         settings: SettingsRepository,
         network: NetworkModule,
         market: StockDetailMarketRepository,
         routeApiKey: String,
-    ) : this(settings, market, { config, input, callback -> StockPredictionService(network, config).predict(input, callback) }, routeApiKey)
+        routeBaseUrl: String = "",
+    ) : this(
+        settings,
+        market,
+        { config, input, callback -> StockPredictionService(network, config).predict(input, callback) },
+        routeApiKey,
+        routeBaseUrl,
+    )
 
     override fun predict(symbol: String, quote: StockQuote, callback: (StockPredictionResult, List<StockPredictionHistoryPoint>) -> Unit) {
-        val config = detailPredictionConfig(settings.loadSnapshot().modelConfiguration, routeApiKey)
+        val config = detailPredictionConfig(settings.loadSnapshot().modelConfiguration, routeApiKey, routeBaseUrl)
         val unavailable =
             when {
                 config.apiKey.isBlank() -> "当前 Provider 没有可用 API Key，请先在模型配置页面填写后重试。"

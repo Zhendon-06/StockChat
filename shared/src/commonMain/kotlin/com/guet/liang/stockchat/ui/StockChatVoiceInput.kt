@@ -115,13 +115,41 @@ internal fun StockChatPage.toggleVoiceMode() {
         focusTextInputAfterLayout()
         return
     }
+    if (voiceModeTransitionPending) {
+        voiceModeTransitionPending = false
+        voiceModeTransitionGeneration += 1
+        return
+    }
     cancelVoiceInput()
+    val keyboardWasUp = keyboardVisible || keyboardHeight > 0f || composerFocused
+    voiceModeTransitionPending = true
+    val transitionGeneration = ++voiceModeTransitionGeneration
     if (inputRefReady) {
         inputRef.view?.blur()
     }
     resetKeyboardState()
-    voiceMode = true
     closeDrawer()
+    if (!keyboardWasUp) {
+        finishPendingVoiceModeTransition(transitionGeneration)
+    } else {
+        // 大多数平台会在键盘回调中触发 beginComposerDockSettle；这个兜底计时器
+        // 覆盖“只有焦点、尚未收到键盘高度”的情况，且由 generation 防止重复切换。
+        setTimeout(((keyboardAnimDuration + 0.06f) * 1000f).toInt()) {
+            finishPendingVoiceModeTransition(transitionGeneration)
+        }
+    }
+}
+
+internal fun StockChatPage.finishPendingVoiceModeTransition(generation: Int? = null) {
+    val staleGeneration = generation != null && generation != voiceModeTransitionGeneration
+    val keyboardStillVisible = keyboardVisible || keyboardHeight > 0.5f
+    if (!voiceModeTransitionPending || staleGeneration || keyboardStillVisible) {
+        return
+    }
+    voiceModeTransitionPending = false
+    voiceMode = true
+    composerFocused = false
+    composerExpanded = true
 }
 
 // 非语音模式下，输入框未输入（无文字、无附件、未聚焦）时长按也进入按住说话；

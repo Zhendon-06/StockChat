@@ -224,7 +224,13 @@ class KuiklyRenderActivity : AppCompatActivity(), KuiklyRenderViewBaseDelegatorD
         val param = argsToMap()
         param["appId"] = 1
         param[IS_NIGHT_MODE_KEY] = isSystemNightMode()
-        param["qwenApiKey"] = BuildConfig.QWEN_API_KEY
+        param["qwenApiKey"] = if (BuildConfig.AI_PROXY_BASE_URL.isNotBlank()) {
+            BuildConfig.AI_PROXY_TOKEN.ifBlank { "proxy" }
+        } else {
+            BuildConfig.QWEN_API_KEY
+        }
+        param["aiProxyBaseUrl"] = BuildConfig.AI_PROXY_BASE_URL
+        param["aiProxyToken"] = BuildConfig.AI_PROXY_TOKEN
         param["mimoVoiceApiKey"] = BuildConfig.MIMO_VOICE_API_KEY
         param["aliyunNativeStreaming"] = 1
         param["mimoNativeStreaming"] = 1

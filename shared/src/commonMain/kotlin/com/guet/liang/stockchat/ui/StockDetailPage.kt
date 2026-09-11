@@ -2,14 +2,13 @@ package com.guet.liang.stockchat.ui
 
 import com.guet.liang.kuiklychart.finance.FinancialChartView
 import com.guet.liang.stockchat.base.BasePager
-import com.guet.liang.stockchat.base.STOCK_DETAIL_PREVIEW_QUOTE_PARAM
+import com.guet.liang.stockchat.base.stockDetailPreviewQuote
 import com.guet.liang.stockchat.base.bridgeModule
 import com.guet.liang.stockchat.base.openRoute
 import com.guet.liang.stockchat.controller.StockDetailController
 import com.guet.liang.stockchat.controller.StockDetailControllerState
 import com.guet.liang.stockchat.controller.StockDetailPredictionControllerState
 import com.guet.liang.stockchat.controller.stockDetailController
-import com.guet.liang.stockchat.data.toStockQuoteOrNull
 import com.guet.liang.stockchat.model.ChartEvidenceReference
 import com.guet.liang.stockchat.model.ShareResult
 import com.guet.liang.stockchat.model.StockPredictionHistoryPoint
@@ -54,7 +53,7 @@ internal class StockDetailPage : BasePager() {
         super.created()
         applySavedAppearance()
         symbol = pageData.params.optString("symbol").trim().uppercase()
-        previewQuote = pageData.params.optJSONObject(STOCK_DETAIL_PREVIEW_QUOTE_PARAM)?.toStockQuoteOrNull()
+        previewQuote = stockDetailPreviewQuote(pageData.params)
         controller =
             stockDetailController(
                 onMarketStateChanged = {
@@ -167,6 +166,7 @@ internal class StockDetailPage : BasePager() {
             },
         )
         pageData.params.optString("qwenApiKey").trim().takeIf(String::isNotBlank)?.let { params.put("qwenApiKey", it) }
+        pageData.params.optString("aiProxyBaseUrl").trim().takeIf(String::isNotBlank)?.let { params.put("aiProxyBaseUrl", it) }
         openRoute(CHAT_PAGE_NAME, params)
     }
 

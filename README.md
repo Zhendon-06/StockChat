@@ -67,7 +67,16 @@ QWEN_API_KEY=你的百炼_API_Key
 MIMO_VOICE_API_KEY=你的_MiMo_API_Key
 ```
 
-也可用同名环境变量覆盖。`QWEN_API_KEY` 用于文本 / 视觉问答、标的识别与 AI 预测，`MIMO_VOICE_API_KEY` 仅用于语音。三端 Debug 构建都会读取这份配置并生成到构建产物内，Release 构建清空本地密钥。Key 会进入 Debug 产物，因此这种方式只适合本地调试，正式环境应使用服务端代理或短期凭证。应用内的模型配置页可以在运行时另行添加服务商与 Key。
+正式部署建议使用仓库内的 [`ai-proxy`](ai-proxy/README.md)：将百炼 Key 放在阿里云服务器，只在客户端配置代理地址和代理访问令牌：
+
+```properties
+AI_PROXY_BASE_URL=https://你的域名/v1
+AI_PROXY_TOKEN=代理服务的访问令牌
+```
+
+配置代理地址后，应用会把 `AI_PROXY_TOKEN` 当作客户端到代理的凭证，并自动改用代理地址；`QWEN_API_KEY` 不再需要写入客户端。`AI_PROXY_TOKEN` 不是百炼 Key。
+
+也可用同名环境变量覆盖。直连模式下 `QWEN_API_KEY` 用于文本 / 视觉问答、标的识别与 AI 预测，`MIMO_VOICE_API_KEY` 仅用于语音；直连 Key 只适合本地调试。应用内的模型配置页可以在运行时另行添加服务商与 Key。
 
 
 ## 构建与运行
@@ -82,11 +91,14 @@ MIMO_VOICE_API_KEY=你的_MiMo_API_Key
   - Xcode（iOS）
   - CocoaPods（iOS）
   - DevEco Studio（鸿蒙）
-- 根目录 `local.properties` 配置 API Key（调试态）：
+- 根目录 `local.properties` 配置代理（推荐）或直连 Key（仅调试态）：
 
 ```properties
 QWEN_API_KEY=你的百炼_API_Key
 MIMO_VOICE_API_KEY=你的_MiMo_API_Key
+# 正式环境改用下面两项，并删除 QWEN_API_KEY
+AI_PROXY_BASE_URL=https://你的域名/v1
+AI_PROXY_TOKEN=代理服务的访问令牌
 ```
 
 ### Android（用于联调）

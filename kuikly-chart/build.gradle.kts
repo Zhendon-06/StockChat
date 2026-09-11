@@ -9,7 +9,7 @@ detekt {
     config.setFrom(files(rootProject.file("config/detekt/detekt.yml")))
     buildUponDefaultConfig = true
     source.setFrom(files("src/commonMain/kotlin", "src/commonTest/kotlin"))
-    ignoreFailures = true
+    ignoreFailures = false
 }
 
 kotlin {

@@ -1,0 +1,13 @@
+{
+  "name": "stockchat-ai-proxy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Server-side DashScope OpenAI-compatible proxy for StockChat",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "dev": "node --watch src/server.mjs",
+    "test": "node --test"
+  },
+  "engines": { "node": ">=20" }
+}

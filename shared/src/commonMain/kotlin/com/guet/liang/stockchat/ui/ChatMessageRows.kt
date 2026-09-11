@@ -10,6 +10,7 @@ import com.guet.liang.stockchat.model.MessageState
 // 行内已到达的行情卡片随之销毁再创建，用户按下时的节点在抬起前已不存在，点击就会失效。
 // 因此流式行只按「结构」比较，正文交给页面上的 observable 实时驱动。
 
+/** Provides stable row identity helpers for efficient streaming message rendering. */
 internal object ChatMessageRows {
     /** 正在流式输出且已有可见内容的回答行：正文从页面 observable 读取，而不是行创建时的快照。 */
     fun isLiveRow(message: ChatMessage): Boolean =

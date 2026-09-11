@@ -57,6 +57,10 @@ internal class SecuritiesSearchResolver(
     ) -> Unit,
     private val maxConcurrentSearches: Int = DEFAULT_MAX_CONCURRENT_SEARCHES,
 ) {
+    init {
+        require(maxConcurrentSearches > 0) { "maxConcurrentSearches must be positive" }
+    }
+
     fun resolve(
         question: String,
         history: List<ChatHistoryItem>,
@@ -71,21 +75,46 @@ internal class SecuritiesSearchResolver(
         val results = arrayOfNulls<SecuritySearchResult>(entities.size)
         var completed = 0
         var nextIndex = 0
-        fun startNext() {
-            val index = nextIndex
-            if (index >= entities.size) return
-            nextIndex++
-            search(entities[index].value) { result ->
-                results[index] = result
-                completed++
-                if (completed == entities.size) {
-                    finishSearches(question, history, model, entities, results.map { it!! }, callback)
-                } else {
-                    startNext()
+        var inFlight = 0
+        var pumping = false
+        var completionDelivered = false
+
+        fun deliver(result: SecuritiesResolutionResult) {
+            if (completionDelivered) return
+            completionDelivered = true
+            callback(result)
+        }
+
+        fun pump() {
+            if (pumping) return
+            pumping = true
+            while (nextIndex < entities.size && inFlight < maxConcurrentSearches) {
+                val index = nextIndex++
+                inFlight++
+                search(entities[index].value) resultCallback@{ result ->
+                    // A transport may invoke its callback more than once (for example after a
+                    // timeout and a late response). Count each entity exactly once.
+                    if (results[index] != null) return@resultCallback
+                    results[index] = result
+                    completed++
+                    inFlight--
+                    if (completed == entities.size) {
+                        finishSearches(
+                            question,
+                            history,
+                            model,
+                            entities,
+                            results.map { requireNotNull(it) },
+                            ::deliver,
+                        )
+                    } else {
+                        pump()
+                    }
                 }
             }
+            pumping = false
         }
-        repeat(minOf(maxConcurrentSearches, entities.size)) { startNext() }
+        pump()
     }
 
     private fun finishSearches(

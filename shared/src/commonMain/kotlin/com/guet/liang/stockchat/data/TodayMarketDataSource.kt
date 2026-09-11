@@ -6,13 +6,14 @@ import com.guet.liang.stockchat.model.StockQuote
 import com.guet.liang.stockchat.model.TodayMarketResult
 import com.guet.liang.stockchat.model.TodayMarketSectorObservation
 import com.guet.liang.stockchat.model.TodayMarketSnapshot
+import com.guet.liang.stockchat.controller.TodayMarketLoader
 import com.tencent.kuikly.core.module.NetworkModule
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /** Shared cross-platform type; this declaration defines a stable contract for callers. */
-internal interface TodayMarketDataSource {
-    fun load(callback: (TodayMarketResult) -> Unit)
+internal interface TodayMarketDataSource : TodayMarketLoader {
+    override fun load(callback: (TodayMarketResult) -> Unit)
 }
 
 /** Shared cross-platform type; this declaration defines a stable contract for callers. */

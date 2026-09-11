@@ -23,14 +23,16 @@ test('IDE builds refresh local keys, env overrides, and Release clears previous 
         assert.equal(read().qwenApiKey, 'fake-local');
         fs.writeFileSync(localPath, 'QWEN_API_KEY=fake-updated');
         generateLocalConfig(options);
-        assert.deepEqual(read(), { qwenApiKey: 'fake-updated', mimoVoiceApiKey: '' });
+        assert.deepEqual(read(), {
+            qwenApiKey: 'fake-updated', mimoVoiceApiKey: '', aiProxyBaseUrl: '', aiProxyToken: '',
+        });
         generateLocalConfig({ ...options, environment: { QWEN_API_KEY: ' fake-env ' } });
         assert.equal(read().qwenApiKey, 'fake-env');
         generateLocalConfig({ ...options, buildMode: 'release' });
         assert.deepEqual(read(), {});
         fs.unlinkSync(localPath);
         generateLocalConfig(options);
-        assert.deepEqual(read(), { qwenApiKey: '', mimoVoiceApiKey: '' });
+        assert.deepEqual(read(), { qwenApiKey: '', mimoVoiceApiKey: '', aiProxyBaseUrl: '', aiProxyToken: '' });
     } finally {
         fs.rmSync(projectRoot, { recursive: true, force: true });
     }

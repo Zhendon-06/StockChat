@@ -1,7 +1,12 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const KEYS = { QWEN_API_KEY: 'qwenApiKey', MIMO_VOICE_API_KEY: 'mimoVoiceApiKey' };
+const KEYS = {
+    QWEN_API_KEY: 'qwenApiKey',
+    MIMO_VOICE_API_KEY: 'mimoVoiceApiKey',
+    AI_PROXY_BASE_URL: 'aiProxyBaseUrl',
+    AI_PROXY_TOKEN: 'aiProxyToken',
+};
 
 function readProperties(content) {
     const values = {};
@@ -14,7 +19,7 @@ function readProperties(content) {
             continue;
         }
         pending = '';
-        const match = line.match(/^(QWEN_API_KEY|MIMO_VOICE_API_KEY)(?:\s*[=:]\s*|\s+)(.*)$/);
+        const match = line.match(/^(QWEN_API_KEY|MIMO_VOICE_API_KEY|AI_PROXY_BASE_URL|AI_PROXY_TOKEN)(?:\s*[=:]\s*|\s+)(.*)$/);
         if (!match) continue;
         values[match[1]] = match[2].replace(/\\u([\da-fA-F]{4})|\\(.)/g, (_, unicode, escaped) =>
             unicode ? String.fromCharCode(parseInt(unicode, 16)) :

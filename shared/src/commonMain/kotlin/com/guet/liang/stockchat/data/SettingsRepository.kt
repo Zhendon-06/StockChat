@@ -60,7 +60,9 @@ internal interface SettingsRepository : SharedChatSettingsRepository {
 }
 
 /** Shared cross-platform type; this declaration defines a stable contract for callers. */
+/** In-memory settings implementation with optional persistence backing. */
 @Suppress("TooManyFunctions")
+/** In-memory settings implementation with optional persistence backing. */
 internal class InMemorySettingsRepository(
     initialAppearance: AppearanceSettings = MockSettingsData.appearance,
     initialSharedChats: List<SharedChatRecord> = MockSettingsData.sharedChats,

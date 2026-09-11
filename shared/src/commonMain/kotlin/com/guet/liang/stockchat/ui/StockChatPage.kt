@@ -7,14 +7,11 @@ import com.guet.liang.stockchat.controller.ChatSendController
 import com.guet.liang.stockchat.controller.ChatSessionController
 import com.guet.liang.stockchat.controller.ModelSelectionController
 import com.guet.liang.stockchat.controller.SettingsController
+import com.guet.liang.stockchat.controller.SpeechRecognitionService
+import com.guet.liang.stockchat.controller.SpeechSynthesisService
+import com.guet.liang.stockchat.controller.TodayMarketLoader
 import com.guet.liang.stockchat.controller.stockChatPageDependencies
-import com.guet.liang.stockchat.data.ChatHistoryRepository
-import com.guet.liang.stockchat.data.ConversationMindMapArtifactRepository
-import com.guet.liang.stockchat.data.ConversationTableArtifactRepository
-import com.guet.liang.stockchat.data.MimoSpeechRecognitionService
-import com.guet.liang.stockchat.data.MimoSpeechSynthesisService
 import com.guet.liang.stockchat.model.AnswerMode
-import com.guet.liang.stockchat.data.TodayMarketDataSource
 import com.guet.liang.stockchat.model.ChatMessage
 import com.guet.liang.stockchat.model.ChatModelOption
 import com.guet.liang.stockchat.model.ChatSessionSummary
@@ -27,7 +24,6 @@ import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.base.ViewRef
 import com.tencent.kuikly.core.directives.velse
 import com.tencent.kuikly.core.directives.vif
-import com.tencent.kuikly.core.module.NetworkModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.reactive.handler.observable
 import com.tencent.kuikly.core.reactive.handler.observableList
@@ -93,6 +89,9 @@ internal class StockChatPage : BasePager() {
     internal var isSending by observable(false)
     internal var voiceInputState by observable(VoiceInputState.IDLE)
     internal var voiceMode by observable(false)
+    // Keyboard dismissal and voice-mode layout changes are serialized to avoid competing animations.
+    internal var voiceModeTransitionPending = false
+    internal var voiceModeTransitionGeneration = 0
     internal var voicePressActive by observable(false)
     internal var voicePressCanceled by observable(false)
     internal var voiceWavePhase by observable(0)
@@ -152,14 +151,12 @@ internal class StockChatPage : BasePager() {
     internal var stickMessageListToBottom = true
     internal var messageListContentHeight = 0f
     internal var messageListViewHeight = 0f
-    internal lateinit var networkModule: NetworkModule
-    internal lateinit var speechRecognitionService: MimoSpeechRecognitionService
-    internal lateinit var speechSynthesisService: MimoSpeechSynthesisService
-    private lateinit var chatHistoryRepository: ChatHistoryRepository
+    internal lateinit var speechRecognitionService: SpeechRecognitionService
+    internal lateinit var speechSynthesisService: SpeechSynthesisService
     internal lateinit var sessionController: ChatSessionController
     internal lateinit var sendController: ChatSendController
     internal lateinit var artifactController: ArtifactController
-    internal lateinit var todayMarketDataSource: TodayMarketDataSource
+    internal lateinit var todayMarketDataSource: TodayMarketLoader
     internal lateinit var modelSelectionController: ModelSelectionController
     internal lateinit var settingsController: SettingsController
     internal lateinit var inputRef: ViewRef<TextAreaView>
@@ -214,10 +211,8 @@ internal class StockChatPage : BasePager() {
                     updateTypingIndicatorTimer()
                 },
             )
-        networkModule = dependencies.networkModule
         settingsController = dependencies.settingsController
         modelSelectionController = dependencies.modelSelectionController
-        chatHistoryRepository = dependencies.chatHistoryRepository
         todayMarketDataSource = dependencies.todayMarketDataSource
         speechRecognitionService = dependencies.speechRecognitionService
         speechSynthesisService = dependencies.speechSynthesisService
@@ -364,7 +359,7 @@ internal class StockChatPage : BasePager() {
         typingDotTimer = null
         todayMarketSkeletonTimer?.cancel()
         todayMarketSkeletonTimer = null
-        if (::chatHistoryRepository.isInitialized) {
+        if (::sessionController.isInitialized) {
             persistChatHistory()
         }
         bridgeModule.stopObservingDrawerGestures()

@@ -9,6 +9,7 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 
 /** Reads provider metadata and model-name capability hints. */
 @Suppress("TooManyFunctions") // Capability rules stay together so provider fallbacks are easy to audit.
+/** Reads provider metadata and model-name capability hints. */
 internal object ModelCatalogCapabilities {
     fun inferCapabilities(model: JSONObject, id: String): Set<ModelCapability> {
         val normalizedId = id.lowercase()
