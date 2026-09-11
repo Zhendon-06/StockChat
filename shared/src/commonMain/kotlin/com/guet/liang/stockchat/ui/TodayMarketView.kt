@@ -22,6 +22,7 @@ internal fun ViewContainer<*, *>.TodayMarketContent(
     scrollerRef: ((com.tencent.kuikly.core.base.ViewRef<ScrollerView<*, *>>) -> Unit)? = null,
     onScroll: ((Float) -> Unit)? = null,
     restoreOffsetY: Float = 0f,
+    skeletonPhase: () -> Int = { 0 },
 ) {
     var marketScroller: com.tencent.kuikly.core.base.ViewRef<ScrollerView<*, *>>? = null
     val bottomSwitcherHeight = 44f * scale
@@ -65,7 +66,7 @@ internal fun ViewContainer<*, *>.TodayMarketContent(
                 }
             }
             TodayMarketHeader(state = state, scale = scale, onRetry = onRetry)
-            vif({ state() is TodayMarketUiState.Loading }) { TodayMarketLoading(scale) }
+            vif({ state() is TodayMarketUiState.Loading }) { TodayMarketLoading(scale, pageWidth, skeletonPhase) }
             vif({ state() is TodayMarketUiState.Empty }) { TodayMarketEmpty(scale, onRetry) }
             vif({ state() is TodayMarketUiState.Error }) {
                 TodayMarketError(

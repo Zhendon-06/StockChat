@@ -4,6 +4,7 @@ import com.guet.liang.stockchat.base.BasePager
 import com.guet.liang.stockchat.base.bridgeModule
 import com.guet.liang.stockchat.base.closePage
 import com.guet.liang.stockchat.controller.SettingsController
+import com.guet.liang.stockchat.controller.settingsController
 import com.guet.liang.stockchat.model.BackgroundPreset
 import com.guet.liang.stockchat.model.ChatBackgroundSettings
 import com.guet.liang.stockchat.model.ChatTextColorMode
@@ -11,7 +12,6 @@ import com.guet.liang.stockchat.model.ThemeMode
 import com.guet.liang.stockchat.ui.ChatBackgroundContrast
 import com.guet.liang.stockchat.ui.StockChatTheme
 import com.guet.liang.stockchat.ui.resolveChatBackgroundContrast
-import com.guet.liang.stockchat.ui.settingsController
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.core.base.ColorStop

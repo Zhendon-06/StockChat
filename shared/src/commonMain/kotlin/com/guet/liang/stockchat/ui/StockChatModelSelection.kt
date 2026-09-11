@@ -3,7 +3,6 @@ package com.guet.liang.stockchat.ui
 import com.guet.liang.stockchat.base.openRoute
 import com.guet.liang.stockchat.model.AnswerMode
 import com.guet.liang.stockchat.model.ChatModelOption
-import com.guet.liang.stockchat.model.DEFAULT_CHAT_MODEL_ICON_ASSET
 import com.guet.liang.stockchat.ui.settings.MODEL_CONFIGURATION_PAGE_NAME
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 
@@ -20,18 +19,7 @@ internal fun StockChatPage.selectAnswerMode(mode: AnswerMode) {
     }
 }
 
-internal fun StockChatPage.selectedModel(): ChatModelOption {
-    return chatModelOptions.firstOrNull { it.id == selectedModelId }
-        ?: chatModelOptions.firstOrNull()
-        ?: ChatModelOption(
-            id = selectedModelId,
-            displayName = "未选择模型",
-            description = "当前 Provider 暂无可用模型",
-            badge = "",
-            multiplier = "",
-            iconAsset = DEFAULT_CHAT_MODEL_ICON_ASSET,
-        )
-}
+internal fun StockChatPage.selectedModel(): ChatModelOption = modelSelectionController.state.selectedModel
 
 // composer 只显示当前模型提供商名称，Drawer 展示该提供商的模型列表
 internal fun StockChatPage.composerModelDisplayName(): String {

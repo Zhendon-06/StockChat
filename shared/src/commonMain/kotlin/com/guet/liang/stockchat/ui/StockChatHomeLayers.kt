@@ -124,6 +124,7 @@ internal fun StockChatPage.TodayMarketLayer(container: ViewContainer<*, *>) {
             event { click {} }
             TodayMarketContent(
                 state = { ctx.todayMarketState },
+                skeletonPhase = { ctx.todayMarketSkeletonPhase },
                 pageWidth = ctx.pagerData.pageViewWidth,
                 scale = ctx.layoutMetrics.scale,
                 safeAreaBottom = ctx.pagerData.safeAreaInsets.bottom,

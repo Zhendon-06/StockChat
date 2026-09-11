@@ -27,7 +27,21 @@ internal data class ModelSelectionState(
     val loading: Boolean = false,
     val error: String = "",
     val answerMode: AnswerMode = AnswerMode.FAST,
-)
+) {
+    /** Option matching the saved model id, else the first option, else a placeholder for an empty catalog. */
+    val selectedModel: ChatModelOption
+        get() =
+            options.firstOrNull { it.id == modelId }
+                ?: options.firstOrNull()
+                ?: ChatModelOption(
+                    id = modelId,
+                    displayName = "未选择模型",
+                    description = "当前 Provider 暂无可用模型",
+                    badge = "",
+                    multiplier = "",
+                    iconAsset = DEFAULT_CHAT_MODEL_ICON_ASSET,
+                )
+}
 
 /** Rebuilds the chat source and invalidates catalog results when provider credentials change. */
 internal class ModelSelectionController(

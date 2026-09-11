@@ -2,26 +2,18 @@ package com.guet.liang.stockchat.ui
 
 import com.guet.liang.stockchat.base.BasePager
 import com.guet.liang.stockchat.base.bridgeModule
-import com.guet.liang.stockchat.base.setTimeout
 import com.guet.liang.stockchat.controller.ArtifactController
 import com.guet.liang.stockchat.controller.ChatSendController
 import com.guet.liang.stockchat.controller.ChatSessionController
 import com.guet.liang.stockchat.controller.ModelSelectionController
-import com.guet.liang.stockchat.controller.SettingsCatalogRepository
 import com.guet.liang.stockchat.controller.SettingsController
-import com.guet.liang.stockchat.controller.artifactController
-import com.guet.liang.stockchat.data.AliyunStockChatDataSource
-import com.guet.liang.stockchat.data.ChatHistoryDatabase
+import com.guet.liang.stockchat.controller.stockChatPageDependencies
 import com.guet.liang.stockchat.data.ChatHistoryRepository
 import com.guet.liang.stockchat.data.ConversationMindMapArtifactRepository
 import com.guet.liang.stockchat.data.ConversationTableArtifactRepository
 import com.guet.liang.stockchat.data.MimoSpeechRecognitionService
 import com.guet.liang.stockchat.data.MimoSpeechSynthesisService
-import com.guet.liang.stockchat.data.MimoVoiceApiConfig
-import com.guet.liang.stockchat.data.ModelCatalogService
-import com.guet.liang.stockchat.data.StockChatSettingsStore
 import com.guet.liang.stockchat.model.AnswerMode
-import com.guet.liang.stockchat.data.TencentTodayMarketDataSource
 import com.guet.liang.stockchat.data.TodayMarketDataSource
 import com.guet.liang.stockchat.model.ChatMessage
 import com.guet.liang.stockchat.model.ChatModelOption
@@ -47,6 +39,8 @@ import com.tencent.kuikly.core.views.TextAreaView
 
 // 键盘回调未给出动画时长时的兜底值（秒）
 internal const val DEFAULT_KEYBOARD_ANIM_DURATION = 0.25f
+// 今日市场骨架屏明暗呼吸的周期（毫秒）
+private const val TODAY_MARKET_SKELETON_PULSE_INTERVAL_MS = 700
 
 @Page(CHAT_PAGE_NAME, supportInLocal = true)
 /** Shared cross-platform type; this declaration defines a stable contract for callers. */
@@ -106,6 +100,9 @@ internal class StockChatPage : BasePager() {
     // 等待首 token 的三点跳动动画相位，由定时器驱动
     internal var typingDotPhase by observable(0)
     internal var typingDotTimer: Timer? = null
+    // 今日市场骨架屏呼吸相位：仅在市场 Tab 可见且仍在加载时由定时器翻转
+    internal var todayMarketSkeletonPhase by observable(0)
+    private var todayMarketSkeletonTimer: Timer? = null
     // 消息「更多」菜单当前指向的消息 id，非空时显示底部弹出菜单
     internal var messageMenuTargetId by observable("")
     internal var conversationMenuOpen by observable(false)
@@ -187,23 +184,9 @@ internal class StockChatPage : BasePager() {
     override fun created() {
         super.created()
         applySavedAppearance()
-        val mimoVoiceConfig = MimoVoiceApiConfig(apiKey = pageData.params.optString("mimoVoiceApiKey").trim())
-        networkModule = acquireModule(NetworkModule.MODULE_NAME)
-        val modelCatalogService = ModelCatalogService(networkModule)
-        settingsController = settingsController()
-        // All OpenAI-compatible providers use the same bridge. Streaming is enabled by
-        // default and still falls back to a normal request when a platform bridge is absent.
-        val nativeStreamingEnabled = pageData.params.optInt("aliyunNativeStreaming", pageData.params.optInt("mimoNativeStreaming", 1)) == 1
-        modelSelectionController =
-            ModelSelectionController(
-                settings = StockChatSettingsStore.repository,
-                catalog = SettingsCatalogRepository { url, key, callback -> modelCatalogService.load(url, key, callback) },
-                sourceFactory = { config ->
-                    AliyunStockChatDataSource(networkModule, config, bridgeModule, nativeStreamingEnabled && config.supportsStreaming)
-                },
-                scheduleTimeout = { delay, callback -> setTimeout(delay, callback) },
-                routeApiKey = pageData.params.optString("qwenApiKey"),
-                onChanged = { state ->
+        val dependencies =
+            stockChatPageDependencies(
+                onModelChanged = { state ->
                     activeModelProviderId = state.providerId
                     selectedModelId = state.modelId
                     answerMode = state.answerMode
@@ -214,31 +197,28 @@ internal class StockChatPage : BasePager() {
                     drawerModelsError = state.error
                     modelMenuContentRevision += 1
                 },
+                onSessionChanged = { state ->
+                    activeSessionId = state.activeSessionId
+                    recentSessions.diffUpdate(state.recentSessions)
+                    syncMessageRows(state.messages)
+                    updateTypingIndicatorTimer()
+                },
+                onSendingChanged = {
+                    isSending = it
+                    updateTypingIndicatorTimer()
+                },
             )
-        chatHistoryRepository = ChatHistoryDatabase.repository()
-        todayMarketDataSource = TencentTodayMarketDataSource(networkModule)
+        networkModule = dependencies.networkModule
+        settingsController = dependencies.settingsController
+        modelSelectionController = dependencies.modelSelectionController
+        chatHistoryRepository = dependencies.chatHistoryRepository
+        todayMarketDataSource = dependencies.todayMarketDataSource
+        speechRecognitionService = dependencies.speechRecognitionService
+        speechSynthesisService = dependencies.speechSynthesisService
+        sessionController = dependencies.sessionController
+        sendController = dependencies.sendController
+        artifactController = dependencies.artifactController
         configureChatProvider()
-        speechRecognitionService = MimoSpeechRecognitionService(networkModule, mimoVoiceConfig)
-        speechSynthesisService =
-            MimoSpeechSynthesisService(
-                networkModule = networkModule,
-                config = mimoVoiceConfig,
-                bridgeModule = bridgeModule,
-                useNativeStreaming = pageData.params.optInt("mimoNativeStreaming") == 1,
-            )
-        sessionController =
-            ChatSessionController(chatHistoryRepository) { state ->
-                activeSessionId = state.activeSessionId
-                recentSessions.diffUpdate(state.recentSessions)
-                syncMessageRows(state.messages)
-                updateTypingIndicatorTimer()
-            }
-        sendController =
-            ChatSendController({ modelSelectionController.dataSource }, sessionController, { selectedModel() }) {
-                isSending = it
-                updateTypingIndicatorTimer()
-            }
-        artifactController = artifactController()
         initializeChatSessions()
         dispatchHome(StockChatHomeEvent.Started)
         bridgeModule.observeDrawerGestures { result ->
@@ -312,8 +292,28 @@ internal class StockChatPage : BasePager() {
         if (nextState != homeState) {
             homeState = nextState
         }
+        updateTodayMarketSkeletonTimer()
         updateWelcomeSuggestionRotation()
         effects.forEach(::handleHomeEffect)
+    }
+
+    private fun updateTodayMarketSkeletonTimer() {
+        val pulsing =
+            homeState.started &&
+                homeState.destination == StockChatHomeDestination.TODAY_MARKET &&
+                homeState.todayMarketState is TodayMarketUiState.Loading
+        if (pulsing && todayMarketSkeletonTimer == null) {
+            todayMarketSkeletonPhase = 0
+            // 首个 tick 延后一个周期，避免骨架节点在创建批次里命中动画键后从 (0,0) 飞入
+            todayMarketSkeletonTimer = Timer().also { timer ->
+                timer.schedule(TODAY_MARKET_SKELETON_PULSE_INTERVAL_MS, TODAY_MARKET_SKELETON_PULSE_INTERVAL_MS) {
+                    todayMarketSkeletonPhase += 1
+                }
+            }
+        } else if (!pulsing && todayMarketSkeletonTimer != null) {
+            todayMarketSkeletonTimer?.cancel()
+            todayMarketSkeletonTimer = null
+        }
     }
 
     private fun handleHomeEffect(effect: StockChatHomeEffect) {
@@ -356,6 +356,8 @@ internal class StockChatPage : BasePager() {
         stopSpeechPlayback()
         typingDotTimer?.cancel()
         typingDotTimer = null
+        todayMarketSkeletonTimer?.cancel()
+        todayMarketSkeletonTimer = null
         if (::chatHistoryRepository.isInitialized) {
             persistChatHistory()
         }

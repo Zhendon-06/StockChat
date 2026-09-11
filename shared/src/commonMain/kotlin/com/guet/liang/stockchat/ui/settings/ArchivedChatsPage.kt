@@ -4,11 +4,11 @@ import com.guet.liang.stockchat.base.BasePager
 import com.guet.liang.stockchat.base.bridgeModule
 import com.guet.liang.stockchat.base.closePage
 import com.guet.liang.stockchat.controller.SettingsController
+import com.guet.liang.stockchat.controller.settingsController
 import com.guet.liang.stockchat.controller.archivedSessions
 import com.guet.liang.stockchat.controller.restoreSession
 import com.guet.liang.stockchat.model.ChatSessionSummary
 import com.guet.liang.stockchat.model.ThemeMode
-import com.guet.liang.stockchat.ui.settingsController
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.base.ViewBuilder
 import com.tencent.kuikly.core.base.ViewContainer

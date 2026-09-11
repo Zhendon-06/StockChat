@@ -5,11 +5,11 @@ import com.guet.liang.stockchat.base.bridgeModule
 import com.guet.liang.stockchat.base.setTimeout
 import com.guet.liang.stockchat.controller.ModelConfigurationController
 import com.guet.liang.stockchat.controller.SettingsController
+import com.guet.liang.stockchat.controller.settingsController
 import com.guet.liang.stockchat.model.ModelConfiguration
 import com.guet.liang.stockchat.model.ModelOption
 import com.guet.liang.stockchat.model.ModelProviderKind
 import com.guet.liang.stockchat.model.ThemeMode
-import com.guet.liang.stockchat.ui.settingsController
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.base.ViewBuilder
 import com.tencent.kuikly.core.module.RouterModule

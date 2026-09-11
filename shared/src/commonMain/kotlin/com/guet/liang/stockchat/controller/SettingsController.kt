@@ -34,6 +34,8 @@ internal class SettingsController(
     internal val history: SettingsHistoryRepository? = null,
     private val catalog: SettingsCatalogRepository? = null,
 ) {
+    // Kotlin/JS 会把属性 getter 与同名函数都编译成 `snapshot`，显式改名避免冲突
+    @kotlin.js.JsName("snapshotFlow")
     val snapshot: StateFlow<SettingsSnapshot>
         get() = settings.snapshot
 

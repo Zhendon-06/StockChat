@@ -4,6 +4,7 @@ import com.guet.liang.stockchat.base.BasePager
 import com.guet.liang.stockchat.base.closePage
 import com.guet.liang.stockchat.base.openRoute
 import com.guet.liang.stockchat.controller.SettingsController
+import com.guet.liang.stockchat.controller.settingsController
 import com.guet.liang.stockchat.controller.archivedSessions
 import com.guet.liang.stockchat.model.AppearanceSettings
 import com.guet.liang.stockchat.model.FontSizeSettings
@@ -11,7 +12,6 @@ import com.guet.liang.stockchat.model.ModelConfiguration
 import com.guet.liang.stockchat.model.ModelProviderConfig
 import com.guet.liang.stockchat.model.SettingsSnapshot
 import com.guet.liang.stockchat.model.ThemeMode
-import com.guet.liang.stockchat.ui.settingsController
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.base.ViewBuilder
 import com.tencent.kuikly.core.base.ViewContainer

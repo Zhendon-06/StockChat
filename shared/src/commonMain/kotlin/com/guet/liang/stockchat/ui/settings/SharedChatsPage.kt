@@ -5,10 +5,10 @@ import com.guet.liang.stockchat.base.ShareModule
 import com.guet.liang.stockchat.base.bridgeModule
 import com.guet.liang.stockchat.base.closePage
 import com.guet.liang.stockchat.controller.SettingsController
+import com.guet.liang.stockchat.controller.settingsController
 import com.guet.liang.stockchat.model.ShareResult
 import com.guet.liang.stockchat.model.SharedChatRecord
 import com.guet.liang.stockchat.model.ThemeMode
-import com.guet.liang.stockchat.ui.settingsController
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.core.base.ViewBuilder
