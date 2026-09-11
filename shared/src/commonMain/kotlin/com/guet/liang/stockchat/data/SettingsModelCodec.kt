@@ -106,6 +106,9 @@ internal fun JSONObject.toModelOption(): ModelOption? {
         parseCapabilityValue(opt("supported_modalities")),
         parseCapabilityValue(opt("supportedModalities")),
         parseCapabilityValue(opt("architecture")),
+        parseCapabilityValue(opt("type")),
+        parseCapabilityValue(opt("model_type")),
+        parseCapabilityValue(opt("modelType")),
     ).fold(PersistedCapabilityMetadata(), ::mergeCapabilityMetadata)
     val capabilities = parsedMetadata.capabilities.ifEmpty { setOf(ModelCapability.CHAT) }
     val streamingSupported = explicitBooleanValue(this, PERSISTED_STREAMING_BOOLEAN_KEYS)

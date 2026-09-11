@@ -12,6 +12,7 @@ internal object ModelCatalogCapabilities {
     fun inferCapabilities(model: JSONObject, id: String): Set<ModelCapability> {
         val normalizedId = id.lowercase()
         val metadata = capabilityMetadata(model)
+        val knownVisionModel = isKnownVisionModel(normalizedId)
         val explicitVisionSupport = explicitBooleanValue(model, VISION_BOOLEAN_KEYS)
             ?: metadata.visionSupport
         val explicitStreamingSupport = explicitBooleanValue(model, STREAMING_BOOLEAN_KEYS)
@@ -19,12 +20,18 @@ internal object ModelCatalogCapabilities {
         return buildSet {
             add(ModelCapability.CHAT)
             if (explicitStreamingSupport != false) add(ModelCapability.STREAMING)
-            if (VISION_MARKERS.any(normalizedId::contains)) add(ModelCapability.VISION)
+            if (VISION_MARKERS.any(normalizedId::contains) || knownVisionModel) {
+                add(ModelCapability.VISION)
+            }
             if (REASONING_MARKERS.any(normalizedId::contains)) add(ModelCapability.REASONING)
             if (VOICE_MARKERS.any(normalizedId::contains)) add(ModelCapability.VOICE)
             addAll(metadata.detectedCapabilities)
             if (explicitVisionSupport == true) add(ModelCapability.VISION)
-            if (explicitVisionSupport == false) remove(ModelCapability.VISION)
+            // A few compatible gateways publish stale `supports_vision=false`
+            // flags for newly released multimodal families. Keep the explicit
+            // negative override for generic models, but trust the known model
+            // IDs so image input is not disabled by bad catalog metadata.
+            if (explicitVisionSupport == false && !knownVisionModel) remove(ModelCapability.VISION)
             if (explicitStreamingSupport == true) add(ModelCapability.STREAMING)
             if (explicitStreamingSupport == false) remove(ModelCapability.STREAMING)
         }
@@ -163,7 +170,42 @@ internal object ModelCatalogCapabilities {
         }
     }
 
-    private val VISION_MARKERS = setOf("vision", "-vl", "_vl", "gpt-4o", "gemini", "claude-3")
+    private fun isKnownVisionModel(normalizedId: String): Boolean {
+        // MiMo's catalog can also contain speech models (for example
+        // mimo-v2.5-asr), so only classify the multimodal chat IDs here.
+        val speechModel = normalizedId.contains("asr") || normalizedId.contains("tts") || normalizedId.contains("voice")
+        if (!speechModel &&
+            (
+                normalizedId == "mimo" ||
+                    normalizedId.contains("mimo-v2-flash") ||
+                    normalizedId.contains("mimo-v2-pro") ||
+                    normalizedId.contains("mimo-v2.5")
+            )
+        ) {
+            return true
+        }
+        // DeepSeek V4 Flash is commonly returned with either '-' or no
+        // separator in its ID.
+        return normalizedId == "deepseek-flash" ||
+            normalizedId.contains("deepseek-v4-flash") ||
+            normalizedId.contains("deepseekv4flash")
+    }
+
+    /**
+     * Names used by providers for multimodal chat models are not consistent.
+     * Some providers expose no capability metadata from `/models`, so keep
+     * provider model-family hints here as a fallback.  Match the family only
+     * for the chat model generations known to accept image input; this avoids
+     * classifying MiMo speech models (ASR/TTS) as vision models.
+     */
+    private val VISION_MARKERS = setOf(
+        "vision",
+        "-vl",
+        "_vl",
+        "gpt-4o",
+        "gemini",
+        "claude-3",
+    )
     private val REASONING_MARKERS = setOf("reason", "thinking", "deepseek-r1", "-r1", "o1", "o3", "o4")
     private val VOICE_MARKERS = setOf("audio", "voice", "tts", "asr", "realtime")
     private val CAPABILITY_METADATA_KEYS = listOf(
@@ -179,6 +221,9 @@ internal object ModelCatalogCapabilities {
         "supportedCapabilities",
         "features",
         "architecture",
+        "type",
+        "model_type",
+        "modelType",
     )
     private val VISION_BOOLEAN_KEYS = listOf(
         "vision",

@@ -21,11 +21,18 @@ internal object ModelCatalogResponseParser {
     private fun parseModel(model: JSONObject): ModelOption? {
         val id = model.optString("id").orEmpty().trim()
         if (id.isBlank()) return null
+        val providerName = listOf("name", "display_name", "displayName").firstNotNullOfOrNull { key ->
+            model.optString(key).orEmpty().trim().takeIf(String::isNotBlank)
+        }
         return ModelOption(
             id = id,
-            displayName = listOf("name", "display_name", "displayName").firstNotNullOfOrNull { key ->
-                model.optString(key).orEmpty().trim().takeIf(String::isNotBlank)
-            } ?: displayNameFor(id),
+            // Gateways often shorten names (for example, "Deepseek Flash")
+            // while the canonical version remains in `id`. Keep both visible
+            // so users can identify the exact model they are selecting.
+            displayName = providerName
+                ?.takeIf { name -> name.equals(id, ignoreCase = true) }
+                ?: providerName?.let { name -> "$name ($id)" }
+                ?: displayNameFor(id),
             contextWindowLabel = contextWindowLabel(model, id),
             capabilities = ModelCatalogCapabilities.inferCapabilities(model, id),
         )

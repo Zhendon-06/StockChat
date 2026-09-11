@@ -37,11 +37,39 @@ class ModelCatalogResponseParserTest {
         assertTrue(ModelCapability.REASONING in models[0].capabilities)
         assertTrue(ModelCapability.VISION in models[1].capabilities)
         assertTrue(ModelCapability.STREAMING in models[1].capabilities)
-        assertEquals("GPT 4 Omni", models[2].displayName)
+        assertEquals("GPT 4 Omni (gpt-4o)", models[2].displayName)
         assertEquals("128K", models[2].contextWindowLabel)
         assertEquals("32K", models[3].contextWindowLabel)
         assertTrue(ModelCapability.REASONING in models[3].capabilities)
         assertTrue(ModelCapability.STREAMING in models[3].capabilities)
+    }
+
+    @Test
+    fun infersVisionForProviderModelFamiliesWithoutMetadata() {
+        val response = JSONObject().apply {
+            put(
+                "data",
+                JSONArray().apply {
+                    put(JSONObject().apply { put("id", "mimo-v2-flash") })
+                    put(JSONObject().apply { put("id", "mimo") })
+                    put(JSONObject().apply { put("id", "mimo-v2.5") })
+                    put(JSONObject().apply { put("id", "deepseek-v4-flash") })
+                    put(JSONObject().apply { put("id", "deepseekv4flash") })
+                    put(JSONObject().apply { put("id", "mimo-v2.5-asr") })
+                    put(JSONObject().apply { put("id", "deepseek-flash"); put("supports_vision", false) })
+                },
+            )
+        }
+
+        val models = ModelCatalogResponseParser.parseModels(response)
+
+        assertTrue(ModelCapability.VISION in models[0].capabilities)
+        assertTrue(ModelCapability.VISION in models[1].capabilities)
+        assertTrue(ModelCapability.VISION in models[2].capabilities)
+        assertTrue(ModelCapability.VISION in models[3].capabilities)
+        assertTrue(ModelCapability.VISION in models[4].capabilities)
+        assertTrue(ModelCapability.VISION !in models[5].capabilities)
+        assertTrue(ModelCapability.VISION in models[6].capabilities)
     }
 
     @Test
@@ -83,7 +111,7 @@ class ModelCatalogResponseParserTest {
 
         val model = ModelCatalogResponseParser.parse(response).single()
 
-        assertEquals("Provider Model", model.displayName)
+        assertEquals("Provider Model (provider-model)", model.displayName)
         assertEquals("128K", model.contextWindowLabel)
         assertTrue(ModelCapability.VISION in model.capabilities)
         assertTrue(ModelCapability.STREAMING in model.capabilities)
