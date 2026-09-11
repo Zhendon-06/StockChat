@@ -17,6 +17,8 @@ export class KRStockChatDatabaseModule extends KuiklyRenderBaseModule {
   // relationalStore 的 querySqlSync 始终走只读连接，事务内看不到写连接尚未提交
   // 的行；SQLDelight 仓库依赖"插入后按键查 id"，因此事务内的查询前先落盘一次
   private inTransaction: boolean = false;
+  // last_insert_rowid() 是连接级状态，只读连接上恒为 0；记录写连接的插入结果直接回答
+  private lastInsertRowId: number = 0;
 
   syncMode(): boolean {
     return true;
@@ -68,6 +70,12 @@ export class KRStockChatDatabaseModule extends KuiklyRenderBaseModule {
   private query(store: relationalStore.RdbStore, params: KRAny): string {
     const sql = this.requestSql(params);
     const args = this.requestArgs(params);
+    if (/last_insert_rowid\s*\(\s*\)/i.test(sql)) {
+      const cell: Record<string, Object> = { 'n': this.lastInsertRowId };
+      const rows: Array<Array<Record<string, Object>>> = [[cell]];
+      const response: Record<string, Object> = { 'ok': 1, 'rows': rows };
+      return JSON.stringify(response);
+    }
     if (this.inTransaction) {
       // 先提交已有写入再续开事务，只读连接才能读到刚插入的行
       store.commit();
@@ -101,9 +109,23 @@ export class KRStockChatDatabaseModule extends KuiklyRenderBaseModule {
     const statement = sql.trimStart().slice(0, 6).toUpperCase();
     let changes = 0;
     if (typeof result === 'number') {
-      changes = statement === 'INSERT' ? (result > 0 ? 1 : 0) : Math.max(0, Math.trunc(result));
+      if (statement === 'INSERT') {
+        changes = result > 0 ? 1 : 0;
+        if (result > 0) {
+          this.lastInsertRowId = result;
+        }
+      } else {
+        changes = Math.max(0, Math.trunc(result));
+      }
     } else if (typeof result === 'bigint') {
-      changes = statement === 'INSERT' ? (result > 0n ? 1 : 0) : Math.max(0, Number(result));
+      if (statement === 'INSERT') {
+        changes = result > 0n ? 1 : 0;
+        if (result > 0n) {
+          this.lastInsertRowId = Number(result);
+        }
+      } else {
+        changes = Math.max(0, Number(result));
+      }
     }
     const response: Record<string, Object> = { 'ok': 1, 'changes': changes };
     return JSON.stringify(response);
