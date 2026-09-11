@@ -35,6 +35,7 @@ import com.tencent.kuikly.core.reactive.handler.observable
 import com.tencent.kuikly.core.reactive.handler.observableList
 import com.tencent.kuikly.core.timer.Timer
 import com.tencent.kuikly.core.views.ScrollerView
+import com.tencent.kuikly.core.views.InputView
 import com.tencent.kuikly.core.views.TextAreaView
 
 // 键盘回调未给出动画时长时的兜底值（秒）
@@ -161,7 +162,7 @@ internal class StockChatPage : BasePager() {
     internal lateinit var modelSelectionController: ModelSelectionController
     internal lateinit var settingsController: SettingsController
     internal lateinit var inputRef: ViewRef<TextAreaView>
-    internal lateinit var renameInputRef: ViewRef<TextAreaView>
+    internal lateinit var renameInputRef: ViewRef<InputView>
     internal lateinit var messageScrollerRef: ViewRef<ScrollerView<*, *>>
     internal var todayMarketScrollerRef: ViewRef<ScrollerView<*, *>>? = null
     internal var todayMarketScrollOffsetY: Float = 0f

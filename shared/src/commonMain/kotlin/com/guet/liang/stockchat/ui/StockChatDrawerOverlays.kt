@@ -8,8 +8,8 @@ import com.tencent.kuikly.core.base.BorderStyle
 import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.directives.vif
+import com.tencent.kuikly.core.views.Input
 import com.tencent.kuikly.core.views.Text
-import com.tencent.kuikly.core.views.TextArea
 import com.tencent.kuikly.core.views.View
 
 // StockChatDrawerOverlays：输入组件与交互的独立区块。
@@ -29,46 +29,60 @@ internal fun StockChatPage.SessionRenameOverlay(container: ViewContainer<*, *>) 
             }
             View {
                 attr {
-                    absolutePosition(top = pagerData.statusBarHeight + metrics.dp(150f), left = metrics.dp(28f), right = metrics.dp(28f))
-                    borderRadius(metrics.dp(18f))
-                    backgroundColor(StockChatTheme.surface)
-                    padding(all = metrics.dp(20f))
+                    absolutePositionAllZero()
+                    justifyContentCenter()
+                    alignItemsCenter()
                     zIndex(21)
-                }
-                Text {
-                    attr {
-                        text("重命名对话")
-                        fontSize(metrics.dp(18f))
-                        fontWeightBold()
-                        color(StockChatTheme.textPrimary)
-                    }
-                }
-                TextArea {
-                    ref { ctx.renameInputRef = it }
-                    attr {
-                        width(pagerData.pageViewWidth - metrics.dp(96f))
-                        height(metrics.dp(46f))
-                        marginTop(metrics.dp(16f))
-                        border(Border(1f, BorderStyle.SOLID, StockChatTheme.borderStrong))
-                        borderRadius(metrics.dp(10f))
-                        text(ctx.renameInputText)
-                        fontSize(metrics.dp(15f))
-                        color(StockChatTheme.textPrimary)
-                        placeholder("输入对话名称")
-                        placeholderColor(StockChatTheme.textTertiary)
-                        maxTextLengthLegacy(40)
-                    }
-                    event { textDidChange(isSyncEdit = true) { ctx.renameInputText = it.text } }
                 }
                 View {
                     attr {
-                        flexDirectionRow()
-                        justifyContentFlexEnd()
-                        alignItemsCenter()
-                        marginTop(metrics.dp(16f))
+                        width(pagerData.pageViewWidth - metrics.dp(56f))
+                    borderRadius(metrics.dp(18f))
+                    backgroundColor(StockChatTheme.surface)
+                    padding(top = metrics.dp(16f), left = metrics.dp(20f), right = metrics.dp(20f), bottom = metrics.dp(16f))
                     }
-                    ctx.RenameCancelButton(this)
-                    ctx.RenameSaveButton(this)
+                    Text {
+                        attr {
+                            text("重命名对话")
+                            fontSize(metrics.dp(18f))
+                            fontWeightBold()
+                            color(StockChatTheme.textPrimary)
+                        }
+                    }
+                    View {
+                        attr {
+                            width(pagerData.pageViewWidth - metrics.dp(96f))
+                            height(metrics.dp(44f))
+                            marginTop(metrics.dp(12f))
+                            border(Border(1f, BorderStyle.SOLID, StockChatTheme.borderStrong))
+                            borderRadius(metrics.dp(10f))
+                            padding(left = metrics.dp(12f), right = metrics.dp(12f))
+                        }
+                        Input {
+                            ref { ctx.renameInputRef = it }
+                            attr {
+                                flex(1f)
+                                text(ctx.renameInputText)
+                                fontSize(metrics.dp(15f))
+                                color(StockChatTheme.textPrimary)
+                                placeholder("输入对话名称")
+                                placeholderColor(StockChatTheme.textTertiary)
+                                returnKeyTypeDone()
+                                maxTextLengthLegacy(40)
+                            }
+                            event { textDidChange(isSyncEdit = true) { ctx.renameInputText = it.text } }
+                        }
+                    }
+                    View {
+                        attr {
+                            flexDirectionRow()
+                            justifyContentFlexEnd()
+                            alignItemsCenter()
+                            marginTop(metrics.dp(12f))
+                        }
+                        ctx.RenameCancelButton(this)
+                        ctx.RenameSaveButton(this)
+                    }
                 }
             }
         }
