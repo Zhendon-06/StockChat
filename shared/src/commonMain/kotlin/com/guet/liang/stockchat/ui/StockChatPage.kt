@@ -25,8 +25,6 @@ import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.base.ViewBuilder
 import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.base.ViewRef
-import com.tencent.kuikly.core.base.attr.CaptureRule
-import com.tencent.kuikly.core.base.attr.CaptureRuleDirection
 import com.tencent.kuikly.core.directives.velse
 import com.tencent.kuikly.core.directives.vif
 import com.tencent.kuikly.core.module.NetworkModule
@@ -417,7 +415,7 @@ internal class StockChatPage : BasePager() {
             attr {
                 backgroundColor(StockChatTheme.background)
                 overflow(true)
-                capture(CaptureRule.pan(CaptureRuleDirection.HORIZONTAL))
+                drawerSwipeCapture(ctx.pagerData.isOhOs)
             }
             event { pan { params -> ctx.handleDrawerPan(params) } }
             vif({ StockChatTheme.renderRevision % 2 == 0 }) { ctx.ContentLayers(this) }

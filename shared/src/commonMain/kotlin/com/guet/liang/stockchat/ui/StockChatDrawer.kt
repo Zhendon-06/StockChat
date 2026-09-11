@@ -3,6 +3,7 @@ package com.guet.liang.stockchat.ui
 import com.guet.liang.stockchat.model.ChatSessionSummary
 import com.tencent.kuikly.core.base.Animation
 import com.tencent.kuikly.core.base.Color
+import com.tencent.kuikly.core.base.ContainerAttr
 import com.tencent.kuikly.core.base.Translate
 import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.base.attr.CaptureRule
@@ -182,6 +183,20 @@ internal fun StockChatPage.DrawerConversation(container: ViewContainer<*, *>, se
                 ctx.SessionDeleteAction(this, session, scale)
             }
         }
+    }
+}
+
+/**
+ * Horizontal pan capture for the drawer swipe on the page root and main layer.
+ *
+ * iOS/Android 的 capture 以命中最深的视图优先，子级横向 Scroller 声明同样的规则就能自己
+ * 消费横向拖动；鸿蒙渲染器则把带 capture 的手势组注册为 ArkUI PRIORITY 优先级，父节点先于
+ * 子节点识别，根节点一旦捕获横向 pan，Markdown 表格、推荐 chip 等子级横向 Scroller 就再也
+ * 滚不动。鸿蒙上不设捕获，普通优先级的 pan 只在子级 Scroller 不消费横向拖动时才落到抽屉手势。
+ */
+internal fun ContainerAttr.drawerSwipeCapture(isOhOs: Boolean) {
+    if (!isOhOs) {
+        capture(CaptureRule.pan(CaptureRuleDirection.HORIZONTAL))
     }
 }
 

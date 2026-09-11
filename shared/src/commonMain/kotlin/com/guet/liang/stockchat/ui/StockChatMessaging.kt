@@ -60,7 +60,7 @@ internal fun StockChatPage.copyMessage(message: ChatMessage) {
     val content = messageText(message)
     if (content.isNotBlank()) {
         bridgeModule.copyToPasteboard(content)
-        bridgeModule.toast("已复制回答")
+        bridgeModule.toast(if (message.role == ChatRole.USER) "已复制消息" else "已复制回答")
     }
 }
 

@@ -11,6 +11,10 @@
     {
       "name": "EntryAbility_label",
       "value": "StockChat"
+    },
+    {
+      "name": "microphone_permission_reason",
+      "value": "Used to record speech and transcribe it into text input with MiMo"
     }
   ]
 }

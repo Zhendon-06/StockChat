@@ -1,6 +1,8 @@
 @file:Suppress("MagicNumber")
 package com.guet.liang.stockchat.data
 
+import com.guet.liang.stockchat.base.StockChatDatabaseModule
+import com.guet.liang.stockchat.base.StockChatLog
 import com.guet.liang.stockchat.controller.ChatSessionRepository
 import com.guet.liang.stockchat.database.StockChatDatabase
 import com.guet.liang.stockchat.model.AnswerBlock
@@ -261,6 +263,21 @@ internal object ChatHistoryDatabase {
             val database = StockChatDatabase(NoOpChatDatabaseDriver())
             initialize(database)
         }
+    }
+
+    /**
+     * OHOS has no SQLDelight-native driver; route SQL through the host's
+     * relationalStore. Falls back to the no-op driver when the store is not
+     * available so the page still renders.
+     */
+    fun initializeOhos(module: StockChatDatabaseModule) {
+        if (repository != null) {
+            return
+        }
+        val driver = runCatching { OhosRelationalStoreDriver.open(module) }
+            .onFailure { StockChatLog.w("ChatHistoryDatabase", "OHOS relational store unavailable", it) }
+            .getOrNull()
+        initialize(StockChatDatabase(driver ?: NoOpChatDatabaseDriver()))
     }
 
     fun initialize(database: StockChatDatabase) {

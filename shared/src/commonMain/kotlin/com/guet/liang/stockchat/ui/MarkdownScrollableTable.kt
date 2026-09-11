@@ -121,7 +121,9 @@ internal class MarkdownScrollableTableView(
                         // layoutFrameDidChange 永远读不到真实内容高度，超高的行就被裁掉；
                         // 改为 FLEX_START 让内容自适应高度，首帧后由布局回调修正 scrollerHeight
                         alignItemsFlexStart()
-                        showScrollerIndicator(true)
+                        // 关掉原生滚动条：下方常驻的自绘指示条已经承担提示，
+                        // iOS 上两者同时出现会显示两根滚动条
+                        showScrollerIndicator(false)
                         bouncesEnable(false)
                         // 横向手势归表格，纵向手势继续交给消息列表
                         capture(CaptureRule.pan(CaptureRuleDirection.HORIZONTAL))

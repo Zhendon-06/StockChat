@@ -55,7 +55,7 @@ internal fun ViewContainer<*, *>.ChatMessageItem(
             marginBottom(18f * scale)
         }
         if (message.role == ChatRole.USER) {
-            UserMessageContent(message, scale, onImageClick)
+            UserMessageContent(message, scale, onImageClick) { onCopy(message) }
         } else {
             View {
                 attr {
@@ -346,6 +346,8 @@ private fun ViewContainer<*, *>.UserMessageContent(
     message: ChatMessage,
     scale: Float,
     onImageClick: (String) -> Unit,
+    /** Long-pressing a text bubble copies the whole sent message. */
+    onLongPress: () -> Unit,
 ) {
     View {
         attr {
@@ -358,7 +360,7 @@ private fun ViewContainer<*, *>.UserMessageContent(
             }
             message.blocks.forEach { block ->
                 when (block) {
-                    is AnswerBlock.Markdown -> UserMarkdownBubble(block, scale)
+                    is AnswerBlock.Markdown -> UserMarkdownBubble(block, scale, onLongPress)
                     is AnswerBlock.ImageGallery -> MessageImageGallery(block.images, scale, onImageClick)
                     is AnswerBlock.MarketQuote -> Unit
                 }
@@ -367,7 +369,11 @@ private fun ViewContainer<*, *>.UserMessageContent(
     }
 }
 
-private fun ViewContainer<*, *>.UserMarkdownBubble(block: AnswerBlock.Markdown, scale: Float) {
+private fun ViewContainer<*, *>.UserMarkdownBubble(
+    block: AnswerBlock.Markdown,
+    scale: Float,
+    onLongPress: () -> Unit,
+) {
     View {
                             attr {
                                 padding(
@@ -379,6 +385,10 @@ private fun ViewContainer<*, *>.UserMarkdownBubble(block: AnswerBlock.Markdown, 
                                 borderRadius(22f * scale)
                                 backgroundColor(StockChatTheme.userBubble)
                                 marginBottom(8f * scale)
+                            }
+                            event {
+                                // 长按只在手势开始时触发一次，移动/结束阶段不重复复制
+                                longPress { params -> if (params.state == "start") onLongPress() }
                             }
                             RichText {
                                 attr {

@@ -30,7 +30,7 @@ internal fun StockChatPage.MainLayer(container: ViewContainer<*, *>) {
                 zIndex(2)
                 transform(Translate(0f, 0f, if (ctx.drawerOpen) drawerWidth else 0f, 0f))
                 animation(Animation.springEaseOut(0.38f, 0.9f, 0.2f), ctx.drawerOpen)
-                capture(CaptureRule.pan(CaptureRuleDirection.HORIZONTAL))
+                drawerSwipeCapture(ctx.pagerData.isOhOs)
             }
             event {
                 pan { params -> ctx.handleDrawerPan(params) }

@@ -11,6 +11,10 @@
     {
       "name": "EntryAbility_label",
       "value": "StockChat"
+    },
+    {
+      "name": "microphone_permission_reason",
+      "value": "用于录制语音并通过 MiMo 转换为文字输入"
     }
   ]
 }

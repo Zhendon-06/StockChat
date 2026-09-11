@@ -1,5 +1,6 @@
 package com.guet.liang.stockchat.base
 
+import com.guet.liang.stockchat.data.ChatHistoryDatabase
 import com.guet.liang.stockchat.data.FavoriteCardsStore
 import com.guet.liang.stockchat.data.StockChatSettingsStore
 import com.tencent.kuikly.core.module.Module
@@ -17,11 +18,15 @@ internal abstract class BasePager : Pager() {
         val externalModules = hashMapOf<String, Module>()
         externalModules[BridgeModule.MODULE_NAME] = BridgeModule()
         externalModules[ShareModule.MODULE_NAME] = ShareModule()
+        externalModules[StockChatDatabaseModule.MODULE_NAME] = StockChatDatabaseModule()
         return externalModules
     }
 
     override fun created() {
         super.created()
+        if (pageData.isOhOs) {
+            ChatHistoryDatabase.initializeOhos(acquireModule(StockChatDatabaseModule.MODULE_NAME))
+        }
         val sharedPreferencesModule = acquireModule<SharedPreferencesModule>(SharedPreferencesModule.MODULE_NAME)
         StockChatSettingsStore.initialize(sharedPreferencesModule)
         FavoriteCardsStore.initialize(sharedPreferencesModule)

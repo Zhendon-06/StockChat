@@ -41,5 +41,7 @@
         </array>
         <key>UILaunchScreen</key>
         <dict />
+        <key>NSMicrophoneUsageDescription</key>
+        <string>StockChat 需要使用麦克风录制语音，以便通过 MiMo 将语音转换为文字输入。</string>
     </dict>
 </plist>
