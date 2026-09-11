@@ -3,6 +3,28 @@
 StockChat 是一个基于 Kotlin Multiplatform 与 Kuikly 的 AI 股票问答应用。用户用自然语言提问，AI 回答里直接嵌入实时行情卡片，点进卡片进入个股详情页，看走势、看 AI 预测，再把选中的点位带回聊天继续追问。一套共享代码同时运行在 Android、iOS 和 OpenHarmony 上。
 
 > 行情与 AI 结论均为演示信息，仅供参考，不构成投资建议。
+
+## 项目亮点
+
+- **一套代码覆盖三端**：共享业务与 UI 逻辑，同时支持 Android、iOS 和 OpenHarmony。
+- **AI 问答结合实时行情**：自然语言提问后，回答中直接插入可点击的行情卡片，支持快速回答与联网精准实时数据两种模式。
+- **个股详情与 AI 预测联动**：提供分时、五日、日 K、周 K、月 K、均线和交互式节点，预测结果接续真实走势展示，并可将点位带回聊天继续追问。
+- **会话内容可沉淀**：会话中提到的标的可生成横向对比表和 Mermaid mindmap，支持本地保存、归档与分享。
+- **完整的多模态体验**：支持图片提问、语音输入、回答朗读，以及今日市场、收藏卡片和多模型服务商配置。
+- **可复用的跨端组件**：内置 `kuikly-chart` 金融图表库与 `table-core` 表格组件库，可独立复用到其他 Kuikly 项目。
+
+## Demo 与安装包
+
+| 资源 | 位置 |
+| --- | --- |
+| Android Demo | [StockChat Android Demo.mp4](docs/media/StockChat%20Android%20Demo.mp4) |
+| iOS Demo | [StockChat iOS Demo.mp4](docs/media/StockChat%20iOS%20Demo.mp4) |
+| OpenHarmony Demo | [StockChat OHOS Demo.mp4](docs/media/StockChat%20OHOS%20Demo.mp4) |
+| Android 安装包 | [StockChat-1.0-release-debugsigned.apk](docs/release/StockChat-1.0-release-debugsigned.apk) |
+| 安装包说明 | [docs/release/README.md](docs/release/README.md) |
+
+演示视频使用 Git LFS 管理；Android 安装包为调试签名的 Release 包，仅用于体验与演示。安装前请阅读[安装包说明](docs/release/README.md)。
+
 ## 三端跑通
 Android，ios，OHOS 体验一致
 <img src="img.png" width="600" />
