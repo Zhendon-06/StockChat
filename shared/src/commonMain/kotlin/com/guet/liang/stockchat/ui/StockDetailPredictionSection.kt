@@ -290,6 +290,15 @@ private fun StockDetailPage.PredictionResultDetails(container: ViewContainer<*, 
         }
         Text {
             attr {
+                text("置信度是模型自报指标，不代表收益概率或预测准确率。")
+                fontSize(scaledFontSize(11f))
+                lineHeight(scaledFontSize(17f))
+                color(StockChatTheme.textTertiary)
+                marginTop(4f)
+            }
+        }
+        Text {
+            attr {
                 text("预测周期：未来 ${prediction.horizon} 个交易点  ·  历史样本：${prediction.historyPointCount} 点")
                 fontSize(scaledFontSize(12f))
                 color(StockChatTheme.textSecondary)
@@ -314,7 +323,7 @@ private fun StockDetailPage.PredictionResultDetails(container: ViewContainer<*, 
         }
         Text {
             attr {
-                text("行情数据截至：${prediction.sourceUpdatedAt}")
+                text("行情来源：腾讯证券 · 数据截至：${prediction.sourceUpdatedAt}")
                 fontSize(scaledFontSize(12f))
                 color(StockChatTheme.textTertiary)
                 marginTop(4f)

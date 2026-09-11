@@ -46,19 +46,19 @@ internal fun ViewContainer<*, *>.MarketQuoteCard(quote: StockQuote, scale: Float
                 borderRadius(11f * scale)
                 backgroundColor(StockChatTheme.accentSoft)
             }
-            Text {
-                attr {
-                    text("AI 观察 · ${quote.aiInsight.ifBlank { quote.summary }}")
-                    fontSize(11f * scale)
-                    lineHeight(16f * scale)
-                    color(StockChatTheme.textSecondary)
+        Text {
+            attr {
+                text("AI 观察（仅供参考） · ${quote.aiInsight.ifBlank { quote.summary }}")
+                fontSize(11f * scale)
+                lineHeight(16f * scale)
+                color(StockChatTheme.textSecondary)
                     lines(2)
                 }
             }
         }
         Text {
             attr {
-                text(quote.updatedAt)
+                text("行情来源：腾讯证券 · ${quote.updatedAt}")
                 fontSize(11f * scale)
                 color(StockChatTheme.textTertiary)
                 marginTop(10f * scale)
