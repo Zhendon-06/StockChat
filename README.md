@@ -23,6 +23,21 @@ StockChat 是一个基于 Kotlin Multiplatform 与 Kuikly 的 AI 股票问答应
 | Android 安装包 | [StockChat-1.0-release-debugsigned.apk](docs/release/StockChat-1.0-release-debugsigned.apk) |
 | 安装包说明 | [docs/release/README.md](docs/release/README.md) |
 
+### 评审快速开始
+
+1. 先看三端演示视频，按“聊天提问 → 行情卡片 → 个股详情 → AI 解读”检查主链路。
+2. Android 可直接安装上表中的 APK；需要从源码运行时，先准备 JDK 17、Android SDK 34 和根目录 `local.properties`。
+3. 执行共享层回归测试与 Debug 构建：
+
+```bash
+./gradlew :shared:testDebugUnitTest :kuikly-chart:testDebugUnitTest :table-core:testDebugUnitTest
+./gradlew detekt :androidApp:assembleDebug
+```
+
+4. 三端演示视频使用 Git LFS 管理；首次检出后执行 `git lfs pull`，即可播放 `docs/media` 下的全部视频。
+
+评审验收路径对应 `KuiklyUI 实战讲解.pdf`：Task 1 检查行情列表、详情和 AI 解读；Task 2 检查问答、Markdown/行情卡片和详情承接页。
+
 演示视频使用 Git LFS 管理；Android 安装包为调试签名的 Release 包，仅用于体验与演示。安装前请阅读[安装包说明](docs/release/README.md)。
 
 ## 三端跑通

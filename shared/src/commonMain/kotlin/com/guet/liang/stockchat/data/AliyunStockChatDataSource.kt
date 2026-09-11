@@ -1,4 +1,4 @@
-@file:Suppress("LongMethod", "CyclomaticComplexMethod", "LongParameterList", "UnusedParameter", "MagicNumber")
+@file:Suppress("LongMethod", "CyclomaticComplexMethod", "LongParameterList", "TooManyFunctions", "UnusedParameter", "MagicNumber")
 package com.guet.liang.stockchat.data
 
 import com.guet.liang.stockchat.base.streamChatCompletion

@@ -35,6 +35,20 @@ class StockDetailControllerTest {
             callback(emptyList(), null)
     }
 
+    private class DeferredMarket : StockDetailMarketRepository {
+        val requests = mutableListOf<(MarketDataResult) -> Unit>()
+
+        override fun load(symbol: String, callback: (MarketDataResult) -> Unit) {
+            requests += callback
+        }
+
+        override fun loadHistoricalPoints(
+            symbol: String,
+            count: Int,
+            callback: (List<TencentHistoricalPoint>?, String?) -> Unit,
+        ) = callback(emptyList(), null)
+    }
+
     private class Prediction(private val result: StockPredictionResult) : StockDetailPredictionRepository {
         override fun predict(
             symbol: String,
@@ -66,6 +80,20 @@ class StockDetailControllerTest {
         val controller =
             StockDetailController(Market(MarketDataResult.Failure("offline")), Prediction(StockPredictionResult.Unavailable("n/a")))
         controller.load("sh600000")
+        assertIs<StockDetailControllerState.Error>(controller.marketState)
+    }
+
+    @Test
+    fun staleMarketResponseCannotReplaceTheMostRecentLoad() {
+        val market = DeferredMarket()
+        val controller = StockDetailController(market, Prediction(StockPredictionResult.Unavailable("n/a")))
+
+        controller.load("sh600000")
+        controller.load("sz000001")
+        market.requests[0](MarketDataResult.Success(listOf(snapshot())))
+
+        assertIs<StockDetailControllerState.Loading>(controller.marketState)
+        market.requests[1](MarketDataResult.Failure("offline"))
         assertIs<StockDetailControllerState.Error>(controller.marketState)
     }
 

@@ -8,6 +8,7 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 
 /** Reads provider metadata and model-name capability hints. */
+@Suppress("TooManyFunctions") // Capability rules stay together so provider fallbacks are easy to audit.
 internal object ModelCatalogCapabilities {
     fun inferCapabilities(model: JSONObject, id: String): Set<ModelCapability> {
         val normalizedId = id.lowercase()
@@ -174,14 +175,8 @@ internal object ModelCatalogCapabilities {
         // MiMo's catalog can also contain speech models (for example
         // mimo-v2.5-asr), so only classify the multimodal chat IDs here.
         val speechModel = normalizedId.contains("asr") || normalizedId.contains("tts") || normalizedId.contains("voice")
-        if (!speechModel &&
-            (
-                normalizedId == "mimo" ||
-                    normalizedId.contains("mimo-v2-flash") ||
-                    normalizedId.contains("mimo-v2-pro") ||
-                    normalizedId.contains("mimo-v2.5")
-            )
-        ) {
+        val mimoVision = normalizedId == "mimo" || isMimoVisionModel(normalizedId)
+        if (!speechModel && mimoVision) {
             return true
         }
         // DeepSeek V4 Flash is commonly returned with either '-' or no
@@ -190,6 +185,11 @@ internal object ModelCatalogCapabilities {
             normalizedId.contains("deepseek-v4-flash") ||
             normalizedId.contains("deepseekv4flash")
     }
+
+    private fun isMimoVisionModel(normalizedId: String): Boolean =
+        normalizedId.contains("mimo-v2-flash") ||
+            normalizedId.contains("mimo-v2-pro") ||
+            normalizedId.contains("mimo-v2.5")
 
     /**
      * Names used by providers for multimodal chat models are not consistent.

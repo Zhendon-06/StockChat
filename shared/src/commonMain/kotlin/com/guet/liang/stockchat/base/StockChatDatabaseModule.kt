@@ -42,10 +42,10 @@ internal class StockChatDatabaseModule : Module() {
 
     private fun call(method: String, params: JSONObject?): JSONObject {
         val raw = toNative(false, method, params?.toString(), null, true).toString()
-        val response = runCatching { JSONObject(raw) }.getOrNull()
-            ?: throw IllegalStateException("数据库桥接返回了无法解析的结果：$method")
-        if (response.optInt("ok") != 1) {
-            throw IllegalStateException(response.optString("error").ifBlank { "数据库桥接调用失败：$method" })
+        val response = runCatching { JSONObject(raw) }
+            .getOrElse { error("数据库桥接返回了无法解析的结果：$method") }
+        check(response.optInt("ok") == 1) {
+            response.optString("error").ifBlank { "数据库桥接调用失败：$method" }
         }
         return response
     }

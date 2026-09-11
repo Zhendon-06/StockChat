@@ -84,7 +84,13 @@ internal class MarkdownScrollableTableView(
                 segments.joinToString("") { it.text }
                     .split('\n')
                     .sumOf { line ->
-                        if (line.isEmpty()) 1 else ceil(MarkdownTableLayoutCalculator.estimateTextWidth(line, cellStyle.fontSize) / innerWidth).toInt().coerceAtLeast(1)
+                        if (line.isEmpty()) {
+                            1
+                        } else {
+                            ceil(MarkdownTableLayoutCalculator.estimateTextWidth(line, cellStyle.fontSize) / innerWidth)
+                                .toInt()
+                                .coerceAtLeast(1)
+                        }
                     }
             }.maxOrNull() ?: 1
             // Header uses a slightly wider bold glyph estimate, matching column sizing.
