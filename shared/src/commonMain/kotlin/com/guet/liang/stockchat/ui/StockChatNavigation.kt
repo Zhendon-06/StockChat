@@ -47,7 +47,7 @@ internal fun StockChatPage.openSettings() {
 
 internal fun StockChatPage.createConversationStockComparison() {
     closeConversationMenu()
-    when (val result = artifactController.createTable(activeSessionId, conversationTitle(), sessionController.messages)) {
+    when (val result = artifactController.createTable(activeSessionId, conversationTitle, sessionController.messages)) {
         is ArtifactResult.Success -> {
             refreshRecentSessions()
             openTableArtifact(result.value)
@@ -58,7 +58,7 @@ internal fun StockChatPage.createConversationStockComparison() {
 
 internal fun StockChatPage.createConversationMindMapArtifact() {
     closeConversationMenu()
-    when (val result = artifactController.createMindMap(activeSessionId, conversationTitle(), sessionController.messages)) {
+    when (val result = artifactController.createMindMap(activeSessionId, conversationTitle, sessionController.messages)) {
         is ArtifactResult.Success -> {
             refreshRecentSessions()
             openMindMapArtifact(result.value)

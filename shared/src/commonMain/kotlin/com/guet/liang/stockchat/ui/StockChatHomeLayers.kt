@@ -257,7 +257,7 @@ internal fun StockChatPage.ConversationHeader(container: ViewContainer<*, *>) {
             }
             Text {
                 attr {
-                    text(ctx.conversationTitle())
+                    text(ctx.conversationTitle)
                     fontSize(metrics.dp(20f))
                     fontWeightMedium()
                     color(StockChatTheme.textPrimary)

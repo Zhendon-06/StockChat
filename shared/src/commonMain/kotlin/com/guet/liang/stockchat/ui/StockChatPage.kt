@@ -134,6 +134,9 @@ internal class StockChatPage : BasePager() {
     internal val selectedImagePayloads = mutableListOf<String>()
     // 当前会话 id：必须是 observable，抽屉列表项的高亮依赖它驱动重渲染
     internal var activeSessionId by observable("")
+    // 顶栏会话标题快照：顶栏 Text 的 attr 闭包读不到 controller 的普通属性，
+    // 必须用 observable 承载，切换/重命名会话后已挂载的顶栏才能刷新标题
+    internal var conversationTitle by observable("")
     internal var voiceRequestToken = 0
     internal var speechSynthesisRequestToken = 0
     // 正在生成/播放语音的消息 id（空串 = 无朗读任务），驱动声音按钮上的流动声纹
@@ -200,6 +203,10 @@ internal class StockChatPage : BasePager() {
                 },
                 onSessionChanged = { state ->
                     activeSessionId = state.activeSessionId
+                    // 流式期间每片段都会 publish，标题未变化时跳过赋值避免无谓重渲染
+                    if (conversationTitle != state.conversationTitle) {
+                        conversationTitle = state.conversationTitle
+                    }
                     recentSessions.diffUpdate(state.recentSessions)
                     syncMessageRows(state.messages)
                     updateTypingIndicatorTimer()

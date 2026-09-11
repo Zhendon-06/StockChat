@@ -69,34 +69,45 @@ internal class ChatSendController(
     }
 
     fun retryMessage(message: ChatMessage) {
-        if (isSending || message.retryQuestion.isEmpty()) return
+        if (isSending) return
         val index = sessions.messages.indexOfFirst { it.id == message.id }
         if (index < 0) return
+        val question = questionForMessage(message, index)
+        if (question.isBlank()) return
         setSending(true)
         val token = ++requestToken
         val next =
-            message.copy(blocks = emptyList(), state = MessageState.GENERATING, retryAttempt = message.retryAttempt + 1, errorMessage = "")
+            message.copy(
+                blocks = emptyList(),
+                state = MessageState.GENERATING,
+                retryQuestion = question,
+                retryAttempt = message.retryAttempt + 1,
+                errorMessage = "",
+            )
         sessions.replaceMessages(sessions.messages.toMutableList().apply { this[index] = next })
         sessions.persist()
-        completeAnswer(next.id, next.retryQuestion, next.retryAttempt, token)
+        completeAnswer(next.id, question, next.retryAttempt, token)
     }
 
     fun regenerateMessage(message: ChatMessage): String? {
         val index = sessions.messages.indexOfFirst { it.id == message.id }
-        val question =
-            message.retryQuestion.ifBlank {
-                sessions.messages.take(index.coerceAtLeast(0)).lastOrNull { it.role == ChatRole.USER }?.let(::messageText).orEmpty()
-            }
+        val question = questionForMessage(message, index)
         return when {
             isSending -> "请等待当前回答完成"
             index < 0 -> null
             question.isBlank() -> "找不到对应的提问，无法重新生成"
             else -> {
-                retryMessage(message.copy(retryQuestion = question))
+                retryMessage(message)
                 null
             }
         }
     }
+
+    /** Resolves the prompt for both current and legacy persisted assistant messages. */
+    private fun questionForMessage(message: ChatMessage, index: Int): String =
+        message.retryQuestion.ifBlank {
+            if (index < 0) "" else sessions.messages.take(index).lastOrNull { it.role == ChatRole.USER }?.let(::messageText).orEmpty()
+        }.trim()
 
     fun invalidate() {
         requestToken += 1

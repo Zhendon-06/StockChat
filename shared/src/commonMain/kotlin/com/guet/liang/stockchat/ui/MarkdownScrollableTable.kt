@@ -21,6 +21,7 @@ import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.flavours.gfm.GFMElementTypes
 import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 import kotlin.math.abs
+import kotlin.math.ceil
 
 // 替换 KuiklyMarkdown 默认表格：默认实现让每列 flex(1) 平分宽度，列多时文字互相覆盖。
 // 这里按内容估算列宽，放得下就铺满消息宽度，放不下就整表横向滚动（与豆包等聊天应用一致）。
@@ -65,13 +66,34 @@ internal class MarkdownScrollableTableView(
             horizontalPadding = horizontalPadding,
             availableWidth = availableWidth,
         )
-        // First-frame estimate; the real height is read back once the rows are laid out.
-        val lineHeight = cellStyle.lineHeight ?: (cellStyle.fontSize * DEFAULT_LINE_HEIGHT_FACTOR)
-        scrollerHeight = rows.size * (lineHeight + verticalPadding * 2) + model.config.dimens.dividerThickness
+        // Give the horizontal scroller enough room for wrapped cells on its first frame.
+        // A one-line-per-row estimate clips long Chinese descriptions before the first
+        // layout callback can report the actual content height.
+        scrollerHeight = estimatedTableHeight()
     }
 
     private fun rawText(node: ASTNode): String =
         model.content.substring(node.startOffset.coerceIn(0, model.content.length), node.endOffset.coerceIn(0, model.content.length))
+
+    private fun estimatedTableHeight(): Float {
+        val lineHeight = cellStyle.lineHeight ?: (cellStyle.fontSize * DEFAULT_LINE_HEIGHT_FACTOR)
+        val rowsHeight = rows.mapIndexed { rowIndex, row ->
+            val rowLines = row.cells.mapIndexed { column, segments ->
+                val columnWidth = layout.columnWidths.getOrNull(column) ?: return@mapIndexed 1
+                val innerWidth = (columnWidth - horizontalPadding * 2).coerceAtLeast(cellStyle.fontSize)
+                segments.joinToString("") { it.text }
+                    .split('\n')
+                    .sumOf { line ->
+                        if (line.isEmpty()) 1 else ceil(MarkdownTableLayoutCalculator.estimateTextWidth(line, cellStyle.fontSize) / innerWidth).toInt().coerceAtLeast(1)
+                    }
+            }.maxOrNull() ?: 1
+            // Header uses a slightly wider bold glyph estimate, matching column sizing.
+            val adjustedLines = if (rowIndex == 0) (rowLines * HEADER_HEIGHT_FACTOR).toInt().coerceAtLeast(1) else rowLines
+            adjustedLines * lineHeight + verticalPadding * 2
+        }.sum()
+        val dividers = rows.count { it.isHeader } * model.config.dimens.dividerThickness
+        return (rowsHeight + dividers).coerceAtLeast(lineHeight + verticalPadding * 2)
+    }
 
     override fun createAttr(): ComposeAttr = ComposeAttr()
 
@@ -94,6 +116,11 @@ internal class MarkdownScrollableTableView(
                         alignSelfStretch()
                         height(ctx.scrollerHeight)
                         flexDirectionRow()
+                        // Kuikly 会给横向 Scroller 的 contentView 钉死 top/left/bottom，
+                        // 默认 alignItems=STRETCH 会把表格内容高度拉伸成 scroller 高度，
+                        // layoutFrameDidChange 永远读不到真实内容高度，超高的行就被裁掉；
+                        // 改为 FLEX_START 让内容自适应高度，首帧后由布局回调修正 scrollerHeight
+                        alignItemsFlexStart()
                         showScrollerIndicator(true)
                         bouncesEnable(false)
                         // 横向手势归表格，纵向手势继续交给消息列表
@@ -212,6 +239,7 @@ internal class MarkdownScrollableTableView(
         const val CELL_HORIZONTAL_PADDING = 10f
         const val CELL_VERTICAL_PADDING = 8f
         const val DEFAULT_LINE_HEIGHT_FACTOR = 1.5f
+        const val HEADER_HEIGHT_FACTOR = 1.06f
         const val HEIGHT_EPSILON = 0.5f
         const val INDICATOR_HEIGHT = 3f
         const val INDICATOR_GAP = 6f

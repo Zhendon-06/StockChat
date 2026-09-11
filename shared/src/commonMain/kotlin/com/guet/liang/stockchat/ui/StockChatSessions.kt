@@ -36,8 +36,6 @@ internal fun StockChatPage.startNewChat() {
     updateTypingIndicatorTimer()
 }
 
-internal fun StockChatPage.conversationTitle(): String = sessionController.conversationTitle
-
 internal fun StockChatPage.deleteSession(sessionId: String) {
     if (sessionId.isBlank()) {
         return

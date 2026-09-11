@@ -97,7 +97,7 @@ internal fun StockChatPage.sharedQuestion(message: ChatMessage): String {
         .take(messageIndex.coerceAtLeast(0))
         .lastOrNull { candidate -> candidate.role == ChatRole.USER }
         ?.let(::messageText)
-        ?.ifBlank { null } ?: conversationTitle()
+        ?.ifBlank { null } ?: conversationTitle
 }
 
 internal fun StockChatPage.copySelectedText(content: String) {

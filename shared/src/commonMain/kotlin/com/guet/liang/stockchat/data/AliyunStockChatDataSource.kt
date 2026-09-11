@@ -55,9 +55,9 @@ internal class AliyunStockChatDataSource(
         val selectedModel = if (images.isEmpty()) model.ifBlank { config.chatModel } else config.visionModel
         val turn = ChatTurn(question, normalizedHistory, images, model, selectedModel)
         when {
-            images.isNotEmpty() -> answerWithContext(turn, MarketBranchOutcome.NONE, callback)
-            config.answerMode == AnswerMode.PRECISE -> answerPrecise(turn, callback)
-            else -> answerFast(turn, callback)
+            images.isNotEmpty() -> answerWithContext(turn, MarketBranchOutcome.NONE, attempt, callback)
+            config.answerMode == AnswerMode.PRECISE -> answerPrecise(turn, attempt, callback)
+            else -> answerFast(turn, attempt, callback)
         }
     }
 
@@ -74,15 +74,12 @@ internal class AliyunStockChatDataSource(
      * FAST: chat and stock branches start together. The text streams at once, cards attach as soon
      * as Tencent answers, and the model never sees live numbers.
      */
-    private fun answerFast(turn: ChatTurn, callback: (ChatAnswer) -> Unit) {
+    private fun answerFast(turn: ChatTurn, attempt: Int, callback: (ChatAnswer) -> Unit) {
         val contextHistory = ContextWindowManager.trim(turn.history, turn.question, config.contextWindowTokens)
         // The cache key covers the whole conversation context, so a repeated turn with the same
         // history replays both the chat text and the quote cards without touching the network.
         val cacheKey = aiResponseCacheKey(config, turn.selectedModel, turn.question, contextHistory, turn.images)
-        AiResponseCache.get(cacheKey)?.let { cachedBlocks ->
-            replayCachedAnswer(cachedBlocks, callback)
-            return
-        }
+        if (readCachedAnswer(cacheKey, attempt, callback)) return
         val join = ParallelAnswerJoin(callback) { blocks -> AiResponseCache.put(cacheKey, blocks) }
         answerWithAi(turn.question, contextHistory, turn.images, turn.selectedModel, join::onChat)
         startMarketBranch(turn.question, turn.model, forcedWebSearch = false, join::onMarket)
@@ -92,14 +89,14 @@ internal class AliyunStockChatDataSource(
      * PRECISE: the stock branch runs first (with web research on DashScope), then the chat request
      * receives the live quotes in its prompt so the text can cite real numbers.
      */
-    private fun answerPrecise(turn: ChatTurn, callback: (ChatAnswer) -> Unit) {
+    private fun answerPrecise(turn: ChatTurn, attempt: Int, callback: (ChatAnswer) -> Unit) {
         startMarketBranch(turn.question, turn.model, forcedWebSearch = true) { outcome ->
-            answerWithContext(turn, outcome, callback)
+            answerWithContext(turn, outcome, attempt, callback)
         }
     }
 
     /** Chat request whose prompt already contains whatever the stock branch found. */
-    private fun answerWithContext(turn: ChatTurn, outcome: MarketBranchOutcome, callback: (ChatAnswer) -> Unit) {
+    private fun answerWithContext(turn: ChatTurn, outcome: MarketBranchOutcome, attempt: Int, callback: (ChatAnswer) -> Unit) {
         val questionWithMarketContext = listOf(
             turn.question,
             if (outcome.snapshots.isEmpty()) "" else marketContextPrompt(outcome.snapshots),
@@ -107,14 +104,22 @@ internal class AliyunStockChatDataSource(
         ).filter(String::isNotBlank).joinToString("\n\n")
         val contextHistory = ContextWindowManager.trim(turn.history, questionWithMarketContext, config.contextWindowTokens)
         val cacheKey = aiResponseCacheKey(config, turn.selectedModel, questionWithMarketContext, contextHistory, turn.images)
-        AiResponseCache.get(cacheKey)?.let { cachedBlocks ->
-            replayCachedAnswer(cachedBlocks, callback)
-            return
-        }
+        if (readCachedAnswer(cacheKey, attempt, callback)) return
         val join = ParallelAnswerJoin(callback) { blocks -> AiResponseCache.put(cacheKey, blocks) }
         // Cards are already known, so they ride along with the very first streamed delta.
         join.onMarket(outcome)
         answerWithAi(questionWithMarketContext, contextHistory, turn.images, turn.selectedModel, join::onChat)
+    }
+
+    /**
+     * Replays cached blocks for a plain send (attempt == 0). Regeneration bumps the attempt so it
+     * must hit the network for a fresh answer; otherwise the identical response would be replayed.
+     */
+    private fun readCachedAnswer(cacheKey: String, attempt: Int, callback: (ChatAnswer) -> Unit): Boolean {
+        if (attempt > 0) return false
+        val cachedBlocks = AiResponseCache.get(cacheKey) ?: return false
+        replayCachedAnswer(cachedBlocks, callback)
+        return true
     }
 
     /**
