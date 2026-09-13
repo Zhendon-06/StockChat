@@ -11,8 +11,9 @@ QWEN_API_KEY=你的千问_API_Key
 MIMO_VOICE_API_KEY=你的_MiMo_API_Key
 ```
 
-构建时也可用同名环境变量覆盖本地配置。千问文本问答只读取 `QWEN_API_KEY`，语音接口
-单独读取 `MIMO_VOICE_API_KEY`，两者不会混用。
+构建时也可用同名环境变量覆盖本地配置，Android、iOS、OpenHarmony 的 Debug 和 Release
+都会读取这份配置。千问文本问答只读取 `QWEN_API_KEY`，语音接口单独读取
+`MIMO_VOICE_API_KEY`，两者不会混用。
 
 ## 分层与依赖方向
 
@@ -35,8 +36,7 @@ Kuikly 的跨节点文本选区目前不支持 Web/小程序，因此这些平�
 Android 录音使用 16 kHz 单声道 PCM16，并封装为 WAV；单次录音限制为
 300 毫秒至 30 秒。TTS 默认使用流式 PCM16 输出，Android 收到音频分片后立即交给
 `AudioTrack` 播放；不支持原生流式桥接的平台保留非流式 WAV 降级路径。API Key 会进入客户端
-构建产物，仅适合本地调试，正式环境应改为
-服务端代理或短期凭证。
+构建产物，演示包安装后即可直接使用。
 
 未配置模型 API Key 时提示配置；识别超时或返回无效 JSON 时展示失败与重新生成入口，不使用本地
 教学模板、名称词典、代码市场猜测或 Mock 卡片作为自动回退。

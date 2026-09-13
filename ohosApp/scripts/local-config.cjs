@@ -30,15 +30,13 @@ function readProperties(content) {
 
 function generateLocalConfig({ projectRoot, outputPath, buildMode, environment }) {
     const config = {};
-    if (buildMode === 'debug') {
-        const propertiesPath = path.join(projectRoot, 'local.properties');
-        const local = fs.existsSync(propertiesPath) ? readProperties(fs.readFileSync(propertiesPath, 'latin1')) : {};
-        for (const [key, parameter] of Object.entries(KEYS)) {
-            config[parameter] = (environment[key] || '').trim() || local[key] || '';
-        }
+    const propertiesPath = path.join(projectRoot, 'local.properties');
+    const local = fs.existsSync(propertiesPath) ? readProperties(fs.readFileSync(propertiesPath, 'latin1')) : {};
+    for (const [key, parameter] of Object.entries(KEYS)) {
+        config[parameter] = (environment[key] || '').trim() || local[key] || '';
     }
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-    // Always replace, including Release, to prevent retaining stale Debug keys.
+    // Always replace the generated resource so every build gets the current local config.
     fs.writeFileSync(outputPath, JSON.stringify(config), { mode: 0o600 });
     fs.chmodSync(outputPath, 0o600);
 }

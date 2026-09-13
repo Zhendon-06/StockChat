@@ -102,8 +102,7 @@
         @"isNightMode": @([self stockChatIsNightMode]),
         @"aliyunNativeStreaming": @1,
     } mutableCopy];
-#if DEBUG
-    // Match Android's local development configuration without putting keys in source.
+    // Load the local demo configuration for every build configuration.
     NSURL *configURL = [[NSBundle mainBundle] URLForResource:@"StockChatLocalConfig" withExtension:@"plist"];
     NSDictionary *config = configURL ? [NSDictionary dictionaryWithContentsOfURL:configURL] : nil;
     NSDictionary *environment = NSProcessInfo.processInfo.environment;
@@ -126,7 +125,6 @@
     if ([params[@"aiProxyBaseUrl"] length]) {
         params[@"qwenApiKey"] = [params[@"aiProxyToken"] length] ? params[@"aiProxyToken"] : @"proxy";
     }
-#endif
     return params;
 }
 

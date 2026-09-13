@@ -12,7 +12,7 @@ spec.loader.exec_module(config)
 
 
 class LocalConfigTests(unittest.TestCase):
-    def test_debug_precedence_and_release_removes_credentials(self):
+    def test_all_configurations_use_environment_then_local_properties(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "local.properties").write_text(
@@ -33,6 +33,14 @@ class LocalConfigTests(unittest.TestCase):
                 "MIMO_VOICE_API_KEY": "voice-test-value",
             })
             environment["CONFIGURATION"] = "Release"
+            config.generate(environment)
+            self.assertEqual(plistlib.loads(output.read_bytes()), {
+                "QWEN_API_KEY": "environment-test-value",
+                "MIMO_VOICE_API_KEY": "voice-test-value",
+            })
+            (root / "local.properties").unlink()
+            environment.pop("QWEN_API_KEY")
+            environment["MIMO_VOICE_API_KEY"] = " "
             config.generate(environment)
             self.assertEqual(plistlib.loads(output.read_bytes()), {})
 

@@ -4,9 +4,9 @@
 `StockChatTextAreaAdapter.m` 只交换 `KRTextAreaView` 的两个桥接入口，用于过滤旧文本回写，
 不修改 Pods。升级 Kuikly 后需重新运行这些检查，确认桥接入口及文本事件约定仍兼容。
 
-Debug 构建从环境变量或仓库根目录已有的 `local.properties` 读取 `QWEN_API_KEY`、
-`MIMO_VOICE_API_KEY`，生成到构建产物中的 `StockChatLocalConfig.plist`；运行环境变量优先。
-Release 生成空配置，宿主也不读取此配置。模型配置页中保存的用户设置仍由原有共享逻辑处理。
+Debug 和 Release 构建都会从环境变量或仓库根目录已有的 `local.properties` 读取
+`QWEN_API_KEY`、`MIMO_VOICE_API_KEY`，生成到构建产物中的 `StockChatLocalConfig.plist`；运行环境变量优先。
+模型配置页中保存的用户设置仍由原有共享逻辑处理。
 不要提交本地配置、生成的 plist 或包含凭据的构建产物。
 
 先启动一个 iOS 模拟器并执行：
@@ -20,7 +20,7 @@ sh iosApp/tests/run_regressions.sh /tmp/stockchat-ios-build
 
 原生检查覆盖滞后回写、事件反馈循环、清空后重输、草稿恢复、中文/emoji/多行、
 删除回写、输入法组合状态与多个输入框隔离。Python 检查覆盖配置优先级、
-缺失配置、properties 转义及 Debug 切换 Release 后移除凭据。
+缺失配置、properties 转义及 Debug/Release 配置一致性。
 
 模拟器手动回归：连续输入长文本、中文拼音选词、移动光标编辑、多行删除，
 分别通过发送按钮和键盘发送问题，确认输入清空、AI 返回回答、下一轮仍可输入。

@@ -11,7 +11,7 @@ test('supports Java properties separators, escapes and continuations', () => {
     });
 });
 
-test('IDE builds refresh local keys, env overrides, and Release clears previous Debug values', () => {
+test('IDE builds refresh local keys, env overrides, and Release keeps the demo configuration', () => {
     const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'stockchat-config-test-'));
     try {
         const outputPath = path.join(projectRoot, 'build/rawfile/config.json');
@@ -29,7 +29,9 @@ test('IDE builds refresh local keys, env overrides, and Release clears previous 
         generateLocalConfig({ ...options, environment: { QWEN_API_KEY: ' fake-env ' } });
         assert.equal(read().qwenApiKey, 'fake-env');
         generateLocalConfig({ ...options, buildMode: 'release' });
-        assert.deepEqual(read(), {});
+        assert.deepEqual(read(), {
+            qwenApiKey: 'fake-updated', mimoVoiceApiKey: '', aiProxyBaseUrl: '', aiProxyToken: '',
+        });
         fs.unlinkSync(localPath);
         generateLocalConfig(options);
         assert.deepEqual(read(), { qwenApiKey: '', mimoVoiceApiKey: '', aiProxyBaseUrl: '', aiProxyToken: '' });

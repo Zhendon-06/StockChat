@@ -19,7 +19,7 @@ StockChat 是一个基于 Kotlin Multiplatform 与 Kuikly 构建的跨端 AI 股
 ### 一分钟体验路径
 
 1. 播放任意一个三端演示视频，先看「聊天提问 → 行情卡片 → 个股详情 → AI 解读」主链路。
-2. Android 可直接安装上方 APK；如需联网 AI，在应用设置中配置模型服务，或按[密钥配置](#api-key-配置)使用本地配置。
+2. Android 评审 APK 已预置模型配置，安装后即可体验 AI；源码构建请按下方说明填写 `local.properties`。
 3. 按下表检查课题要求：
 
 | 课题 | 对应功能 |
@@ -67,14 +67,16 @@ StockChat 是一个基于 Kotlin Multiplatform 与 Kuikly 构建的跨端 AI 股
 
 ## API Key 配置
 
-在仓库根目录创建未提交的 `local.properties`：
+在仓库根目录的 `local.properties` 填写一次：
 
 ```properties
 QWEN_API_KEY=你的百炼_API_Key
 MIMO_VOICE_API_KEY=你的_MiMo_API_Key
 ```
 
-正式部署建议使用仓库内的 [`ai-proxy`](ai-proxy/README.md)：将百炼 Key 放在阿里云服务器，只在客户端配置代理地址和代理访问令牌：
+**Android、iOS、OpenHarmony 的 Debug 和 Release 都会把这份配置打进安装包。** 填好后重新构建、安装即可直接使用，无需在应用设置中再次输入 Key。修改本地配置后重新构建即可更新包内配置。
+
+如使用仓库内的 [`ai-proxy`](ai-proxy/README.md)，也可配置代理地址和访问令牌：
 
 ```properties
 AI_PROXY_BASE_URL=https://你的域名/v1
@@ -83,12 +85,12 @@ AI_PROXY_TOKEN=代理服务的访问令牌
 
 配置代理地址后，应用会把 `AI_PROXY_TOKEN` 当作客户端到代理的凭证，并自动改用代理地址；`QWEN_API_KEY` 不再需要写入客户端。`AI_PROXY_TOKEN` 不是百炼 Key。
 
-也可用同名环境变量覆盖。直连模式下 `QWEN_API_KEY` 用于文本 / 视觉问答、标的识别与 AI 预测，`MIMO_VOICE_API_KEY` 仅用于语音；直连 Key 只适合本地调试。应用内的模型配置页可以在运行时另行添加服务商与 Key。
+也可用同名环境变量覆盖。`QWEN_API_KEY` 用于文本 / 视觉问答、标的识别与 AI 预测，`MIMO_VOICE_API_KEY` 用于语音；应用内的模型配置页可以在运行时另行添加服务商与 Key。
 
 
 ## 构建与运行
 
-以下按“官方文档式”步骤排列，尽量只改本地临时文件，避免把机密信息写死到仓库。
+以下命令均从当前检出的仓库目录运行；三平台共用根目录的 `local.properties`。
 
 ### 先决条件
 
@@ -98,22 +100,21 @@ AI_PROXY_TOKEN=代理服务的访问令牌
   - Xcode（iOS）
   - CocoaPods（iOS）
   - DevEco Studio（鸿蒙）
-- 根目录 `local.properties` 配置代理（推荐）或直连 Key（仅调试态）：
+- 根目录 `local.properties` 填写演示用 Key：
 
 ```properties
 QWEN_API_KEY=你的百炼_API_Key
 MIMO_VOICE_API_KEY=你的_MiMo_API_Key
-# 正式环境改用下面两项，并删除 QWEN_API_KEY
-AI_PROXY_BASE_URL=https://你的域名/v1
-AI_PROXY_TOKEN=代理服务的访问令牌
 ```
 
-### Android（用于联调）
+### Android
 
 ```bash
-./gradlew :androidApp:assembleDebug
+./gradlew :androidApp:assembleDebug :androidApp:assembleRelease
 adb install -r androidApp/build/outputs/apk/debug/androidApp-debug.apk
 ```
+
+Release 包路径为 `androidApp/build/outputs/apk/release/androidApp-release.apk`，同样包含本地 Key。
 
 ### iOS（按 Apple 官方流程）
 
@@ -128,7 +129,7 @@ open iosApp.xcworkspace
 
 2. Xcode 配置
   - 目标：`iosApp`
-  - 配置：`Debug`
+  - 配置：`Debug` 或 `Release`（两种都会包含本地 Key）
   - 运行设备：`iPhone` 模拟器（首次可用模拟器免签名）或真机（需要 Apple Team 证书签名）
   - `File > Settings > Location` 使用当前 Ruby 环境（如通过 Homebrew）可避免 CocoaPods 编译器环境差异
 
@@ -137,7 +138,7 @@ open iosApp.xcworkspace
 说明：项目 Xcode 工程在构建时会在 `shared` Pod 的 `script_phases` 中同步 KMP Framework；若出现 `shared` 未找到，先执行：
 
 ```bash
-cd /Users/lzd/AndroidStudioProjects/StockChat
+# 在仓库根目录执行
 ./gradlew :shared:generateDummyFramework
 cd iosApp && pod install
 ```
@@ -153,7 +154,7 @@ cd iosApp && pod install
 cp ohosApp/local.properties.example ohosApp/local.properties
 ```
 
-3. 运行一键脚本（自动构建 so、同步依赖、打包并安装）：
+3. 先启动鸿蒙模拟器或连接真机，再运行一键脚本（自动构建 so、同步依赖、打包并安装）：
 
 ```bash
 ./ohosApp/runOhosApp.sh

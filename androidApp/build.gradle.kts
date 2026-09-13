@@ -54,12 +54,6 @@ android {
         getByName("release") {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("debug")
-            // Release 产物清空本地调试密钥，与 iOS/OHOS 宿主保持一致；
-            // 运行时通过应用内模型配置页填入服务商与 Key
-            buildConfigField("String", "QWEN_API_KEY", "\"\"")
-            buildConfigField("String", "MIMO_VOICE_API_KEY", "\"\"")
-            buildConfigField("String", "AI_PROXY_BASE_URL", "\"\"")
-            buildConfigField("String", "AI_PROXY_TOKEN", "\"\"")
         }
     }
     compileOptions {

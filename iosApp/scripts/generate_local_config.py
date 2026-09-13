@@ -1,4 +1,4 @@
-"""Generate Debug-only iOS resources; never print or write credentials to source."""
+"""Generate the iOS local demo configuration resource for every build."""
 import os
 import plistlib
 import re
@@ -37,16 +37,15 @@ def read_properties(path):
 
 def generate(environment):
     values = {}
-    if environment.get("CONFIGURATION") == "Debug":
-        local = read_properties(Path(environment["SRCROOT"]).parent / "local.properties")
-        for key in KEYS:
-            value = environment.get(key, "").strip() or local.get(key, "")
-            if value:
-                values[key] = value
+    local = read_properties(Path(environment["SRCROOT"]).parent / "local.properties")
+    for key in KEYS:
+        value = environment.get(key, "").strip() or local.get(key, "")
+        if value:
+            values[key] = value
     output = (Path(environment["TARGET_BUILD_DIR"])
               / environment["UNLOCALIZED_RESOURCES_FOLDER_PATH"] / "StockChatLocalConfig.plist")
     output.parent.mkdir(parents=True, exist_ok=True)
-    # Always overwrite, including Release, so stale Debug keys cannot survive.
+    # Always overwrite so every build gets the current local config.
     output.write_bytes(plistlib.dumps(values))
     output.chmod(0o600)
 
