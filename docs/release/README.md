@@ -4,7 +4,7 @@
 | --- | --- |
 | 文件 | `StockChat-1.0-release-debugsigned.apk` |
 | 大小 | 5.3M |
-| SHA-256 | `627564647a6cca14c63e502ea5eaaf87d9f1d2e11e9b953dc14b2cb9a2cb1945` |
+| SHA-256 | `ab132c0d8b4a8abd1c79f174bf75928268c9ad975d9ea49564d52ef2fb4f49f4` |
 | applicationId | `com.guet.liang.stockchat` |
 | versionName / versionCode | 1.0 / 1 |
 | minSdk / targetSdk | 23 / 34 |
@@ -16,7 +16,7 @@
 ## 说明
 
 - 这是一个用调试签名的 release 包，只用于演示与体验，不能上架应用商店。
-- 包内**不含**任何 API Key。`release` 构建类型会把 `QWEN_API_KEY` 与 `MIMO_VOICE_API_KEY` 置空，安装后请在应用内「设置 → 模型配置」填入服务商与 Key，行情与今日市场功能无需 Key 即可使用。
+- 这是本次评审专用包，已预置评审所需的 AI 配置，安装后可直接体验 AI 问答；仅用于本次评审，不建议用于其他场景。
 - 与已安装的 Debug 包签名相同，可直接覆盖安装。
 
 ## 评审验收路径
