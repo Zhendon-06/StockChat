@@ -1,8 +1,33 @@
-# StockChat
+# StockChat · Kuikly AI 股票工作台
 
-StockChat 是一个基于 Kotlin Multiplatform 与 Kuikly 的 AI 股票问答应用。用户用自然语言提问，AI 回答里直接嵌入实时行情卡片，点进卡片进入个股详情页，看走势、看 AI 预测，再把选中的点位带回聊天继续追问。一套共享代码同时运行在 Android、iOS 和 OpenHarmony 上。
+StockChat 是一个基于 Kotlin Multiplatform 与 Kuikly 构建的跨端 AI 股票应用。用户可以用自然语言提问，AI 回答会直接嵌入可点击的实时行情卡片；从卡片进入个股详情后，可以查看走势、AI 解读和预测节点，再把选中的点位带回聊天继续追问。
+
+项目使用一套共享的业务与 UI 代码运行在 **Android、iOS 和 OpenHarmony**，并将行情、AI、多模态输入、图表和会话产物串成一条完整的产品链路。
 
 > 行情与 AI 结论均为演示信息，仅供参考，不构成投资建议。
+
+## 评审入口
+
+| 内容 | 入口 |
+| --- | --- |
+| Android 安装包 | [StockChat-1.0-release-debugsigned.apk](docs/release/StockChat-1.0-release-debugsigned.apk) |
+| Android 演示 | [StockChat Android Demo.mp4](docs/media/StockChat%20Android%20Demo.mp4) |
+| iOS 演示 | [StockChat iOS Demo.mp4](docs/media/StockChat%20iOS%20Demo.mp4) |
+| OpenHarmony 演示 | [StockChat OHOS Demo.mp4](docs/media/StockChat%20OHOS%20Demo.mp4) |
+| 安装包说明 | [docs/release/README.md](docs/release/README.md) |
+
+### 一分钟体验路径
+
+1. 播放任意一个三端演示视频，先看「聊天提问 → 行情卡片 → 个股详情 → AI 解读」主链路。
+2. Android 可直接安装上方 APK；如需联网 AI，在应用设置中配置模型服务，或按[密钥配置](#api-key-配置)使用本地配置。
+3. 按下表检查课题要求：
+
+| 课题 | 对应功能 |
+| --- | --- |
+| Task 1：AI 股票行情原型 | 行情列表、搜索、个股详情、分时 / K 线、AI 分析与风险提示 |
+| Task 2：AI 股票问答应用 | Markdown 问答、结构化行情卡片、卡片跳转详情、详情点位带回会话 |
+
+演示视频使用 Git LFS 管理。源码检出后执行 `git lfs pull` 即可播放；Android 安装包为调试签名的 Release 包，仅用于体验与评审。
 
 ## 项目亮点
 
@@ -13,36 +38,18 @@ StockChat 是一个基于 Kotlin Multiplatform 与 Kuikly 的 AI 股票问答应
 - **完整的多模态体验**：支持图片提问、语音输入、回答朗读，以及今日市场、收藏卡片和多模型服务商配置。
 - **可复用的跨端组件**：内置 `kuikly-chart` 金融图表库与 `table-core` 表格组件库，可独立复用到其他 Kuikly 项目。
 
-## Demo 与安装包
+## 验证命令
 
-| 资源 | 位置 |
-| --- | --- |
-| Android Demo | [StockChat Android Demo.mp4](docs/media/StockChat%20Android%20Demo.mp4) |
-| iOS Demo | [StockChat iOS Demo.mp4](docs/media/StockChat%20iOS%20Demo.mp4) |
-| OpenHarmony Demo | [StockChat OHOS Demo.mp4](docs/media/StockChat%20OHOS%20Demo.mp4) |
-| Android 安装包 | [StockChat-1.0-release-debugsigned.apk](docs/release/StockChat-1.0-release-debugsigned.apk) |
-| 安装包说明 | [docs/release/README.md](docs/release/README.md) |
-
-### 评审快速开始
-
-1. 先看三端演示视频，按“聊天提问 → 行情卡片 → 个股详情 → AI 解读”检查主链路。
-2. Android 可直接安装上表中的 APK；需要从源码运行时，先准备 JDK 17、Android SDK 34 和根目录 `local.properties`。
-3. 执行共享层回归测试与 Debug 构建：
+准备 JDK 17、Android SDK 34 和根目录 `local.properties` 后，可以执行共享层回归测试与 Android Debug 构建：
 
 ```bash
 ./gradlew :shared:testDebugUnitTest :kuikly-chart:testDebugUnitTest :table-core:testDebugUnitTest
 ./gradlew detekt :androidApp:assembleDebug
 ```
 
-4. 三端演示视频使用 Git LFS 管理；首次检出后执行 `git lfs pull`，即可播放 `docs/media` 下的全部视频。
+安装前请阅读[安装包说明](docs/release/README.md)。
 
-评审验收路径对应 `KuiklyUI 实战讲解.pdf`：Task 1 检查行情列表、详情和 AI 解读；Task 2 检查问答、Markdown/行情卡片和详情承接页。
-
-演示视频使用 Git LFS 管理；Android 安装包为调试签名的 Release 包，仅用于体验与演示。安装前请阅读[安装包说明](docs/release/README.md)。
-
-## 三端跑通
-Android，ios，OHOS 体验一致
-<img src="img.png" width="600" />
+![StockChat 三端界面](img.png)
 
 ## 环境要求
 
@@ -135,7 +142,7 @@ cd /Users/lzd/AndroidStudioProjects/StockChat
 cd iosApp && pod install
 ```
 
-4. 回归验证：见 [iosApp/tests/README.md](/Users/lzd/AndroidStudioProjects/StockChat/iosApp/tests/README.md)
+4. 回归验证：见 [iosApp/tests/README.md](iosApp/tests/README.md)
 
 ### OpenHarmony（按 Huawei 官方流程）
 
@@ -143,14 +150,12 @@ cd iosApp && pod install
 2. 生成鸿蒙本地配置：
 
 ```bash
-cd /Users/lzd/AndroidStudioProjects/StockChat
 cp ohosApp/local.properties.example ohosApp/local.properties
 ```
 
 3. 运行一键脚本（自动构建 so、同步依赖、打包并安装）：
 
 ```bash
-cd /Users/lzd/AndroidStudioProjects/StockChat
 ./ohosApp/runOhosApp.sh
 ```
 
