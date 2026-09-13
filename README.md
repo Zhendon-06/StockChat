@@ -133,7 +133,7 @@ open iosApp.xcworkspace
   - 运行设备：`iPhone` 模拟器（首次可用模拟器免签名）或真机（需要 Apple Team 证书签名）
   - `File > Settings > Location` 使用当前 Ruby 环境（如通过 Homebrew）可避免 CocoaPods 编译器环境差异
 
-3. 点击 Run（⌘R）
+3. 点击 Run（⌘R）。项目已提供共享的 `iosApp` Scheme，默认不附加 Xcode 调试器；这是为了避开部分 Xcode 26 / iOS 26 模拟器与 Kuikly 调试注入的兼容问题。若本机仍使用了旧的用户 Scheme，请在 `Product > Scheme > Edit Scheme > Run > Info` 取消 `Debug executable` 后再运行。若弹出 “Replace iosApp”，选择 `Replace`。
 
 说明：项目 Xcode 工程在构建时会在 `shared` Pod 的 `script_phases` 中同步 KMP Framework；若出现 `shared` 未找到，先执行：
 
