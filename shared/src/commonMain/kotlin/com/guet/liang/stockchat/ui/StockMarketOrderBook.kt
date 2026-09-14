@@ -16,14 +16,14 @@ internal fun StockMarketPanel.OrderBook(container: ViewContainer<*, *>) {
         View {
             attr {
                 padding(14f)
-                borderRadius(16f)
+                borderRadius(18f)
                 backgroundColor(StockChatTheme.surface)
             }
             Text {
                 attr {
                     text("五档盘口")
                     fontSize(16f)
-                    fontWeightMedium()
+                    fontWeightBold()
                     color(StockChatTheme.textPrimary)
                 }
             }
@@ -49,12 +49,65 @@ internal fun StockMarketPanel.OrderBook(container: ViewContainer<*, *>) {
                 val bids = snapshot.orderBook.filter { it.side == "买" }.sumOf { it.volume.toDouble() }
                 val asks = snapshot.orderBook.filter { it.side == "卖" }.sumOf { it.volume.toDouble() }
                 val imbalance = if (bids + asks > 0) ((bids - asks) / (bids + asks) * 100).toFloat() else null
-                Text {
+                val bidRatio = if (bids + asks > 0) (bids / (bids + asks)).toFloat() else 0.5f
+                View {
                     attr {
-                        text("五档委比  ${imbalance?.let { signed(it) + "%" } ?: "--"}  ·  买卖量仅统计当前五档")
-                        fontSize(10f)
-                        color(StockChatTheme.textTertiary)
-                        marginTop(12f)
+                        flexDirectionRow()
+                        alignItemsCenter()
+                        marginTop(10f)
+                    }
+                    View {
+                        attr {
+                            flex(bidRatio.coerceIn(0.03f, 0.97f))
+                            height(6f)
+                            borderRadius(3f)
+                            backgroundColor(StockChatTheme.positive)
+                        }
+                    }
+                    View {
+                        attr {
+                            flex((1f - bidRatio).coerceIn(0.03f, 0.97f))
+                            height(6f)
+                            borderRadius(3f)
+                            marginLeft(2f)
+                            backgroundColor(StockChatTheme.negative)
+                        }
+                    }
+                }
+                View {
+                    attr {
+                        flexDirectionRow()
+                        alignItemsCenter()
+                        marginTop(8f)
+                    }
+                    Text {
+                        attr {
+                            text("五档委比  ")
+                            fontSize(10f)
+                            color(StockChatTheme.textTertiary)
+                        }
+                    }
+                    Text {
+                        attr {
+                            text(imbalance?.let { signed(it) + "%" } ?: "--")
+                            fontSize(10f)
+                            fontWeightMedium()
+                            color(
+                                when {
+                                    imbalance == null -> StockChatTheme.textTertiary
+                                    imbalance > 0f -> StockChatTheme.positive
+                                    imbalance < 0f -> StockChatTheme.negative
+                                    else -> StockChatTheme.textSecondary
+                                }
+                            )
+                        }
+                    }
+                    Text {
+                        attr {
+                            text("  ·  买卖量仅统计当前五档")
+                            fontSize(10f)
+                            color(StockChatTheme.textTertiary)
+                        }
                     }
                 }
             }
@@ -88,7 +141,8 @@ internal fun StockMarketPanel.OrderSide(container: ViewContainer<*, *>, side: St
                     attr {
                         text(if (side == "买") "买盘" else "卖盘")
                         fontSize(10f)
-                        color(StockChatTheme.textTertiary)
+                        fontWeightMedium()
+                        color(if (side == "买") StockChatTheme.positive else StockChatTheme.negative)
                         flex(1f)
                     }
                 }
@@ -126,6 +180,7 @@ internal fun StockMarketPanel.OrderLevel(container: ViewContainer<*,
             View {
                 attr {
                     absolutePosition(2f, 0f, 2f, 0f)
+                    borderRadius(5f)
                     val sideColor = if (side == "买") StockChatTheme.positive else StockChatTheme.negative
                     val opacity = 0.04f + (level?.volume ?: 0f) / maximumVolume * 0.10f
                     backgroundColor(sideColor.opacity(opacity))

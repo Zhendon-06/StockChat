@@ -14,6 +14,8 @@ import com.guet.liang.stockchat.model.ShareResult
 import com.guet.liang.stockchat.model.StockPredictionHistoryPoint
 import com.guet.liang.stockchat.model.StockQuote
 import com.tencent.kuikly.core.annotations.Page
+import com.tencent.kuikly.core.base.BoxShadow
+import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.core.base.ViewBuilder
 import com.tencent.kuikly.core.base.ViewRef
 import com.tencent.kuikly.core.directives.vif
@@ -22,6 +24,7 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.reactive.handler.observable
 import com.tencent.kuikly.core.timer.Timer
 import com.tencent.kuikly.core.views.ScrollerView
+import com.tencent.kuikly.core.views.Text
 import com.tencent.kuikly.core.views.View
 
 @Page(STOCK_DETAIL_PAGE_NAME, supportInLocal = true)
@@ -111,6 +114,40 @@ internal class StockDetailPage : BasePager() {
                     ctx.DetailContent(this, snapshot)
                 }
             }
+            vif({ ctx.detailState is StockDetailControllerState.Content }) {
+                ctx.FloatingAskButton(this)
+            }
+        }
+    }
+
+    private fun FloatingAskButton(container: com.tencent.kuikly.core.base.ViewContainer<*, *>) {
+        val ctx = this
+        val quote = (detailState as? StockDetailControllerState.Content)?.snapshot?.quote
+        with(container) {
+            View {
+                attr {
+                    absolutePosition(
+                        right = 18f,
+                        bottom = pagerData.safeAreaInsets.bottom + 18f,
+                    )
+                    size(58f, 58f)
+                    borderRadius(29f)
+                    backgroundColor(StockChatTheme.accent)
+                    boxShadow(BoxShadow(0f, 5f, 18f, Color(0x442563EB)))
+                    allCenter()
+                }
+                event {
+                    click { quote?.let { ctx.openChatWithStock(it, ctx.selectedChartPoint()) } }
+                }
+                Text {
+                    attr {
+                        text("问")
+                        fontSize(18f)
+                        fontWeightBold()
+                        color(Color.WHITE)
+                    }
+                }
+            }
         }
     }
 
@@ -139,16 +176,10 @@ internal class StockDetailPage : BasePager() {
     }
 
     internal fun openChatWithStock(quote: StockQuote, selectedPoint: SelectedChartPoint?) {
-        val pointContext = selectedPoint?.let { "我在走势图中选中了${it.label}，价格约 ${it.price}。" }.orEmpty()
         val params = JSONObject()
         val prediction = (predictionState as? StockDetailPredictionControllerState.Content)?.prediction
         val selectedContext = selectedPoint?.let { "选中节点=${it.label},价格=${it.price},序号=${it.index}" }.orEmpty()
-        params.put(
-            "prefillQuestion",
-            "请结合${quote.name}（${quote.symbol}）当前价格 ${quote.price}（${quote.change}，" +
-                "${quote.changePercent}，数据时间 ${quote.updatedAt}）、走势图和 AI 解读，" +
-                "${pointContext}说明关键观察点、风险与后续验证条件。",
-        )
+        params.put("prefillQuestion", "[${quote.name}] ")
         params.put(
             "stockContext",
             JSONObject().apply {

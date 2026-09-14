@@ -2,8 +2,7 @@ package com.guet.liang.stockchat.ui
 
 import com.guet.liang.stockchat.model.StockQuote
 import com.guet.liang.stockchat.model.TodayMarketSnapshot
-import com.tencent.kuikly.core.base.Border
-import com.tencent.kuikly.core.base.BorderStyle
+import com.guet.liang.stockchat.model.TodayMarketSectorObservation
 import com.tencent.kuikly.core.base.Direction
 import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.views.Text
@@ -11,86 +10,93 @@ import com.tencent.kuikly.core.views.View
 
 // 今日市场内容分区：快照、情绪卡、观察/样例股票与摘要。
 
-internal fun ViewContainer<*, *>.TodayMarketSnapshotContent(
-    snapshot: TodayMarketSnapshot,
-    pageWidth: Float,
+/** 分区标题：主题绿小竖条 + 加粗标题 + 右侧说明，替代卡片边框带来的分隔感。 */
+internal fun TodayMarketSectionTitle(
+    container: ViewContainer<*, *>,
+    title: String,
+    subtitle: String,
     scale: Float,
-    onQuoteClick: (StockQuote) -> Unit,
+    onAction: (() -> Unit)? = null,
 ) {
-    TodayMarketMoodCard(snapshot, scale)
-    TodayMarketDistribution(snapshot)
-    Text {
-        attr {
-            text("主要指数")
-            fontSize(18f * scale)
-            fontWeightBold()
-            color(StockChatTheme.textPrimary)
-            marginTop(20f * scale)
-            marginBottom(10f * scale)
-        }
-    }
-    snapshot.indices.forEach { quote ->
+    with(container) {
         View {
             attr {
-                width(pageWidth - 36f * scale)
+                flexDirectionRow()
+                alignItemsCenter()
+                marginTop(20f * scale)
                 marginBottom(10f * scale)
             }
-            IndexQuoteCard(quote, scale, onClick = { onQuoteClick(quote) })
-        }
-    }
-    MarketStockList(
-        title = "观察方向",
-        subtitle = "10只样本企业 · 横向浏览",
-        quotes = snapshot.sampleStocks,
-        pageWidth = pageWidth,
-        scale = scale,
-        onQuoteClick = onQuoteClick,
-        horizontal = true,
-    )
-    MarketStockList(
-        title = "样本个股动向",
-        subtitle = "按当日涨跌排序",
-        quotes = snapshot.sampleStocks,
-        pageWidth = pageWidth,
-        scale = scale,
-        onQuoteClick = onQuoteClick,
-    )
-    TodayMarketSummary(snapshot, pageWidth, scale)
-    View {
-        attr {
-            marginTop(14f * scale)
-            marginBottom(8f * scale)
-            padding(
-                top = 12f * scale,
-                left = 14f * scale,
-                bottom = 12f * scale,
-                right = 14f * scale,
-            )
-            borderRadius(15f * scale)
-            backgroundColor(StockChatTheme.warningSoft)
-            border(Border(1f, BorderStyle.SOLID, StockChatTheme.warningBorder))
-        }
-        Text {
-            attr {
-                text(snapshot.disclaimer)
-                fontSize(12f * scale)
-                lineHeight(18f * scale)
-                color(StockChatTheme.warning)
+            View {
+                attr {
+                    width(4f * scale)
+                    height(16f * scale)
+                    borderRadius(2f * scale)
+                    backgroundColor(StockChatTheme.accent)
+                    marginRight(8f * scale)
+                }
+            }
+            Text {
+                attr {
+                    text(title)
+                    fontSize(18f * scale)
+                    fontWeightBold()
+                    color(StockChatTheme.textPrimary)
+                    flex(1f)
+                }
+            }
+            if (subtitle.isNotBlank()) {
+                Text {
+                    attr {
+                        text(if (onAction == null) subtitle else "$subtitle  ·  换一组 ›")
+                        fontSize(11f * scale)
+                        color(if (onAction == null) StockChatTheme.textTertiary else StockChatTheme.accent)
+                    }
+                    event { click { onAction?.invoke() } }
+                }
             }
         }
     }
 }
 
+internal fun ViewContainer<*, *>.TodayMarketSnapshotContent(
+    snapshot: TodayMarketSnapshot,
+    pageWidth: Float,
+    scale: Float,
+    onQuoteClick: (StockQuote) -> Unit,
+    onSectorClick: (TodayMarketSectorObservation) -> Unit = {},
+    indexFocus: () -> Int = { 0 },
+    onAdvanceIndexFocus: () -> Unit = {},
+    sectorFocus: () -> Int = { 0 },
+    onAdvanceSectorFocus: () -> Unit = {},
+    quoteFocus: () -> Int = { 0 },
+    onAdvanceQuoteFocus: () -> Unit = {},
+) {
+    TodayMarketStackedContent(
+        snapshot = snapshot,
+        pageWidth = pageWidth,
+        scale = scale,
+        onQuoteClick = onQuoteClick,
+        onSectorClick = onSectorClick,
+        indexFocus = indexFocus,
+        onAdvanceIndexFocus = onAdvanceIndexFocus,
+        sectorFocus = sectorFocus,
+        onAdvanceSectorFocus = onAdvanceSectorFocus,
+        quoteFocus = quoteFocus,
+        onAdvanceQuoteFocus = onAdvanceQuoteFocus,
+    )
+}
+
+@Suppress("LongMethod")
 private fun ViewContainer<*, *>.TodayMarketMoodCard(snapshot: TodayMarketSnapshot, scale: Float) {
     View {
         attr {
             padding(
-                top = 16f * scale,
-                left = 16f * scale,
-                bottom = 16f * scale,
-                right = 16f * scale,
+                top = 18f * scale,
+                left = 17f * scale,
+                bottom = 18f * scale,
+                right = 17f * scale,
             )
-            borderRadius(20f * scale)
+            borderRadius(18f * scale)
             backgroundLinearGradient(
                 Direction.TO_BOTTOM_RIGHT,
                 com.tencent.kuikly.core.base.ColorStop(
@@ -99,7 +105,6 @@ private fun ViewContainer<*, *>.TodayMarketMoodCard(snapshot: TodayMarketSnapsho
                 ),
                 com.tencent.kuikly.core.base.ColorStop(StockChatTheme.marketMoodBackgroundEnd, 1f),
             )
-            border(Border(1f, BorderStyle.SOLID, StockChatTheme.marketMoodBorder))
         }
         View {
             attr {
@@ -145,10 +150,137 @@ private fun ViewContainer<*, *>.TodayMarketMoodCard(snapshot: TodayMarketSnapsho
         }
         Text {
             attr {
+                text(if (snapshot.advancingCount >= snapshot.decliningCount) "市场热度偏强，关注结构性机会" else "市场分化明显，优先控制回撤")
+                fontSize(20f * scale)
+                fontWeightBold()
+                color(StockChatTheme.textPrimary)
+                marginTop(14f * scale)
+            }
+        }
+        View {
+            attr {
+                flexDirectionRow()
+                marginTop(10f * scale)
+            }
+            MoodChip("情绪周期 · ${snapshot.mood}", StockChatTheme.positive, scale)
+            MoodChip("指数样本 · ${snapshot.indices.size}", StockChatTheme.accent, scale)
+        }
+        Text {
+            attr {
                 text("温度只描述当前指数样本，不代表涨跌预测。")
                 fontSize(11f * scale)
                 color(StockChatTheme.textTertiary)
                 marginTop(5f * scale)
+            }
+        }
+    }
+}
+
+private fun ViewContainer<*, *>.MoodChip(textValue: String, tint: com.tencent.kuikly.core.base.Color, scale: Float) {
+    View {
+        attr {
+            height(25f * scale)
+            borderRadius(13f * scale)
+            padding(left = 10f * scale, right = 10f * scale)
+            backgroundColor(StockChatTheme.surface)
+            marginRight(8f * scale)
+            allCenter()
+        }
+        Text {
+            attr {
+                text(textValue)
+                fontSize(11f * scale)
+                color(tint)
+            }
+        }
+    }
+}
+
+private fun ViewContainer<*, *>.TodayMarketSectorStrip(
+    sectors: List<TodayMarketSectorObservation>,
+    pageWidth: Float,
+    scale: Float,
+    onSectorClick: (TodayMarketSectorObservation) -> Unit,
+) {
+    if (sectors.isEmpty()) return
+    val visible = sectors.take(6)
+    TodayMarketSectionTitle(this, "板块观察", "样本均值 · 点击查看", scale)
+    View {
+        attr {
+            width((pageWidth - 36f * scale).coerceAtLeast(1f))
+        }
+        visible.forEachIndexed { index, sector ->
+            val tint = if (sector.isPositive) StockChatTheme.positive else StockChatTheme.negative
+            val softTint = if (sector.isPositive) StockChatTheme.marketPositiveSoft else StockChatTheme.marketNegativeSoft
+            View {
+                attr {
+                    flexDirectionRow()
+                    alignItemsCenter()
+                    padding(top = 11f * scale, bottom = 11f * scale)
+                }
+                event { click { onSectorClick(sector) } }
+                View {
+                    attr {
+                        size(22f * scale, 22f * scale)
+                        borderRadius(7f * scale)
+                        backgroundColor(softTint)
+                        allCenter()
+                        marginRight(10f * scale)
+                    }
+                    Text {
+                        attr {
+                            text("${index + 1}")
+                            fontSize(11f * scale)
+                            fontWeightBold()
+                            color(tint)
+                        }
+                    }
+                }
+                View {
+                    attr { flex(1f) }
+                    Text {
+                        attr {
+                            text(sector.name)
+                            fontSize(14f * scale)
+                            fontWeightMedium()
+                            color(StockChatTheme.textPrimary)
+                            lines(1)
+                        }
+                    }
+                    Text {
+                        attr {
+                            text(sector.members)
+                            fontSize(10f * scale)
+                            color(StockChatTheme.textTertiary)
+                            marginTop(3f * scale)
+                            lines(1)
+                        }
+                    }
+                }
+                Text {
+                    attr {
+                        text(sector.changeLabel)
+                        fontSize(15f * scale)
+                        fontWeightBold()
+                        color(tint)
+                    }
+                }
+                Text {
+                    attr {
+                        text("›")
+                        fontSize(17f * scale)
+                        color(StockChatTheme.textTertiary)
+                        marginLeft(8f * scale)
+                    }
+                }
+            }
+            if (index != visible.lastIndex) {
+                View {
+                    attr {
+                        height(1f)
+                        backgroundColor(StockChatTheme.border)
+                    }
+                }
             }
         }
     }
@@ -163,32 +295,39 @@ private fun ViewContainer<*, *>.TodayMarketSummary(
         attr {
             width((pageWidth - 36f * scale).coerceAtLeast(1f))
             alignSelfCenter()
-            marginTop(14f * scale)
-            padding(
-                top = 16f * scale,
-                left = 16f * scale,
-                bottom = 16f * scale,
-                right = 16f * scale,
-            )
-            borderRadius(19f * scale)
-            backgroundColor(StockChatTheme.surface)
-            themedBorder()
+            marginTop(22f * scale)
+            padding(left = 2f * scale, right = 2f * scale)
         }
-        Text {
+        View {
             attr {
-                text("白话小结")
-                fontSize(16f * scale)
-                fontWeightBold()
-                color(StockChatTheme.textPrimary)
+                flexDirectionRow()
+                alignItemsCenter()
+            }
+            View {
+                attr {
+                    width(4f * scale)
+                    height(15f * scale)
+                    borderRadius(2f * scale)
+                    backgroundColor(StockChatTheme.accent)
+                    marginRight(8f * scale)
+                }
+            }
+            Text {
+                attr {
+                    text("白话小结")
+                    fontSize(16f * scale)
+                    fontWeightBold()
+                    color(StockChatTheme.textPrimary)
+                }
             }
         }
         Text {
             attr {
                 text(snapshot.summary)
                 fontSize(14f * scale)
-                lineHeight(22f * scale)
+                lineHeight(23f * scale)
                 color(StockChatTheme.textSecondary)
-                marginTop(9f * scale)
+                marginTop(10f * scale)
             }
         }
         Text {
@@ -196,7 +335,7 @@ private fun ViewContainer<*, *>.TodayMarketSummary(
                 text(snapshot.sourceLabel)
                 fontSize(11f * scale)
                 color(StockChatTheme.textTertiary)
-                marginTop(9f * scale)
+                marginTop(10f * scale)
             }
         }
     }

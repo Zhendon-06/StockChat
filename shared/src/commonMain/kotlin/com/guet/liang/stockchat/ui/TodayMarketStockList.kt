@@ -30,30 +30,7 @@ private fun ViewContainer<*, *>.MarketStockListHeader(
     subtitle: String,
     scale: Float,
 ) {
-    View {
-        attr {
-            flexDirectionRow()
-            alignItemsCenter()
-            marginTop(20f * scale)
-            marginBottom(10f * scale)
-        }
-        Text {
-            attr {
-                text(title)
-                fontSize(18f * scale)
-                fontWeightBold()
-                color(StockChatTheme.textPrimary)
-                flex(1f)
-            }
-        }
-        Text {
-            attr {
-                text(subtitle)
-                fontSize(11f * scale)
-                color(StockChatTheme.textTertiary)
-            }
-        }
-    }
+    TodayMarketSectionTitle(this, title, subtitle, scale)
 }
 
 private fun ViewContainer<*, *>.MarketStockColumns(
@@ -102,7 +79,6 @@ private fun ViewContainer<*, *>.MarketStockRows(
             alignSelfCenter()
             borderRadius(17f * scale)
             backgroundColor(StockChatTheme.surface)
-            themedBorder()
             padding(left = 14f * scale, right = 14f * scale)
         }
         quotes.forEachIndexed { index, quote ->
@@ -131,7 +107,6 @@ private fun ViewContainer<*, *>.MarketStockCard(
             padding(top = 10f * scale, left = 11f * scale, bottom = 9f * scale, right = 11f * scale)
             borderRadius(15f * scale)
             backgroundColor(StockChatTheme.surface)
-            themedBorder()
             marginBottom(if (firstRow) 8f * scale else 0f)
         }
         event { click { onQuoteClick(quote) } }

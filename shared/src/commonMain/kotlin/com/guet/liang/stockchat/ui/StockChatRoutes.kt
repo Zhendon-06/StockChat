@@ -4,4 +4,5 @@ package com.guet.liang.stockchat.ui
 
 internal const val CHAT_PAGE_NAME = "router"
 internal const val STOCK_DETAIL_PAGE_NAME = "stock_detail"
+internal const val SECTOR_DETAIL_PAGE_NAME = "sector_detail"
 internal const val IMAGE_PREVIEW_PAGE_NAME = "stock_image_preview"

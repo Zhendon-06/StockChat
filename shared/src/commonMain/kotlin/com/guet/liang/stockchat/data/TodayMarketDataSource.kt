@@ -127,6 +127,7 @@ internal class TencentTodayMarketDataSource(
                 changeLabel = formatPercent(average),
                 isPositive = average >= 0,
                 members = members.joinToString(" · ", transform = StockQuote::name),
+                stocks = members.sortedByDescending(::percentValue),
             )
         }.sortedByDescending { percentValue(it.changeLabel) }
 

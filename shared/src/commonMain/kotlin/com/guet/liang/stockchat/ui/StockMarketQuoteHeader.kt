@@ -46,6 +46,7 @@ internal fun StockMarketPanel.QuoteHeader(container: ViewContainer<*, *>) {
                     marginTop(4f)
                 }
             }
+            owner.DataStatus(this)
             owner.QuotePrice(this)
             val stats = listOf(
                 "今开" to snapshot.open, "最高" to snapshot.high, "最低" to snapshot.low,
@@ -82,6 +83,34 @@ internal fun StockMarketPanel.QuoteHeader(container: ViewContainer<*, *>) {
             }
             vif({ owner.expandedMetrics }) { metricRows(this, stats.drop(6)) }
 
+        }
+    }
+}
+
+private fun StockMarketPanel.DataStatus(container: ViewContainer<*, *>) {
+    val updatedAt = snapshot.quote.updatedAt
+    val isDemo = updatedAt.contains("非实时") || updatedAt.contains("演示")
+    with(container) {
+        View {
+            attr {
+                flexDirectionRow()
+                alignItemsCenter()
+                marginTop(7f)
+            }
+            Text {
+                attr {
+                    text(if (isDemo) "● 离线演示数据" else "● 已获取行情快照")
+                    fontSize(10f)
+                    color(if (isDemo) StockChatTheme.warning else StockChatTheme.positive)
+                }
+            }
+            Text {
+                attr {
+                    text("  ${updatedAt.removePrefix("腾讯行情 · ").ifBlank { "时间未知" }}")
+                    fontSize(10f)
+                    color(StockChatTheme.textTertiary)
+                }
+            }
         }
     }
 }

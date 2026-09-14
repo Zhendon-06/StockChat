@@ -19,40 +19,7 @@ internal fun ViewContainer<*, *>.TodayMarketLoading(
     pageWidth: Float,
     skeletonPhase: () -> Int,
 ) {
-    val contentWidth = (pageWidth - 36f * scale).coerceAtLeast(1f)
-    View {
-        attr { width(contentWidth) }
-        MarketSkeletonMoodCard(scale, contentWidth, skeletonPhase)
-        MarketSkeletonBar(width = contentWidth, height = 10f * scale, marginTop = 14f * scale, phase = skeletonPhase)
-        MarketSkeletonSectionTitle(scale, skeletonPhase)
-        repeat(4) {
-            MarketSkeletonIndexCard(scale, contentWidth, skeletonPhase)
-        }
-        MarketSkeletonSectionTitle(scale, skeletonPhase)
-        MarketSkeletonStockRow(scale, contentWidth, skeletonPhase)
-        View {
-            attr {
-                alignItemsCenter()
-                marginTop(22f * scale)
-                marginBottom(8f * scale)
-            }
-            Text {
-                attr {
-                    text("正在整理今日市场…")
-                    fontSize(14f * scale)
-                    color(StockChatTheme.textSecondary)
-                }
-            }
-            Text {
-                attr {
-                    text("稍等一下，先看指数整体表现")
-                    fontSize(12f * scale)
-                    color(StockChatTheme.textTertiary)
-                    marginTop(6f * scale)
-                }
-            }
-        }
-    }
+    TodayMarketStackedLoading(scale, pageWidth, skeletonPhase)
 }
 
 private fun ViewContainer<*, *>.MarketSkeletonMoodCard(scale: Float, contentWidth: Float, phase: () -> Int) {

@@ -4,6 +4,7 @@ import com.guet.liang.stockchat.base.bridgeModule
 import com.guet.liang.stockchat.base.openRoute
 import com.guet.liang.stockchat.base.stockDetailRouteParams
 import com.guet.liang.stockchat.controller.ArtifactResult
+import com.guet.liang.stockchat.data.toJson
 import com.guet.liang.stockchat.model.StockQuote
 import com.guet.liang.stockchat.model.VoiceInputState
 import com.guet.liang.stockchat.ui.settings.SETTINGS_PAGE_NAME
@@ -30,6 +31,29 @@ internal fun StockChatPage.openStockDetail(quote: StockQuote, sourceTab: Int) {
             aiProxyBaseUrl = pageData.params.optString("aiProxyBaseUrl"),
         ),
     )
+}
+
+internal fun StockChatPage.openSectorDetail(sector: com.guet.liang.stockchat.model.TodayMarketSectorObservation) {
+    if (selectedHomeTab != HOME_TAB_TODAY_MARKET) {
+        return
+    }
+    cancelVoiceInput()
+    if (inputRefReady) {
+        inputRef.view?.blur()
+    }
+    val params = JSONObject()
+    params.put(SECTOR_NAME_PARAM, sector.name)
+    params.put(SECTOR_CHANGE_PARAM, sector.changeLabel)
+    params.put(SECTOR_POSITIVE_PARAM, sector.isPositive)
+    params.put(
+        SECTOR_MEMBERS_PARAM,
+        com.tencent.kuikly.core.nvi.serialization.json.JSONArray().apply {
+            sector.stocks.forEach { put(it.toJson()) }
+        },
+    )
+    pageData.params.optString("qwenApiKey").trim().takeIf(String::isNotBlank)?.let { params.put("qwenApiKey", it) }
+    pageData.params.optString("aiProxyBaseUrl").trim().takeIf(String::isNotBlank)?.let { params.put("aiProxyBaseUrl", it) }
+    openRoute(SECTOR_DETAIL_PAGE_NAME, params)
 }
 
 internal fun StockChatPage.openImagePreview(imageUri: String) {

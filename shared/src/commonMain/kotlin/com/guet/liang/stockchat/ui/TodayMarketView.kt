@@ -17,7 +17,14 @@ internal fun ViewContainer<*, *>.TodayMarketContent(
     scale: Float,
     safeAreaBottom: Float,
     touchEnabled: () -> Boolean = { true },
+    indexFocus: () -> Int = { 0 },
+    onAdvanceIndexFocus: () -> Unit = {},
+    sectorFocus: () -> Int = { 0 },
+    onAdvanceSectorFocus: () -> Unit = {},
+    quoteFocus: () -> Int = { 0 },
+    onAdvanceQuoteFocus: () -> Unit = {},
     onQuoteClick: (StockQuote) -> Unit,
+    onSectorClick: (com.guet.liang.stockchat.model.TodayMarketSectorObservation) -> Unit = {},
     onRetry: () -> Unit,
     scrollerRef: ((com.tencent.kuikly.core.base.ViewRef<ScrollerView<*, *>>) -> Unit)? = null,
     onScroll: ((Float) -> Unit)? = null,
@@ -83,6 +90,13 @@ internal fun ViewContainer<*, *>.TodayMarketContent(
                         pageWidth = pageWidth,
                         scale = scale,
                         onQuoteClick = onQuoteClick,
+                        onSectorClick = onSectorClick,
+                        indexFocus = indexFocus,
+                        onAdvanceIndexFocus = onAdvanceIndexFocus,
+                        sectorFocus = sectorFocus,
+                        onAdvanceSectorFocus = onAdvanceSectorFocus,
+                        quoteFocus = quoteFocus,
+                        onAdvanceQuoteFocus = onAdvanceQuoteFocus,
                     )
                 }
             }

@@ -82,6 +82,8 @@ internal class StockChatPage : BasePager() {
     // 回落任务代次：键盘在回落窗口内再次弹起又收起时，作废旧定时器防止提前解冻
     internal var dockSettleGeneration = 0
     internal var inputText by observable("")
+    internal var stockFollowUpPrefix by observable("")
+    internal var stockFollowUpPrompt by observable("")
     private var prefillQuestionConsumed = false
     // 输入内容折行后的行数（估算，封顶 MAX_INPUT_LINES），驱动输入框与面板同步增高；
     // 超出封顶后 TextArea 自身高度不再增长，交由原生多行输入框的内部滚动查看之前内容
@@ -101,6 +103,9 @@ internal class StockChatPage : BasePager() {
     // 今日市场骨架屏呼吸相位：仅在市场 Tab 可见且仍在加载时由定时器翻转
     internal var todayMarketSkeletonPhase by observable(0)
     private var todayMarketSkeletonTimer: Timer? = null
+    internal var todayMarketIndexFocus by observable(0)
+    internal var todayMarketSectorFocus by observable(0)
+    internal var todayMarketQuoteFocus by observable(0)
     // 消息「更多」菜单当前指向的消息 id，非空时显示底部弹出菜单
     internal var messageMenuTargetId by observable("")
     internal var conversationMenuOpen by observable(false)
@@ -180,6 +185,18 @@ internal class StockChatPage : BasePager() {
     internal val todayMarketDataSourceReady: Boolean
         get() = ::todayMarketDataSource.isInitialized
 
+    internal fun advanceTodayMarketIndexFocus() {
+        todayMarketIndexFocus += 1
+    }
+
+    internal fun advanceTodayMarketSectorFocus() {
+        todayMarketSectorFocus += 1
+    }
+
+    internal fun advanceTodayMarketQuoteFocus() {
+        todayMarketQuoteFocus += 1
+    }
+
     override fun created() {
         super.created()
         applySavedAppearance()
@@ -258,9 +275,38 @@ internal class StockChatPage : BasePager() {
         prefillQuestionConsumed = true
         // stockContext 作为独立的结构化路由参数保留，不再重复拼进可见草稿。
         // 草稿与 TextArea 使用同一上限，避免原生限长截断后的文本、行数和面板高度失配。
-        inputText = prefillQuestion.take(MAX_COMPOSER_TEXT_LENGTH)
+        val prefixEnd = prefillQuestion.indexOf("]")
+        val stockPrefix = prefillQuestion.takeIf { it.startsWith("[") && prefixEnd > 1 }
+            ?.substring(0, prefixEnd + 1)
+        stockFollowUpPrefix = stockPrefix?.plus(" ").orEmpty()
+        inputText = if (stockPrefix != null) {
+            (stockFollowUpPrefix + prefillQuestion.substring(prefixEnd + 1).trimStart()).take(MAX_COMPOSER_TEXT_LENGTH)
+        } else {
+            prefillQuestion.take(MAX_COMPOSER_TEXT_LENGTH)
+        }
+        if (stockPrefix != null) {
+            pageData.params.optJSONObject("stockContext")?.let { stockFollowUpPrompt = it.toStockFollowUpPrompt() }
+        }
         updateInputLineMetrics(inputText)
         focusComposer()
+    }
+
+    private fun JSONObject.toStockFollowUpPrompt(): String {
+        val name = optString("name").trim()
+        val symbol = optString("symbol").trim()
+        val price = optString("price").trim()
+        val change = optString("change").trim()
+        val changePercent = optString("changePercent").trim()
+        val updatedAt = optString("updatedAt").trim()
+        val selectedPoint = optString("selectedPoint").trim()
+        val insight = optString("insight").trim()
+        val rationale = optString("predictionRationale").trim()
+        return buildString {
+            append("请围绕$name（$symbol）回答。当前价格 $price（$change，$changePercent，数据时间 $updatedAt）。")
+            if (selectedPoint.isNotBlank()) append("走势图选中信息：$selectedPoint。")
+            if (insight.isNotBlank()) append("AI 解读：$insight")
+            if (rationale.isNotBlank()) append("预测依据：$rationale")
+        }.trim()
     }
 
     private fun observeBackRequests() {

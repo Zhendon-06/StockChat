@@ -24,6 +24,8 @@ internal data class TodayMarketSectorObservation(
     val changeLabel: String,
     val isPositive: Boolean,
     val members: String,
+    // 板块样本股的完整行情快照：板块二级页直接展示，无需再请求
+    val stocks: List<StockQuote> = emptyList(),
 )
 
 /** Shared cross-platform type; this declaration defines a stable contract for callers. */

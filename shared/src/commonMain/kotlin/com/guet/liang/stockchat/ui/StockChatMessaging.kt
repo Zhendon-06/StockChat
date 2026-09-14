@@ -18,7 +18,13 @@ internal fun StockChatPage.sendMessage(submittedText: String? = null, source: St
         bridgeModule.toast("请先结束语音输入")
         return
     }
-    val submission = ChatSubmission(submittedText ?: inputText, selectedImagePreviews.toList(), selectedImagePayloads.toList())
+    val visibleText = submittedText ?: inputText
+    val submissionText = if (stockFollowUpPrompt.isNotBlank() && visibleText.isNotBlank()) {
+        "$stockFollowUpPrompt\n用户追问：${visibleText.removePrefix(stockFollowUpPrefix).trim()}"
+    } else {
+        visibleText
+    }
+    val submission = ChatSubmission(submissionText, selectedImagePreviews.toList(), selectedImagePayloads.toList())
     val error = sendController.validationError(submission)
     if (error != null) {
         bridgeModule.toast(error)
@@ -30,6 +36,8 @@ internal fun StockChatPage.sendMessage(submittedText: String? = null, source: St
         inputRef.view?.blur()
     }
     inputText = ""
+    stockFollowUpPrefix = ""
+    stockFollowUpPrompt = ""
     resetInputLineMetrics()
     selectedImagePreviews.clear()
     selectedImages.clear()

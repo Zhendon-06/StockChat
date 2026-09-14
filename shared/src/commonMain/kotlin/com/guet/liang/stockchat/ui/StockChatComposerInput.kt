@@ -1,6 +1,7 @@
 package com.guet.liang.stockchat.ui
 
 import com.guet.liang.stockchat.base.maxTextLengthLegacy
+import com.guet.liang.stockchat.base.replaceNativeText
 import com.guet.liang.stockchat.base.setTimeout
 import com.tencent.kuikly.core.base.Animation
 import com.tencent.kuikly.core.base.Color
@@ -26,8 +27,18 @@ internal fun StockChatPage.bindComposerInput(view: com.tencent.kuikly.core.views
     with(view) {
         event {
             textDidChange(isSyncEdit = true) {
-                ctx.inputText = it.text
-                ctx.updateInputLineMetrics(it.text)
+                val prefix = ctx.stockFollowUpPrefix
+                if (prefix.isNotBlank() && !it.text.startsWith(prefix) && ctx.inputText.startsWith(prefix)) {
+                    val restoredText = ctx.inputText.removePrefix(prefix)
+                    ctx.stockFollowUpPrefix = ""
+                    ctx.stockFollowUpPrompt = ""
+                    ctx.inputText = restoredText
+                    ctx.updateInputLineMetrics(restoredText)
+                    ctx.inputRef.view?.replaceNativeText(restoredText)
+                } else {
+                    ctx.inputText = it.text
+                    ctx.updateInputLineMetrics(it.text)
+                }
             }
             inputFocus { ctx.handleComposerFocus(it.text) }
             inputBlur {
@@ -51,7 +62,13 @@ internal fun com.tencent.kuikly.core.views.TextAreaAttr.configureComposerInput(c
     text(ctx.inputText)
     fontSize(metrics.dp(17f))
     lineHeight(metrics.dp(23f))
-    color(if (ctx.voiceMode) Color(0x00000000) else StockChatTheme.textPrimary)
+    color(
+        when {
+            ctx.voiceMode -> Color(0x00000000)
+            ctx.stockFollowUpPrefix.isNotBlank() -> StockChatTheme.positive
+            else -> StockChatTheme.textPrimary
+        }
+    )
     tintColor(if (ctx.voiceMode) Color(0x00000000) else StockChatTheme.accent)
     placeholder(
         if (ctx.composerExpanded) {

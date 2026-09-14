@@ -129,9 +129,20 @@ internal fun StockChatPage.TodayMarketLayer(container: ViewContainer<*, *>) {
                 scale = ctx.layoutMetrics.scale,
                 safeAreaBottom = ctx.pagerData.safeAreaInsets.bottom,
                 touchEnabled = { ctx.selectedHomeTab == HOME_TAB_TODAY_MARKET },
+                indexFocus = { ctx.todayMarketIndexFocus },
+                onAdvanceIndexFocus = { ctx.advanceTodayMarketIndexFocus() },
+                sectorFocus = { ctx.todayMarketSectorFocus },
+                onAdvanceSectorFocus = { ctx.advanceTodayMarketSectorFocus() },
+                quoteFocus = { ctx.todayMarketQuoteFocus },
+                onAdvanceQuoteFocus = { ctx.advanceTodayMarketQuoteFocus() },
                 onQuoteClick = { quote ->
                     if (ctx.selectedHomeTab == HOME_TAB_TODAY_MARKET) {
                         ctx.openStockDetail(quote, HOME_TAB_TODAY_MARKET)
+                    }
+                },
+                onSectorClick = { sector ->
+                    if (ctx.selectedHomeTab == HOME_TAB_TODAY_MARKET) {
+                        ctx.openSectorDetail(sector)
                     }
                 },
                 onRetry = {

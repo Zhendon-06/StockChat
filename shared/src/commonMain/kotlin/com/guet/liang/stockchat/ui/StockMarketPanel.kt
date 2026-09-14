@@ -91,6 +91,7 @@ internal class StockMarketPanel : ComposeView<ComposeAttr, ComposeEvent>() {
             attr { flexDirectionColumn() }
             owner.QuoteHeader(this)
             owner.ChartPanel(this)
+            owner.MarketAiSummary(this)
             MarketPeriod.entries.filter { !it.isIntraday }.forEach { requested ->
                 vif({ owner.period == requested && owner.loadedPeriod == requested && owner.chartResult is MarketChartResult.Content }) {
                     owner.MarketInsight(this)
@@ -101,21 +102,28 @@ internal class StockMarketPanel : ComposeView<ComposeAttr, ComposeEvent>() {
                     flexDirectionRow()
                     marginTop(16f)
                     marginBottom(10f)
+                    padding(all = 3f)
+                    borderRadius(12f)
+                    backgroundColor(StockChatTheme.recessed)
                 }
                 (if (owner.controller.isIndex) listOf("概览", "简况") else listOf("盘口", "简况")).forEach { tab ->
                     View {
                         attr {
                             flex(1f)
                             alignItemsCenter()
-                            padding(9f)
-                            borderRadius(8f)
+                            padding(7f)
+                            borderRadius(9f)
                             backgroundColor(if (owner.section == tab) StockChatTheme.surface else Color.TRANSPARENT)
                         }
-                        event { click { owner.section = tab } }
+                        event {
+                            click {
+                                owner.section = tab
+                            }
+                        }
                         Text {
                             attr {
                                 text(tab)
-                                fontSize(15f)
+                                fontSize(13f)
                                 fontWeightMedium()
                                 color(if (owner.section == tab) StockChatTheme.textPrimary else StockChatTheme.textTertiary)
                             }
@@ -129,6 +137,7 @@ internal class StockMarketPanel : ComposeView<ComposeAttr, ComposeEvent>() {
             vif({ owner.section == "简况" }) {
                 if (owner.controller.isIndex) owner.IndexProfile(this) else owner.Overview(this)
             }
+            owner.ResearchAppendix(this)
             Text {
                 attr {
                     text("演示行情 · 腾讯证券快照，非逐笔实时推送\n${owner.snapshot.quote.updatedAt.removePrefix("腾讯行情 · ")}")
