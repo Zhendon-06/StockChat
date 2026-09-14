@@ -2,6 +2,7 @@ package com.guet.liang.stockchat.ui
 
 import com.guet.liang.stockchat.base.BasePager
 import com.guet.liang.stockchat.base.bridgeModule
+import com.guet.liang.stockchat.base.setTimeout
 import com.guet.liang.stockchat.controller.ArtifactController
 import com.guet.liang.stockchat.controller.ChatSendController
 import com.guet.liang.stockchat.controller.ChatSessionController
@@ -36,6 +37,10 @@ import com.tencent.kuikly.core.views.TextAreaView
 internal const val DEFAULT_KEYBOARD_ANIM_DURATION = 0.25f
 // 今日市场骨架屏明暗呼吸的周期（毫秒）
 private const val TODAY_MARKET_SKELETON_PULSE_INTERVAL_MS = 700
+// Card changes use a short exit pause before swapping the data. Keeping the
+// swap behind the exit animation prevents the next card from popping in early.
+private const val TODAY_MARKET_CARD_SWITCH_EXIT_MS = 150
+private const val TODAY_MARKET_CARD_SWITCH_SETTLE_MS = 260
 
 @Page(CHAT_PAGE_NAME, supportInLocal = true)
 /** Shared cross-platform type; this declaration defines a stable contract for callers. */
@@ -106,6 +111,15 @@ internal class StockChatPage : BasePager() {
     internal var todayMarketIndexFocus by observable(0)
     internal var todayMarketSectorFocus by observable(0)
     internal var todayMarketQuoteFocus by observable(0)
+    internal var todayMarketIndexPulse by observable(false)
+    internal var todayMarketSectorPulse by observable(false)
+    internal var todayMarketQuotePulse by observable(false)
+    internal var todayMarketIndexRevealPhase by observable(0)
+    internal var todayMarketSectorRevealPhase by observable(0)
+    internal var todayMarketQuoteRevealPhase by observable(0)
+    private var todayMarketIndexPulseToken = 0
+    private var todayMarketSectorPulseToken = 0
+    private var todayMarketQuotePulseToken = 0
     // 消息「更多」菜单当前指向的消息 id，非空时显示底部弹出菜单
     internal var messageMenuTargetId by observable("")
     internal var conversationMenuOpen by observable(false)
@@ -186,15 +200,72 @@ internal class StockChatPage : BasePager() {
         get() = ::todayMarketDataSource.isInitialized
 
     internal fun advanceTodayMarketIndexFocus() {
-        todayMarketIndexFocus += 1
+        triggerTodayMarketIndexPulse()
     }
 
     internal fun advanceTodayMarketSectorFocus() {
-        todayMarketSectorFocus += 1
+        triggerTodayMarketSectorPulse()
     }
 
     internal fun advanceTodayMarketQuoteFocus() {
-        todayMarketQuoteFocus += 1
+        triggerTodayMarketQuotePulse()
+    }
+
+    private fun triggerTodayMarketIndexPulse() {
+        val token = ++todayMarketIndexPulseToken
+        todayMarketIndexPulse = true
+        todayMarketIndexRevealPhase = 1
+        setTimeout(TODAY_MARKET_CARD_SWITCH_EXIT_MS) {
+            if (token != todayMarketIndexPulseToken) return@setTimeout
+            todayMarketIndexFocus += 1
+            setTimeout(16) {
+                if (token == todayMarketIndexPulseToken) todayMarketIndexRevealPhase = 2
+            }
+        }
+        setTimeout(TODAY_MARKET_CARD_SWITCH_EXIT_MS + TODAY_MARKET_CARD_SWITCH_SETTLE_MS) {
+            if (token == todayMarketIndexPulseToken) {
+                todayMarketIndexPulse = false
+                todayMarketIndexRevealPhase = 0
+            }
+        }
+    }
+
+    private fun triggerTodayMarketSectorPulse() {
+        val token = ++todayMarketSectorPulseToken
+        todayMarketSectorPulse = true
+        todayMarketSectorRevealPhase = 1
+        setTimeout(TODAY_MARKET_CARD_SWITCH_EXIT_MS) {
+            if (token != todayMarketSectorPulseToken) return@setTimeout
+            todayMarketSectorFocus += 1
+            setTimeout(16) {
+                if (token == todayMarketSectorPulseToken) todayMarketSectorRevealPhase = 2
+            }
+        }
+        setTimeout(TODAY_MARKET_CARD_SWITCH_EXIT_MS + TODAY_MARKET_CARD_SWITCH_SETTLE_MS) {
+            if (token == todayMarketSectorPulseToken) {
+                todayMarketSectorPulse = false
+                todayMarketSectorRevealPhase = 0
+            }
+        }
+    }
+
+    private fun triggerTodayMarketQuotePulse() {
+        val token = ++todayMarketQuotePulseToken
+        todayMarketQuotePulse = true
+        todayMarketQuoteRevealPhase = 1
+        setTimeout(TODAY_MARKET_CARD_SWITCH_EXIT_MS) {
+            if (token != todayMarketQuotePulseToken) return@setTimeout
+            todayMarketQuoteFocus += 1
+            setTimeout(16) {
+                if (token == todayMarketQuotePulseToken) todayMarketQuoteRevealPhase = 2
+            }
+        }
+        setTimeout(TODAY_MARKET_CARD_SWITCH_EXIT_MS + TODAY_MARKET_CARD_SWITCH_SETTLE_MS) {
+            if (token == todayMarketQuotePulseToken) {
+                todayMarketQuotePulse = false
+                todayMarketQuoteRevealPhase = 0
+            }
+        }
     }
 
     override fun created() {

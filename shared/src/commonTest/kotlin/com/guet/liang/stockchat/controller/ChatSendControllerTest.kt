@@ -53,6 +53,31 @@ class ChatSendControllerTest {
         assertTrue(fixture.sessions.messages.isEmpty())
     }
 
+    @Test
+    fun followUpDisablesMarketCardsAtRequestAndPresentationBoundaries() {
+        val fixture = Fixture()
+        fixture.send.sendMessage(ChatSubmission("围绕茅台继续分析", marketCardsEnabled = false))
+
+        assertFalse(fixture.source.lastMarketCardsEnabled)
+        val card = AnswerBlock.MarketQuote(
+            StockQuote("贵州茅台", "600519", "沪市", "1", "0", "0%", "now", true, emptyList(), "", ""),
+        )
+        fixture.source.callback(ChatAnswer.Streaming("正在分析", listOf(card)))
+        assertEquals(listOf(AnswerBlock.Markdown("正在分析", "正在分析")), fixture.sessions.messages.last().blocks)
+        fixture.source.callback(ChatAnswer.Success(listOf(AnswerBlock.Markdown("回答", "回答"), card)))
+
+        assertEquals(listOf(AnswerBlock.Markdown("回答", "回答")), fixture.sessions.messages.last().blocks)
+        assertFalse(fixture.sessions.messages.last().marketCardsEnabled)
+        fixture.sessions.loadMessages()
+        fixture.send.regenerateMessage(fixture.sessions.messages.last())
+        assertEquals(1, fixture.source.attempt)
+        assertFalse(fixture.source.lastMarketCardsEnabled)
+        fixture.source.callback(ChatAnswer.Failure("offline"))
+        fixture.send.retryMessage(fixture.sessions.messages.last())
+        assertEquals(2, fixture.source.attempt)
+        assertFalse(fixture.source.lastMarketCardsEnabled)
+    }
+
     private class Fixture {
         val repository = FakeChatSessionRepository()
         val sessions = ChatSessionController(repository).apply { initialize() }
@@ -63,6 +88,7 @@ class ChatSendControllerTest {
     private class Source : StockChatDataSource {
         var requests = 0
         var attempt = 0
+        var lastMarketCardsEnabled = true
         lateinit var callback: (ChatAnswer) -> Unit
 
         override fun answer(
@@ -75,6 +101,22 @@ class ChatSendControllerTest {
         ) {
             requests += 1
             this.attempt = attempt
+            lastMarketCardsEnabled = true
+            this.callback = callback
+        }
+
+        override fun answer(
+            question: String,
+            history: List<ChatHistoryItem>,
+            images: List<String>,
+            model: String,
+            attempt: Int,
+            marketCardsEnabled: Boolean,
+            callback: (ChatAnswer) -> Unit,
+        ) {
+            requests += 1
+            this.attempt = attempt
+            lastMarketCardsEnabled = marketCardsEnabled
             this.callback = callback
         }
     }

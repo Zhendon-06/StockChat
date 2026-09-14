@@ -36,6 +36,16 @@ internal class AliyunStockChatDataSource(
         model: String,
         attempt: Int,
         callback: (ChatAnswer) -> Unit,
+    ) = answer(question, history, images, model, attempt, true, callback)
+
+    override fun answer(
+        question: String,
+        history: List<ChatHistoryItem>,
+        images: List<String>,
+        model: String,
+        attempt: Int,
+        marketCardsEnabled: Boolean,
+        callback: (ChatAnswer) -> Unit,
     ) {
         if (images.isNotEmpty() && !config.supportsVision) {
             callback(ChatAnswer.Failure(visionUnsupportedMessage(model)))
@@ -52,9 +62,31 @@ internal class AliyunStockChatDataSource(
         val selectedModel = if (images.isEmpty()) model.ifBlank { config.chatModel } else config.visionModel
         val turn = ChatTurn(question, normalizedHistory, images, model, selectedModel)
         when {
+            !marketCardsEnabled -> answerTextOnly(turn, attempt, callback)
             images.isNotEmpty() -> answerWithContext(turn, MarketBranchOutcome.NONE, attempt, callback)
             config.answerMode == AnswerMode.PRECISE -> answerPrecise(turn, attempt, callback)
             else -> answerFast(turn, attempt, callback)
+        }
+    }
+
+    /** Answers a detail-page follow-up without repeating stock identification or quote fetching. */
+    private fun answerTextOnly(turn: ChatTurn, attempt: Int, callback: (ChatAnswer) -> Unit) {
+        val contextHistory = ContextWindowManager.trim(turn.history, turn.question, config.contextWindowTokens)
+        val cacheKey = aiResponseCacheKey(
+            config,
+            turn.selectedModel,
+            turn.question,
+            contextHistory,
+            turn.images,
+            marketCardsEnabled = false,
+        )
+        if (readCachedAnswer(cacheKey, attempt, callback)) return
+        completionClient.answer(
+            turn.question, contextHistory, turn.images, turn.selectedModel,
+            systemPromptOverride = SYSTEM_PROMPT + FOLLOW_UP_PROMPT,
+        ) { answer ->
+            if (answer is ChatAnswer.Success) AiResponseCache.put(cacheKey, answer.blocks)
+            callback(answer)
         }
     }
 
@@ -78,7 +110,7 @@ internal class AliyunStockChatDataSource(
         val cacheKey = aiResponseCacheKey(config, turn.selectedModel, turn.question, contextHistory, turn.images)
         if (readCachedAnswer(cacheKey, attempt, callback)) return
         val join = ParallelAnswerJoin(callback) { blocks -> AiResponseCache.put(cacheKey, blocks) }
-        completionClient.answer(turn.question, contextHistory, turn.images, turn.selectedModel, join::onChat)
+        completionClient.answer(turn.question, contextHistory, turn.images, turn.selectedModel, callback = join::onChat)
         startMarketBranch(turn.question, turn.model, forcedWebSearch = false, join::onMarket)
     }
 
@@ -105,7 +137,7 @@ internal class AliyunStockChatDataSource(
         val join = ParallelAnswerJoin(callback) { blocks -> AiResponseCache.put(cacheKey, blocks) }
         // Cards are already known, so they ride along with the very first streamed delta.
         join.onMarket(outcome)
-        completionClient.answer(questionWithMarketContext, contextHistory, turn.images, turn.selectedModel, join::onChat)
+        completionClient.answer(questionWithMarketContext, contextHistory, turn.images, turn.selectedModel, callback = join::onChat)
     }
 
     /**
@@ -202,6 +234,11 @@ internal class AliyunStockChatDataSource(
 
         private const val CACHE_REPLAY_STEP_CHARS = 48
 
+        private const val FOLLOW_UP_PROMPT =
+            "本轮是基于详情页行情快照的追问，不会额外获取行情或展示新的行情卡片。" +
+                "请直接结合用户消息和历史上下文回答；引用快照数字时注明数据时间，" +
+                "不要将其当作新获取的实时行情，也不要引导用户查看本轮行情卡片。"
+
         private const val SYSTEM_PROMPT =
             "你是 StockMate，一名面向股票资讯、市场研究和投资决策辅助的中文 AI 助手。" +
                 "请用简洁、结构清晰的 Markdown 回答行情、个股、指数、组合、投资入门和金融知识，也可以回答其他通用问题；" +
@@ -213,8 +250,7 @@ internal class AliyunStockChatDataSource(
                 "回答中新增具体股票或指数时，必须同时给出可核验的交易所代码（如 sh600519）；" +
                 "无法确认代码时应明确标记待确认，不得把未经核验的标的写成确定推荐。" +
                 "当用户消息附带腾讯证券行情工具数据时，实时数字只能引用该数据并注明数据时间；" +
-                "未附带时，系统会另行获取用户提到标的的实时行情并以卡片展示在回答下方，" +
-                "此时你没有实时行情数据，不得编造或猜测当前价格与涨跌，涉及实时数字时请引导用户查看行情卡片。" +
+                "未附带时，你没有本轮实时行情数据，不得编造或猜测当前价格与涨跌；只有回答附有行情卡片时，才可引导用户查看卡片。" +
                 "历史消息中形如“[行情标的:代码|名称] 时间，现价 …”的内容是此前卡片记录的行情，引用时必须注明其时间。" +
                 "未提供新闻、公告或基本面证据时，不得臆测涨跌原因。" +
                 "不得声称掌握未提供的实时行情，不得编造价格、事实或确定性收益，不得使用‘稳赚’‘必涨’等绝对表述；不确定时要明确说明。" +

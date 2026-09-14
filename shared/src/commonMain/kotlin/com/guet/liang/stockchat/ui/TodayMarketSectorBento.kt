@@ -37,9 +37,8 @@ internal fun ViewContainer<*, *>.MarketSectorBento(
             width(contentWidth)
             height(stageHeight)
             positionRelative()
-            opacity(if (pulse) 0.84f else 1f)
-            transform(Translate(0f, 0f, 0f, if (pulse) 4f * scale else 0f))
-            animate(Animation.easeInOut(0.24f), pulse)
+            opacity(if (pulse) 0.94f else 1f)
+            animate(Animation.easeOut(0.15f), pulse)
         }
         View {
             attr {

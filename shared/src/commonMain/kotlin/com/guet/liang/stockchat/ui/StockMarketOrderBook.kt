@@ -1,6 +1,7 @@
 package com.guet.liang.stockchat.ui
 
 import com.guet.liang.stockchat.model.MarketOrderLevel
+import com.guet.liang.stockchat.model.TencentMarketSnapshot
 
 import com.guet.liang.kuiklychart.finance.financialNumber
 import com.guet.liang.kuiklychart.finance.financialVolume
@@ -12,6 +13,7 @@ import com.tencent.kuikly.core.views.View
 internal fun StockMarketPanel.OrderBook(container: ViewContainer<*, *>) {
     val snapshot = this.snapshot
     val owner = this
+    val metrics = orderBookMetrics(snapshot)
     with(container) {
         View {
             attr {
@@ -28,92 +30,119 @@ internal fun StockMarketPanel.OrderBook(container: ViewContainer<*, *>) {
                 }
             }
             if (snapshot.orderBook.isEmpty()) {
-                Text {
-                    attr {
-                        text("该标的暂无五档报价，停牌或指数可能不提供盘口。")
-                        fontSize(12f)
-                        color(StockChatTheme.textSecondary)
-                        marginTop(14f)
-                    }
-                }
+                OrderBookEmptyState(this)
             } else {
-                View {
-                    attr {
-                        flexDirectionRow()
-                        marginTop(12f)
-                    }
-                    listOf("买", "卖").forEach { side ->
-                        owner.OrderSide(this, side)
-                    }
+                OrderBookLevels(this, owner, metrics)
+                OrderBookImbalance(this, metrics)
+            }
+        }
+    }
+}
+
+private fun OrderBookEmptyState(container: ViewContainer<*, *>) {
+    with(container) {
+        Text {
+            attr {
+                text("该标的暂无五档报价，停牌或指数可能不提供盘口。")
+                fontSize(12f)
+                color(StockChatTheme.textSecondary)
+                marginTop(14f)
+            }
+        }
+    }
+}
+
+private fun OrderBookLevels(container: ViewContainer<*, *>, owner: StockMarketPanel, metrics: OrderBookMetrics) {
+    val bidRatio = metrics.bidRatio
+    with(container) {
+        View {
+            attr {
+                flexDirectionRow()
+                marginTop(12f)
+            }
+            listOf("买", "卖").forEach { side ->
+                owner.OrderSide(this, side)
+            }
+        }
+        View {
+            attr {
+                flexDirectionRow()
+                alignItemsCenter()
+                marginTop(10f)
+            }
+            View {
+                attr {
+                    flex(bidRatio.coerceIn(0.03f, 0.97f))
+                    height(6f)
+                    borderRadius(3f)
+                    backgroundColor(StockChatTheme.positive)
                 }
-                val bids = snapshot.orderBook.filter { it.side == "买" }.sumOf { it.volume.toDouble() }
-                val asks = snapshot.orderBook.filter { it.side == "卖" }.sumOf { it.volume.toDouble() }
-                val imbalance = if (bids + asks > 0) ((bids - asks) / (bids + asks) * 100).toFloat() else null
-                val bidRatio = if (bids + asks > 0) (bids / (bids + asks)).toFloat() else 0.5f
-                View {
-                    attr {
-                        flexDirectionRow()
-                        alignItemsCenter()
-                        marginTop(10f)
-                    }
-                    View {
-                        attr {
-                            flex(bidRatio.coerceIn(0.03f, 0.97f))
-                            height(6f)
-                            borderRadius(3f)
-                            backgroundColor(StockChatTheme.positive)
-                        }
-                    }
-                    View {
-                        attr {
-                            flex((1f - bidRatio).coerceIn(0.03f, 0.97f))
-                            height(6f)
-                            borderRadius(3f)
-                            marginLeft(2f)
-                            backgroundColor(StockChatTheme.negative)
-                        }
-                    }
-                }
-                View {
-                    attr {
-                        flexDirectionRow()
-                        alignItemsCenter()
-                        marginTop(8f)
-                    }
-                    Text {
-                        attr {
-                            text("五档委比  ")
-                            fontSize(10f)
-                            color(StockChatTheme.textTertiary)
-                        }
-                    }
-                    Text {
-                        attr {
-                            text(imbalance?.let { signed(it) + "%" } ?: "--")
-                            fontSize(10f)
-                            fontWeightMedium()
-                            color(
-                                when {
-                                    imbalance == null -> StockChatTheme.textTertiary
-                                    imbalance > 0f -> StockChatTheme.positive
-                                    imbalance < 0f -> StockChatTheme.negative
-                                    else -> StockChatTheme.textSecondary
-                                }
-                            )
-                        }
-                    }
-                    Text {
-                        attr {
-                            text("  ·  买卖量仅统计当前五档")
-                            fontSize(10f)
-                            color(StockChatTheme.textTertiary)
-                        }
-                    }
+            }
+            View {
+                attr {
+                    flex((1f - bidRatio).coerceIn(0.03f, 0.97f))
+                    height(6f)
+                    borderRadius(3f)
+                    marginLeft(2f)
+                    backgroundColor(StockChatTheme.negative)
                 }
             }
         }
     }
 }
+
+private fun OrderBookImbalance(container: ViewContainer<*, *>, metrics: OrderBookMetrics) {
+    val imbalance = metrics.imbalance
+    with(container) {
+        View {
+            attr {
+                flexDirectionRow()
+                alignItemsCenter()
+                marginTop(8f)
+            }
+            Text {
+                attr {
+                    text("五档委比  ")
+                    fontSize(10f)
+                    color(StockChatTheme.textTertiary)
+                }
+            }
+            Text {
+                attr {
+                    text(imbalance?.let { signed(it) + "%" } ?: "--")
+                    fontSize(10f)
+                    fontWeightMedium()
+                    color(
+                        when {
+                            imbalance == null -> StockChatTheme.textTertiary
+                            imbalance > 0f -> StockChatTheme.positive
+                            imbalance < 0f -> StockChatTheme.negative
+                            else -> StockChatTheme.textSecondary
+                        }
+                    )
+                }
+            }
+            Text {
+                attr {
+                    text("  ·  买卖量仅统计当前五档")
+                    fontSize(10f)
+                    color(StockChatTheme.textTertiary)
+                }
+            }
+        }
+    }
+}
+
+private data class OrderBookMetrics(val bidVolume: Double, val askVolume: Double) {
+    private val totalVolume: Double get() = bidVolume + askVolume
+    val bidRatio: Float get() = if (totalVolume > 0) (bidVolume / totalVolume).toFloat() else 0.5f
+    val imbalance: Float? get() = if (totalVolume > 0) ((bidVolume - askVolume) / totalVolume * 100).toFloat() else null
+}
+
+private fun orderBookMetrics(snapshot: TencentMarketSnapshot): OrderBookMetrics = OrderBookMetrics(
+    bidVolume = snapshot.orderBook.filter { it.side == "买" }.sumOf { it.volume.toDouble() },
+    askVolume = snapshot.orderBook.filter { it.side == "卖" }.sumOf { it.volume.toDouble() },
+)
 
 internal fun StockMarketPanel.priceColor(value: Float?): Color {
     val previous = snapshot.previousClose.toFloatOrNull() ?: return StockChatTheme.textPrimary

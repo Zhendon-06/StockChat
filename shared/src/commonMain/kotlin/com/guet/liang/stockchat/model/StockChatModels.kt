@@ -47,6 +47,8 @@ internal data class ChatMessage(
     val retryQuestion: String = "",
     val retryAttempt: Int = 0,
     val errorMessage: String = "",
+    /** Detail-page follow-ups already contain a quote snapshot and must not fetch another card. */
+    val marketCardsEnabled: Boolean = true,
 )
 
 /** Shared cross-platform type; this declaration defines a stable contract for callers. */

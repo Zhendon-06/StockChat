@@ -130,10 +130,16 @@ internal fun StockChatPage.TodayMarketLayer(container: ViewContainer<*, *>) {
                 safeAreaBottom = ctx.pagerData.safeAreaInsets.bottom,
                 touchEnabled = { ctx.selectedHomeTab == HOME_TAB_TODAY_MARKET },
                 indexFocus = { ctx.todayMarketIndexFocus },
+                indexPulse = { ctx.todayMarketIndexPulse },
+                indexRevealPhase = { ctx.todayMarketIndexRevealPhase },
                 onAdvanceIndexFocus = { ctx.advanceTodayMarketIndexFocus() },
                 sectorFocus = { ctx.todayMarketSectorFocus },
+                sectorPulse = { ctx.todayMarketSectorPulse },
+                sectorRevealPhase = { ctx.todayMarketSectorRevealPhase },
                 onAdvanceSectorFocus = { ctx.advanceTodayMarketSectorFocus() },
                 quoteFocus = { ctx.todayMarketQuoteFocus },
+                quotePulse = { ctx.todayMarketQuotePulse },
+                quoteRevealPhase = { ctx.todayMarketQuoteRevealPhase },
                 onAdvanceQuoteFocus = { ctx.advanceTodayMarketQuoteFocus() },
                 onQuoteClick = { quote ->
                     if (ctx.selectedHomeTab == HOME_TAB_TODAY_MARKET) {

@@ -82,11 +82,12 @@ internal class StockChatCompletionClient(
         history: List<ChatHistoryItem>,
         images: List<String>,
         model: String,
+        systemPromptOverride: String? = null,
         callback: (ChatAnswer) -> Unit,
     ) {
         val streaming = useNativeStreaming && config.supportsStreaming && bridgeModule != null
         val body = ChatCompletionRequestBuilder.build(
-            systemPrompt = systemPrompt,
+            systemPrompt = systemPromptOverride ?: systemPrompt,
             question = question,
             history = history,
             images = images,

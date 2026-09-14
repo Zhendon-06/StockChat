@@ -14,4 +14,15 @@ internal interface StockChatDataSource {
         callback: (ChatAnswer) -> Unit,
     )
 
+    /** Allows detail-page follow-ups to skip the independent stock/card request. */
+    fun answer(
+        question: String,
+        history: List<ChatHistoryItem>,
+        images: List<String>,
+        model: String,
+        attempt: Int,
+        marketCardsEnabled: Boolean,
+        callback: (ChatAnswer) -> Unit,
+    ) = answer(question, history, images, model, attempt, callback)
+
 }

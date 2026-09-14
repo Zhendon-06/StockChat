@@ -14,6 +14,7 @@ CREATE TABLE chat_message (
     retry_question TEXT NOT NULL DEFAULT '',
     retry_attempt INTEGER NOT NULL DEFAULT 0,
     error_message TEXT NOT NULL DEFAULT '',
+    market_cards_enabled INTEGER NOT NULL DEFAULT 1,
     sort_order INTEGER NOT NULL,
     created_at INTEGER NOT NULL,
     FOREIGN KEY (session_id) REFERENCES chat_session(id) ON DELETE CASCADE
@@ -221,11 +222,12 @@ INSERT INTO chat_message(
     retry_question,
     retry_attempt,
     error_message,
+    market_cards_enabled,
     sort_order,
     created_at
 )
 VALUES (
-    ?, ?, ?, ?, ?, ?, ?, ?,
+    ?, ?, ?, ?, ?, ?, ?, ?, ?,
     CAST(strftime('%s', 'now') AS INTEGER) * 1000 + CAST(substr(strftime('%f', 'now'), 4, 3) AS INTEGER)
 );
 

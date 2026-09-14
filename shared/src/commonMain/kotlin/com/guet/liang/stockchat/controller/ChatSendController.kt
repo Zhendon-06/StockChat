@@ -12,7 +12,12 @@ import com.guet.liang.stockchat.model.MessageState
 import com.guet.liang.stockchat.model.ModelCapability
 
 /** Validated user input and its image request payloads travel together. */
-internal data class ChatSubmission(val text: String, val images: List<String> = emptyList(), val payloads: List<String> = emptyList()) {
+internal data class ChatSubmission(
+    val text: String,
+    val images: List<String> = emptyList(),
+    val payloads: List<String> = emptyList(),
+    val marketCardsEnabled: Boolean = true,
+) {
     val question: String
         get() = text.trim().ifBlank { if (images.isNotEmpty()) "请分析我上传的图片" else "" }
 }
@@ -62,10 +67,11 @@ internal class ChatSendController(
                 blocks = emptyList(),
                 state = MessageState.GENERATING,
                 retryQuestion = question,
+                marketCardsEnabled = input.marketCardsEnabled,
             )
         sessions.replaceMessages(sessions.messages + user + answer)
         sessions.persist()
-        completeAnswer(answer.id, question, 0, token)
+        completeAnswer(answer.id, question, 0, token, input.marketCardsEnabled)
     }
 
     fun retryMessage(message: ChatMessage) {
@@ -86,7 +92,7 @@ internal class ChatSendController(
             )
         sessions.replaceMessages(sessions.messages.toMutableList().apply { this[index] = next })
         sessions.persist()
-        completeAnswer(next.id, question, next.retryAttempt, token)
+        completeAnswer(next.id, question, next.retryAttempt, token, next.marketCardsEnabled)
     }
 
     fun regenerateMessage(message: ChatMessage): String? {
@@ -114,7 +120,7 @@ internal class ChatSendController(
         setSending(false)
     }
 
-    private fun completeAnswer(messageId: String, question: String, attempt: Int, token: Int) {
+    private fun completeAnswer(messageId: String, question: String, attempt: Int, token: Int, marketCardsEnabled: Boolean) {
         val model = selectedModel()
         val images = imagesBeforeAnswer(sessions.messages, messageId)
         val validation =
@@ -128,7 +134,14 @@ internal class ChatSendController(
             return
         }
         runCatching {
-                source().answer(question, conversationHistoryBefore(sessions.messages, messageId), images, model.id, attempt) {
+                source().answer(
+                    question,
+                    conversationHistoryBefore(sessions.messages, messageId),
+                    images,
+                    model.id,
+                    attempt,
+                    marketCardsEnabled,
+                ) {
                     if (token == requestToken) applyAnswer(messageId, question, attempt, it)
                 }
             }
@@ -144,15 +157,28 @@ internal class ChatSendController(
         val index = sessions.messages.indexOfFirst { it.id == messageId }
         if (index < 0) return
         val previous = sessions.messages[index]
+        val answerBlocks = when (answer) {
+            is ChatAnswer.Streaming -> answer.blocks
+            is ChatAnswer.Success -> answer.blocks
+            is ChatAnswer.Failure -> emptyList()
+        }
+        val visibleBlocks = if (previous.marketCardsEnabled) answerBlocks else answerBlocks.filterNot { it is AnswerBlock.MarketQuote }
         val next =
             when (answer) {
                 is ChatAnswer.Streaming ->
                     previous.copy(
-                        blocks = listOf(AnswerBlock.Markdown(answer.markdown, answer.markdown)) + answer.blocks,
+                        blocks = listOf(AnswerBlock.Markdown(answer.markdown, answer.markdown)) + visibleBlocks,
                         state = MessageState.GENERATING,
+                        marketCardsEnabled = previous.marketCardsEnabled,
                     )
                 is ChatAnswer.Success ->
-                    ChatMessage(id = messageId, role = ChatRole.ASSISTANT, blocks = answer.blocks, retryQuestion = question)
+                    ChatMessage(
+                        id = messageId,
+                        role = ChatRole.ASSISTANT,
+                        blocks = visibleBlocks,
+                        retryQuestion = question,
+                        marketCardsEnabled = previous.marketCardsEnabled,
+                    )
                 is ChatAnswer.Failure ->
                     ChatMessage(
                         id = messageId,
@@ -162,6 +188,7 @@ internal class ChatSendController(
                         retryQuestion = question,
                         retryAttempt = attempt,
                         errorMessage = answer.message,
+                        marketCardsEnabled = previous.marketCardsEnabled,
                     )
             }
         sessions.replaceMessages(sessions.messages.toMutableList().apply { this[index] = next })

@@ -24,7 +24,12 @@ internal fun StockChatPage.sendMessage(submittedText: String? = null, source: St
     } else {
         visibleText
     }
-    val submission = ChatSubmission(submissionText, selectedImagePreviews.toList(), selectedImagePayloads.toList())
+    val submission = ChatSubmission(
+        text = submissionText,
+        images = selectedImagePreviews.toList(),
+        payloads = selectedImagePayloads.toList(),
+        marketCardsEnabled = stockFollowUpPrompt.isBlank(),
+    )
     val error = sendController.validationError(submission)
     if (error != null) {
         bridgeModule.toast(error)

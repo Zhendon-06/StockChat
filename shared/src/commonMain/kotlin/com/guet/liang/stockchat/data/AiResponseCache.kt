@@ -78,10 +78,12 @@ internal fun aiResponseCacheKey(
     question: String,
     history: List<com.guet.liang.stockchat.model.ChatHistoryItem>,
     images: List<String>,
+    marketCardsEnabled: Boolean = true,
 ): String {
     val material = buildString {
         append(provider.baseUrl.trim().trimEnd('/')).append('|')
         append(provider.providerDisplayName).append('|').append(model).append('|')
+        append(marketCardsEnabled).append('|')
         history.forEach { append(it.role.name).append(':').append(it.content).append('\u0001') }
         append('|').append(question).append('|')
         images.forEach { append(it).append('\u0001') }

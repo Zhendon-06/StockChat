@@ -60,6 +60,7 @@ internal class ChatHistoryRepository(
                 retryQuestion = storedMessage.retry_question,
                 retryAttempt = storedMessage.retry_attempt.toInt(),
                 errorMessage = storedMessage.error_message,
+                marketCardsEnabled = storedMessage.market_cards_enabled != 0L,
             )
         }
         return stored.ifEmpty { fallbackMessages[sessionId].orEmpty() }
@@ -85,6 +86,7 @@ internal class ChatHistoryRepository(
                     retry_question = message.retryQuestion,
                     retry_attempt = message.retryAttempt.toLong(),
                     error_message = message.errorMessage,
+                    market_cards_enabled = if (message.marketCardsEnabled) 1L else 0L,
                     sort_order = messageIndex.toLong(),
                 )
                 message.blocks.forEachIndexed { blockIndex, block ->
