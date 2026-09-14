@@ -20,24 +20,24 @@ internal fun ViewContainer<*, *>.TodayMarketStackedContent(
         attr {
             width(contentWidth)
         }
-        vbind({ interactions.indexFocus() }) {
-            MarketIndexBento(snapshot.indices, contentWidth, scale, interactions.onQuoteClick, interactions.indexFocus(), interactions.indexRevealPhase, interactions.onAdvanceIndexFocus)
+        vbind({ interactions.indexFocus() to interactions.indexPulse() }) {
+            MarketIndexBento(snapshot.indices, contentWidth, scale, interactions.onQuoteClick, interactions.indexFocus(), interactions.indexPulse(), interactions.onAdvanceIndexFocus)
         }
     }
     View {
         attr {
             width(contentWidth)
         }
-        vbind({ interactions.sectorFocus() }) {
-            MarketSectorBento(snapshot.sectors, contentWidth, scale, interactions.onSectorClick, interactions.sectorFocus(), interactions.sectorRevealPhase, interactions.onAdvanceSectorFocus)
+        vbind({ interactions.sectorFocus() to interactions.sectorPulse() }) {
+            MarketSectorBento(snapshot.sectors, contentWidth, scale, interactions.onSectorClick, interactions.sectorFocus(), interactions.sectorPulse(), interactions.onAdvanceSectorFocus)
         }
     }
     View {
         attr {
             width(contentWidth)
         }
-        vbind({ interactions.quoteFocus() }) {
-            MarketWatchBento(snapshot.sampleStocks, contentWidth, scale, interactions.onQuoteClick, interactions.quoteFocus(), interactions.quoteRevealPhase, interactions.onAdvanceQuoteFocus)
+        vbind({ interactions.quoteFocus() to interactions.quotePulse() }) {
+            MarketWatchBento(snapshot.sampleStocks, contentWidth, scale, interactions.onQuoteClick, interactions.quoteFocus(), interactions.quotePulse(), interactions.onAdvanceQuoteFocus)
         }
     }
     MarketPlainSummary(this, snapshot, contentWidth, scale)
