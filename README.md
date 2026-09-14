@@ -27,7 +27,7 @@ StockChat 是一个基于 Kotlin Multiplatform 与 Kuikly 构建的跨端 AI 股
 | Task 1：AI 股票行情原型 | 行情列表、搜索、个股详情、分时 / K 线、AI 分析与风险提示 |
 | Task 2：AI 股票问答应用 | Markdown 问答、结构化行情卡片、卡片跳转详情、详情点位带回会话 |
 
-演示视频使用 Git LFS 管理。源码检出后执行 `git lfs pull` 即可播放；Android 安装包为调试签名的 Release 包，仅用于体验与评审。
+演示视频使用 Git LFS 管理。源码检出后执行 `git lfs pull` 即可播放；Android 安装包为当前 Release 包，仅用于体验与评审。
 
 ## 项目亮点
 
@@ -290,7 +290,7 @@ controller 层测试使用 `commonTest` 下的假 repository，不依赖 Kuikly 
 
 ## 组件库
 
-`kuikly-chart` 和 `table-core` 是从本项目孵化的独立组件库，都只依赖 Kuikly `core`，可直接复制到其他 Kuikly 工程使用。
+`kuikly-chart` 和 `table-core` 引用自本人 issue 阶段完成的组件，其中table-core获得 issue 阶段 top-3。都只依赖 Kuikly `core`，可直接复制到其他 Kuikly 工程使用。
 
 - **kuikly-chart**：DSL 声明式建图，支持折线 / 柱状 / 饼图，以及面向金融场景的 K 线、分时、成交量副图、双轴对照、均线叠加、十字光标与缩放平移手势。渲染基于 Kuikly Canvas，保证 OpenHarmony 兼容。
 - **table-core**：DSL 建表、单元格编辑缓冲、列宽测量，并提供 Excel 文件适配。

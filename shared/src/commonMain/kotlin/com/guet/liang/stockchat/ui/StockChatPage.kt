@@ -200,15 +200,15 @@ internal class StockChatPage : BasePager() {
         get() = ::todayMarketDataSource.isInitialized
 
     internal fun advanceTodayMarketIndexFocus() {
-        triggerTodayMarketIndexPulse()
+        todayMarketIndexFocus += 1
     }
 
     internal fun advanceTodayMarketSectorFocus() {
-        triggerTodayMarketSectorPulse()
+        todayMarketSectorFocus += 1
     }
 
     internal fun advanceTodayMarketQuoteFocus() {
-        triggerTodayMarketQuotePulse()
+        todayMarketQuoteFocus += 1
     }
 
     private fun triggerTodayMarketIndexPulse() {

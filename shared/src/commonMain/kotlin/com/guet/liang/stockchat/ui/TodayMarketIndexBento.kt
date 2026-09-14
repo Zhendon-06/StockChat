@@ -3,12 +3,10 @@ package com.guet.liang.stockchat.ui
 import com.guet.liang.stockchat.model.StockQuote
 import com.guet.liang.stockchat.model.TodayMarketSectorObservation
 import com.guet.liang.stockchat.model.TodayMarketSnapshot
-import com.tencent.kuikly.core.base.Animation
 import com.tencent.kuikly.core.base.BoxShadow
 import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.core.base.ColorStop
 import com.tencent.kuikly.core.base.Direction
-import com.tencent.kuikly.core.base.Translate
 import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.directives.vbind
 import com.tencent.kuikly.core.views.Text
@@ -38,8 +36,6 @@ internal fun ViewContainer<*, *>.MarketIndexBento(
             width(contentWidth)
             height(248f * scale)
             positionRelative()
-            opacity(if (pulse) 0.94f else 1f)
-            animate(Animation.easeOut(0.15f), pulse)
         }
         View {
             attr {
