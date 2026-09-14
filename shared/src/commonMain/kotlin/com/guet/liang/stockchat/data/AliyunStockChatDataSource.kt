@@ -10,7 +10,7 @@ import com.guet.liang.stockchat.model.MarketDataResult
 import com.tencent.kuikly.core.module.NetworkModule
 
 // OpenAI 兼容聊天数据源，两条请求分支：
-//  1. 聊天分支：携带会话上下文（问 A + 答 B + 问 D），支持流式与响应缓存，负责回答正文。
+//  1. 聊天分支：携带会话上下文（问 A + 答 B + 问 D），支持流式输出，负责回答正文。
 //  2. 标的分支：只发送当前这条消息（问 D），单次无上下文，返回结构化标的后查腾讯行情生成卡片。
 // AnswerMode.FAST 两条分支并行，正文先出、卡片随后附上；AnswerMode.PRECISE 先跑标的分支（百炼强制联网），
 // 再把实时行情注入聊天提示词，正文可引用实时数字。两种模式都由 ParallelAnswerJoin 合并输出。
@@ -62,32 +62,20 @@ internal class AliyunStockChatDataSource(
         val selectedModel = if (images.isEmpty()) model.ifBlank { config.chatModel } else config.visionModel
         val turn = ChatTurn(question, normalizedHistory, images, model, selectedModel)
         when {
-            !marketCardsEnabled -> answerTextOnly(turn, attempt, callback)
-            images.isNotEmpty() -> answerWithContext(turn, MarketBranchOutcome.NONE, attempt, callback)
-            config.answerMode == AnswerMode.PRECISE -> answerPrecise(turn, attempt, callback)
-            else -> answerFast(turn, attempt, callback)
+            !marketCardsEnabled -> answerTextOnly(turn, callback)
+            images.isNotEmpty() -> answerWithContext(turn, MarketBranchOutcome.NONE, callback)
+            config.answerMode == AnswerMode.PRECISE -> answerPrecise(turn, callback)
+            else -> answerFast(turn, callback)
         }
     }
 
     /** Answers a detail-page follow-up without repeating stock identification or quote fetching. */
-    private fun answerTextOnly(turn: ChatTurn, attempt: Int, callback: (ChatAnswer) -> Unit) {
+    private fun answerTextOnly(turn: ChatTurn, callback: (ChatAnswer) -> Unit) {
         val contextHistory = ContextWindowManager.trim(turn.history, turn.question, config.contextWindowTokens)
-        val cacheKey = aiResponseCacheKey(
-            config,
-            turn.selectedModel,
-            turn.question,
-            contextHistory,
-            turn.images,
-            marketCardsEnabled = false,
-        )
-        if (readCachedAnswer(cacheKey, attempt, callback)) return
         completionClient.answer(
             turn.question, contextHistory, turn.images, turn.selectedModel,
             systemPromptOverride = SYSTEM_PROMPT + FOLLOW_UP_PROMPT,
-        ) { answer ->
-            if (answer is ChatAnswer.Success) AiResponseCache.put(cacheKey, answer.blocks)
-            callback(answer)
-        }
+        ) { answer -> callback(answer) }
     }
 
     /** One user turn after history normalisation; shared by both answering modes. */
@@ -103,13 +91,12 @@ internal class AliyunStockChatDataSource(
      * FAST: chat and stock branches start together. The text streams at once, cards attach as soon
      * as Tencent answers, and the model never sees live numbers.
      */
-    private fun answerFast(turn: ChatTurn, attempt: Int, callback: (ChatAnswer) -> Unit) {
+    private fun answerFast(turn: ChatTurn, callback: (ChatAnswer) -> Unit) {
         val contextHistory = ContextWindowManager.trim(turn.history, turn.question, config.contextWindowTokens)
-        // The cache key covers the whole conversation context, so a repeated turn with the same
-        // history replays both the chat text and the quote cards without touching the network.
-        val cacheKey = aiResponseCacheKey(config, turn.selectedModel, turn.question, contextHistory, turn.images)
-        if (readCachedAnswer(cacheKey, attempt, callback)) return
-        val join = ParallelAnswerJoin(callback) { blocks -> AiResponseCache.put(cacheKey, blocks) }
+        // Every user submission is a fresh turn. Replaying a process-local answer here makes a
+        // repeated question look as if it completed without a request and can synchronously
+        // replace the list contents before scrolling has a chance to process the new turn.
+        val join = ParallelAnswerJoin(callback)
         completionClient.answer(turn.question, contextHistory, turn.images, turn.selectedModel, callback = join::onChat)
         startMarketBranch(turn.question, turn.model, forcedWebSearch = false, join::onMarket)
     }
@@ -118,37 +105,24 @@ internal class AliyunStockChatDataSource(
      * PRECISE: the stock branch runs first (with web research on DashScope), then the chat request
      * receives the live quotes in its prompt so the text can cite real numbers.
      */
-    private fun answerPrecise(turn: ChatTurn, attempt: Int, callback: (ChatAnswer) -> Unit) {
+    private fun answerPrecise(turn: ChatTurn, callback: (ChatAnswer) -> Unit) {
         startMarketBranch(turn.question, turn.model, forcedWebSearch = true) { outcome ->
-            answerWithContext(turn, outcome, attempt, callback)
+            answerWithContext(turn, outcome, callback)
         }
     }
 
     /** Chat request whose prompt already contains whatever the stock branch found. */
-    private fun answerWithContext(turn: ChatTurn, outcome: MarketBranchOutcome, attempt: Int, callback: (ChatAnswer) -> Unit) {
+    private fun answerWithContext(turn: ChatTurn, outcome: MarketBranchOutcome, callback: (ChatAnswer) -> Unit) {
         val questionWithMarketContext = listOf(
             turn.question,
             if (outcome.snapshots.isEmpty()) "" else marketContextPrompt(outcome.snapshots),
             outcome.notices.joinToString("\n"),
         ).filter(String::isNotBlank).joinToString("\n\n")
         val contextHistory = ContextWindowManager.trim(turn.history, questionWithMarketContext, config.contextWindowTokens)
-        val cacheKey = aiResponseCacheKey(config, turn.selectedModel, questionWithMarketContext, contextHistory, turn.images)
-        if (readCachedAnswer(cacheKey, attempt, callback)) return
-        val join = ParallelAnswerJoin(callback) { blocks -> AiResponseCache.put(cacheKey, blocks) }
+        val join = ParallelAnswerJoin(callback)
         // Cards are already known, so they ride along with the very first streamed delta.
         join.onMarket(outcome)
         completionClient.answer(questionWithMarketContext, contextHistory, turn.images, turn.selectedModel, callback = join::onChat)
-    }
-
-    /**
-     * Replays cached blocks for a plain send (attempt == 0). Regeneration bumps the attempt so it
-     * must hit the network for a fresh answer; otherwise the identical response would be replayed.
-     */
-    private fun readCachedAnswer(cacheKey: String, attempt: Int, callback: (ChatAnswer) -> Unit): Boolean {
-        if (attempt > 0) return false
-        val cachedBlocks = AiResponseCache.get(cacheKey) ?: return false
-        replayCachedAnswer(cachedBlocks, callback)
-        return true
     }
 
     /**
@@ -207,21 +181,6 @@ internal class AliyunStockChatDataSource(
         }
     }
 
-    /** Replays cached blocks for a plain send (attempt == 0). */
-    private fun replayCachedAnswer(blocks: List<AnswerBlock>, callback: (ChatAnswer) -> Unit) {
-        val markdown = blocks.filterIsInstance<AnswerBlock.Markdown>().firstOrNull()?.source.orEmpty()
-        val cards = blocks.filterIsInstance<AnswerBlock.MarketQuote>()
-        if (config.supportsStreaming && markdown.isNotBlank()) {
-            val step = CACHE_REPLAY_STEP_CHARS
-            var end = step
-            while (end < markdown.length) {
-                callback(ChatAnswer.Streaming(markdown.substring(0, end), cards))
-                end += step
-            }
-        }
-        callback(ChatAnswer.Success(blocks, fromCache = true))
-    }
-
     private fun visionUnsupportedMessage(model: String): String {
         val modelName = model.ifBlank { config.chatModel }
         return "${config.providerDisplayName} 的当前模型 $modelName 不支持图片理解，" +
@@ -231,8 +190,6 @@ internal class AliyunStockChatDataSource(
     companion object {
         const val MISSING_API_KEY_MESSAGE =
             "尚未配置模型服务 API Key，请在模型配置页面填写。"
-
-        private const val CACHE_REPLAY_STEP_CHARS = 48
 
         private const val FOLLOW_UP_PROMPT =
             "本轮是基于详情页行情快照的追问，不会额外获取行情或展示新的行情卡片。" +

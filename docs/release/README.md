@@ -3,15 +3,16 @@
 | 项目 | 值 |
 | --- | --- |
 | 文件 | `StockChat-1.0-release-debugsigned.apk` |
-| 大小 | 5.3M |
-| SHA-256 | `ab132c0d8b4a8abd1c79f174bf75928268c9ad975d9ea49564d52ef2fb4f49f4` |
+| 大小 | 5,650,468 字节（约 5.39 MiB） |
+| SHA-256 | `b13bf26d3f0bb00ae55fa6d503c84a83681d2ccb8b20b3790abaea9b088542b0` |
 | applicationId | `com.guet.liang.stockchat` |
 | versionName / versionCode | 1.0 / 1 |
 | minSdk / targetSdk | 23 / 34 |
 | 构建类型 | `release`，未开启混淆 |
 | 签名 | Android Debug 证书（`~/.android/debug.keystore`，CN=Android Debug） |
 | 签名证书 SHA-256 | `6382cc4c93571f27be5c4e00f08154f44eac8c68e3b683276210a4f76da84653` |
-| 源码基线 | `e6029cc`（公开仓库主线） |
+| 源码基线 | `2dc7614` + 工作区重复提问重新请求修复 |
+| 构建日期 | 2026-09-14 |
 
 ## 说明
 

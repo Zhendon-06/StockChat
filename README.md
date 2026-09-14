@@ -109,6 +109,14 @@ MIMO_VOICE_API_KEY=你的_MiMo_API_Key
 
 ### Android
 
+直接安装本仓库提供的 [Release APK](docs/release/StockChat-1.0-release-debugsigned.apk)：
+
+```bash
+adb install -r docs/release/StockChat-1.0-release-debugsigned.apk
+```
+
+从源码构建并安装 Debug 包：
+
 ```bash
 ./gradlew :androidApp:assembleDebug :androidApp:assembleRelease
 adb install -r androidApp/build/outputs/apk/debug/androidApp-debug.apk
@@ -228,7 +236,7 @@ ohosApp/         OpenHarmony 容器与原生桥接
       │
       ▼
 ChatSendController ─► AliyunStockChatDataSource（按 AnswerMode 编排）
-      ├─ 聊天分支：携带上下文（问 A + 答 B + 问 D），走响应缓存，流式输出 ─► 当前 Provider
+      ├─ 聊天分支：携带上下文（问 A + 答 B + 问 D），每次提交都发起新请求并流式输出 ─► 当前 Provider
       └─ 标的分支：只发送当前这条问 D，无上下文
             ├─ 结构化标的识别（百炼 qwen-plus；精准模式强制联网，快速模式不联网）
             ├─ 并发调用腾讯 smartbox 名称搜索；识别请求给出且腾讯候选包含的代码直接采用
@@ -252,17 +260,9 @@ AnswerBlock 列表（Markdown / MarketQuote / ImageGallery）
 - **语音**：Xiaomi MiMo 识别与合成。
 - **降级原则**：网络行情不可用时，今日市场只对缺失项使用带明确标记的本地演示数据；AI 预测失败、Key 缺失或返回结构非法时只展示错误状态；所有行情与 AI 结论保留时间戳与风险提示。
 
-## 响应缓存与命中
+## 请求与重复提问
 
-聊天回答有一层进程内响应缓存（`AiResponseCache`），命中时不发任何网络请求，直接回放上次的正文流式片段和行情卡片，`ChatAnswer.Success.fromCache` 为 `true`。
-
-- **缓存键**：Provider 地址、模型、经 `ContextWindowManager` 裁剪后的会话历史、当前问题、图片列表，做 FNV-1a 哈希。凭证不进键。
-- **容量与时效**：LRU 64 条，5 分钟过期，仅存于内存，App 重启即清空。
-- **更快回答速度**：键里只有问题和历史，同一会话 5 分钟内重复同样的提问会命中，正文和卡片一起回放。
-- **联网精准实时数据回答**：问题里已经拼进了实时行情数字，价格一变键就变，实际上只有不涉及任何标的的普通问题才会命中。
-- **命中粒度**：只缓存整条合并后的回答。正文没命中时，标的识别、腾讯搜索和行情拉取都会重新执行，标的分支没有单独缓存。
-- **服务端缓存**：请求没有携带任何 Provider 的 prompt cache 参数，每次都是全量计费。
-- **重新生成**：问题和历史与上一轮完全相同，5 分钟内会直接命中缓存返回同样的回答；如需强制重跑，可在数据源里按 `attempt > 0` 跳过读取。
+聊天回答不在客户端复用历史响应。每次提交（包括与上一轮完全相同的问题）都会携带当前会话上下文向 Provider 发起新的聊天请求，行情分支也会重新执行；这样可以避免把旧回答误显示为本轮结果，并确保流式列表正常更新和滚动。
 
 ## 测试与代码质量
 
